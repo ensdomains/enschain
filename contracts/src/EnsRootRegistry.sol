@@ -2,14 +2,12 @@
 pragma solidity ^0.8.13;
 
 import {BytesUtils} from "./BytesUtils.sol";
-import {BytesArrayUtils} from "./BytesArrayUtils.sol";
 import {IEnsReadRegistry} from "./IEnsReadRegistry.sol";
 
 error Unauthorized();
 
 contract EnsRootRegistry {
     using BytesUtils for bytes;
-    using BytesArrayUtils for bytes[];
 
     address public immutable owner;
 
