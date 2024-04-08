@@ -8,6 +8,7 @@ error Unauthorized();
 
 contract EnsRootRegistry {
     using BytesUtils for bytes;
+    using BytesUtils for uint256[];
 
     address public immutable owner;
 
@@ -47,50 +48,50 @@ contract EnsRootRegistry {
     }
 
     function getRegistry(
+        bytes calldata name
+    ) external view returns (IEnsReadRegistry) {
+        (IEnsReadRegistry registry, ) = getRegistry(name, 0);
+        return registry;
+    }
+
+    function getRegistry(
         bytes calldata name,
         uint256 labelOffset
-    )
-        internal
-        view
-        returns (IEnsReadRegistry, bool isExact, uint256 labelhash)
-    {
+    ) internal view returns (IEnsReadRegistry, uint256 labelhash) {
         uint256[] memory labelArray = name.readLabelsToArray();
         uint256 tldLabelhash = labelArray[labelArray.length - 1];
+
+        uint256 fullNamehash = labelArray.namehashUntilLabelOffset(0);
 
         IEnsReadRegistry tldRegistry = getTldRegistry(tldLabelhash);
 
         if (address(tldRegistry) == address(0) || labelArray.length == 1) {
-            isExact = labelArray.length == 1;
-            return (tldRegistry, isExact, tldLabelhash);
+            return (tldRegistry, fullNamehash);
         }
 
         IEnsReadRegistry previousRegistry = tldRegistry;
 
         for (uint256 i = labelArray.length - 2; i > labelOffset; i--) {
+            uint256 namehash = labelArray.namehashUntilLabelOffset(i);
             IEnsReadRegistry newRegistry = previousRegistry.getRegistry(
-                labelArray[i]
+                namehash
             );
             if (address(newRegistry) == address(0)) {
-                return (previousRegistry, false, labelArray[i + 1]);
+                return (previousRegistry, fullNamehash);
             }
         }
 
-        return (previousRegistry, true, labelArray[labelOffset]);
+        return (previousRegistry, fullNamehash);
     }
 
     function resolver(bytes calldata name) public view returns (address) {
-        (IEnsReadRegistry registry, , uint256 labelhash) = getRegistry(name, 0);
-        return registry.resolver(labelhash);
+        (IEnsReadRegistry registry, uint256 namehash) = getRegistry(name, 0);
+        return registry.resolver(namehash);
     }
 
     function ownerOf(bytes calldata name) public view returns (address) {
-        (
-            IEnsReadRegistry registry,
-            bool isExact,
-            uint256 labelhash
-        ) = getRegistry(name, 0);
-        if (!isExact) return address(0);
-        return registry.ownerOf(labelhash);
+        (IEnsReadRegistry registry, uint256 namehash) = getRegistry(name, 1);
+        return registry.ownerOf(namehash);
     }
 
     function recordExists(uint256 labelhash) public view returns (bool) {

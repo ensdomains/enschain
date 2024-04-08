@@ -43,6 +43,17 @@ library BytesUtils {
         return result;
     }
 
+    function namehashUntilLabelOffset(
+        uint256[] memory labelArray,
+        uint256 labelOffset
+    ) internal pure returns (uint256) {
+        bytes32 namehash = 0;
+        for (uint256 i = labelArray.length; i > labelOffset; i--) {
+            namehash = keccak256(abi.encodePacked(namehash, labelArray[i - 1]));
+        }
+        return uint256(namehash);
+    }
+
     // function readNthLabelFromChild(
     //     bytes memory self,
     //     uint256 labelOffset

@@ -1,6 +1,7 @@
 import {
   hexToBigInt,
   labelhash as labelhashBytes32,
+  namehash,
   stringToBytes,
   type ByteArray,
 } from "viem";
@@ -38,6 +39,10 @@ export function encodeLabelhash(hash: string) {
   return `[${hash.slice(2)}]`;
 }
 
-export const labelhash = (label: string): bigint => {
+export const labelhashUint256 = (label: string): bigint => {
   return hexToBigInt(labelhashBytes32(label));
+};
+
+export const namehashUint256 = (name: string): bigint => {
+  return hexToBigInt(namehash(name));
 };

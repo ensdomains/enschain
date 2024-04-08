@@ -17,8 +17,8 @@ contract EnsEthRegistry is IEnsReadRegistry {
 
     mapping(uint256 => Node) nodes;
 
-    modifier authorized(bytes32 labelhash) {
-        address nodeOwner = ownerOf(uint256(labelhash));
+    modifier authorized(bytes32 namehash) {
+        address nodeOwner = ownerOf(uint256(namehash));
         if (nodeOwner == msg.sender) {
             _;
         }
@@ -35,8 +35,8 @@ contract EnsEthRegistry is IEnsReadRegistry {
         ejectionAuthority = _ejectionAuthority;
     }
 
-    function getNode(uint256 tokenId) public view returns (Node memory) {
-        Node memory node = nodes[tokenId];
+    function getNode(uint256 namehash) public view returns (Node memory) {
+        Node memory node = nodes[namehash];
         if (node.expiry < block.timestamp) {
             return nodes[0];
         }
@@ -44,36 +44,36 @@ contract EnsEthRegistry is IEnsReadRegistry {
     }
 
     function oneifyName(
-        uint256 tokenId,
+        uint256 namehash,
         uint256 expiry,
         address owner,
         address _resolver,
         address registry
     ) public onlyEjectionAuthority {
-        nodes[tokenId] = Node(owner, _resolver, registry, expiry);
+        nodes[namehash] = Node(owner, _resolver, registry, expiry);
     }
 
-    function ownerOf(uint256 tokenId) public view returns (address) {
-        Node memory node = getNode(tokenId);
+    function ownerOf(uint256 namehash) public view returns (address) {
+        Node memory node = getNode(namehash);
         return node.owner;
     }
 
-    function resolver(uint256 tokenId) external view returns (address) {
-        Node memory node = getNode(tokenId);
+    function resolver(uint256 namehash) external view returns (address) {
+        Node memory node = getNode(namehash);
         return node.resolver;
     }
 
-    function recordExists(uint256 tokenId) external view returns (bool) {
-        Node memory node = getNode(tokenId);
+    function recordExists(uint256 namehash) external view returns (bool) {
+        Node memory node = getNode(namehash);
         if (node.owner != address(0)) return true;
         if (node.registry != address(0)) return true;
         return false;
     }
 
     function getRegistry(
-        uint256 tokenId
+        uint256 namehash
     ) external view returns (IEnsReadRegistry) {
-        Node memory node = getNode(tokenId);
+        Node memory node = getNode(namehash);
         return IEnsReadRegistry(node.registry);
     }
 }

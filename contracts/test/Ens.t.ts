@@ -5,7 +5,7 @@ import {
 import { expect } from "chai";
 import hre from "hardhat";
 import { Address, bytesToHex, getAddress } from "viem";
-import { labelhash, packetToBytes } from "./utils";
+import { labelhashUint256, namehashUint256, packetToBytes } from "./utils";
 
 describe("Ens", function () {
   async function deployEnsFixture() {
@@ -17,7 +17,7 @@ describe("Ens", function () {
       walletClients[0].account.address,
     ]);
     await ensRootRegistry.write.setTldRegistry([
-      labelhash("eth"),
+      labelhashUint256("eth"),
       ensEthRegistry.address,
     ]);
 
@@ -28,13 +28,13 @@ describe("Ens", function () {
 
   const oneifyName = async ({
     ensEthRegistry,
-    label,
+    name,
     expiry = BigInt(Math.floor(Date.now() / 1000) + 1000000),
     owner: owner_,
     resolver = "0x0000000000000000000000000000000000000000",
     registry = "0x0000000000000000000000000000000000000000",
   }: Pick<EnsFixture, "ensEthRegistry"> & {
-    label: string;
+    name: string;
     expiry?: bigint;
     owner?: Address;
     resolver?: Address;
@@ -43,7 +43,7 @@ describe("Ens", function () {
     const owner =
       owner_ ?? (await hre.viem.getWalletClients())[0].account.address;
     await ensEthRegistry.write.oneifyName([
-      labelhash(label),
+      namehashUint256(name),
       expiry,
       owner,
       resolver,
@@ -56,9 +56,20 @@ describe("Ens", function () {
       deployEnsFixture
     );
     const tldRegistry = await ensRootRegistry.read.getTldRegistry([
-      labelhash("eth"),
+      labelhashUint256("eth"),
     ]);
     expect(tldRegistry).to.equal(getAddress(ensEthRegistry.address));
+  });
+
+  it("returns correct registry for test.eth", async () => {
+    const { ensRootRegistry, ensEthRegistry } = await loadFixture(
+      deployEnsFixture
+    );
+    await oneifyName({ ensEthRegistry, name: "test.eth" });
+    const registry = await ensRootRegistry.read.getRegistry([
+      bytesToHex(packetToBytes("test.eth")),
+    ]);
+    expect(registry).to.equal(getAddress(ensEthRegistry.address));
   });
 
   it("returns owner when oneified", async () => {
@@ -66,7 +77,7 @@ describe("Ens", function () {
       deployEnsFixture
     );
     const walletClients = await hre.viem.getWalletClients();
-    await oneifyName({ ensEthRegistry, label: "test" });
+    await oneifyName({ ensEthRegistry, name: "test.eth" });
     const owner = await ensRootRegistry.read.ownerOf([
       bytesToHex(packetToBytes("test.eth")),
     ]);
@@ -80,7 +91,7 @@ describe("Ens", function () {
     const walletClients = await hre.viem.getWalletClients();
     await oneifyName({
       ensEthRegistry,
-      label: "test",
+      name: "test.eth",
       resolver: walletClients[1].account.address,
     });
     const resolver = await ensRootRegistry.read.resolver([
@@ -92,7 +103,7 @@ describe("Ens", function () {
   it("returns recordExists as true when tld exists", async () => {
     const { ensRootRegistry } = await loadFixture(deployEnsFixture);
     const recordExists = await ensRootRegistry.read.recordExists([
-      labelhash("eth"),
+      labelhashUint256("eth"),
     ]);
     expect(recordExists).to.equal(true);
   });
@@ -100,7 +111,7 @@ describe("Ens", function () {
   it("returns recordExists as false when tld does not exist", async () => {
     const { ensRootRegistry } = await loadFixture(deployEnsFixture);
     const recordExists = await ensRootRegistry.read.recordExists([
-      labelhash("test"),
+      labelhashUint256("test"),
     ]);
     expect(recordExists).to.equal(false);
   });
@@ -110,7 +121,7 @@ describe("Ens", function () {
       deployEnsFixture
     );
     const walletClients = await hre.viem.getWalletClients();
-    await oneifyName({ ensEthRegistry, label: "test" });
+    await oneifyName({ ensEthRegistry, name: "test.eth" });
     const owner = await ensRootRegistry.read.ownerOf([
       bytesToHex(packetToBytes("test.eth")),
     ]);

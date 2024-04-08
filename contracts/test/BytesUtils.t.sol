@@ -7,6 +7,7 @@ import {NameEncoder} from "./NameEncoder.sol";
 
 contract BytesUtilsTest is Test {
     using BytesUtils for bytes;
+    using BytesUtils for uint256[];
     using NameEncoder for string;
 
     function test_readLabelsToArray() public view {
@@ -17,6 +18,20 @@ contract BytesUtilsTest is Test {
         assertEq(labelhashArray[0], uint256(keccak256("one")));
         assertEq(labelhashArray[1], uint256(keccak256("test")));
         assertEq(labelhashArray[2], uint256(keccak256("eth")));
+    }
+
+    function test_namehashUntilLabelOffset_zeroOffset() public pure {
+        uint256[] memory labelArray = new uint256[](3);
+        labelArray[0] = uint256(keccak256("one"));
+        labelArray[1] = uint256(keccak256("test"));
+        labelArray[2] = uint256(keccak256("eth"));
+        uint256 result = labelArray.namehashUntilLabelOffset(0);
+        assertEq(
+            result,
+            uint256(
+                0xdd0d907a053c5f43f9a1814db5dc1a0a4d979a740a04fd56146f63e22fb42f19
+            )
+        );
     }
 
     function calldatawrite(
