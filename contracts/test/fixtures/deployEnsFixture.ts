@@ -1,46 +1,70 @@
 import hre from "hardhat";
-import { Address } from "viem";
-import { labelhashUint256, namehashUint256 } from "../utils/utils";
+import { Address, bytesToHex, keccak256, stringToHex, zeroAddress } from "viem";
+import { packetToBytes } from "../utils/utils";
 
 export async function deployEnsFixture() {
   const walletClients = await hre.viem.getWalletClients();
-  const ensRootRegistry = await hre.viem.deployContract("EnsRootRegistry", [
+  const rootRegistry = await hre.viem.deployContract("RootRegistry", []);
+  const ethRegistry = await hre.viem.deployContract("ETHRegistry", []);
+  const universalResolver = await hre.viem.deployContract("UniversalResolver", [
+    rootRegistry.address,
+  ]);
+  await rootRegistry.write.grantRole([
+    keccak256(stringToHex("SUBDOMAIN_ISSUER_ROLE")),
     walletClients[0].account.address,
   ]);
-  const ensEthRegistry = await hre.viem.deployContract("EnsEthRegistry", [
+  await ethRegistry.write.grantRole([
+    keccak256(stringToHex("REGISTRAR_ROLE")),
     walletClients[0].account.address,
   ]);
-  await ensRootRegistry.write.setTldRegistry([
-    labelhashUint256("eth"),
-    ensEthRegistry.address,
+  await rootRegistry.write.mint([
+    "eth",
+    walletClients[0].account.address,
+    ethRegistry.address,
+    true,
   ]);
 
-  return { ensRootRegistry, ensEthRegistry };
+  return { rootRegistry, ethRegistry, universalResolver };
 }
 
 export type EnsFixture = Awaited<ReturnType<typeof deployEnsFixture>>;
 
-export const oneifyName = async ({
-  ensEthRegistry,
+export const deployUserRegistry = async ({
   name,
+  parentRegistryAddress,
+  ownerIndex = 0,
+  resolverAddress = zeroAddress,
+}: {
+  name: string;
+  parentRegistryAddress: Address;
+  ownerIndex?: number;
+  resolverAddress?: Address;
+}) => {
+  const wallet = (await hre.viem.getWalletClients())[ownerIndex];
+  return await hre.viem.deployContract(
+    "UserRegistry",
+    [parentRegistryAddress, bytesToHex(packetToBytes(name)), resolverAddress],
+    {
+      client: { wallet },
+    }
+  );
+};
+
+export const registerName = async ({
+  ethRegistry,
+  label,
   expiry = BigInt(Math.floor(Date.now() / 1000) + 1000000),
   owner: owner_,
-  resolver = "0x0000000000000000000000000000000000000000",
-  registry = "0x0000000000000000000000000000000000000000",
-}: Pick<EnsFixture, "ensEthRegistry"> & {
-  name: string;
+  subregistry = "0x0000000000000000000000000000000000000000",
+  locked = false,
+}: Pick<EnsFixture, "ethRegistry"> & {
+  label: string;
   expiry?: bigint;
   owner?: Address;
-  resolver?: Address;
-  registry?: Address;
+  subregistry?: Address;
+  locked?: boolean;
 }) => {
   const owner =
     owner_ ?? (await hre.viem.getWalletClients())[0].account.address;
-  await ensEthRegistry.write.oneifyName([
-    namehashUint256(name),
-    expiry,
-    owner,
-    resolver,
-    registry,
-  ]);
+  await ethRegistry.write.register([label, owner, subregistry, expiry, locked]);
 };

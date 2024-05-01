@@ -1,4 +1,6 @@
 import {
+  Hex,
+  bytesToHex,
   hexToBigInt,
   labelhash as labelhashBytes32,
   namehash,
@@ -28,6 +30,9 @@ export function packetToBytes(packet: string): ByteArray {
 
   return bytes;
 }
+
+export const dnsEncodeName = (name: string): Hex =>
+  bytesToHex(packetToBytes(name));
 
 export function encodeLabelhash(hash: string) {
   if (!hash.startsWith("0x"))

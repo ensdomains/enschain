@@ -1,6 +1,9 @@
 {
   "name": "contracts",
   "module": "index.ts",
+  "scripts": {
+    "test": "hardhat test"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-foundry": "^1.1.1",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
