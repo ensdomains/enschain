@@ -99,17 +99,14 @@ contract UserRegistry is LockableRegistry {
     }
 
     function getSubregistry(
-        bytes calldata name
+        string calldata label
     ) external view returns (IRegistry) {
-        string memory label = string(name[1:1 + uint8(name[0])]);
         uint256 tokenId = uint256(keccak256(bytes(label)));
         SubdomainData memory sub = subdomains[tokenId];
         return sub.registry;
     }
 
-    function getResolver(
-        bytes calldata /*name*/
-    ) external view returns (address) {
+    function getResolver() external view returns (address) {
         return _resolver;
     }
 }

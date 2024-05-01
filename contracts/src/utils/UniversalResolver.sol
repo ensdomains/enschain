@@ -29,7 +29,7 @@ contract UniversalResolver {
         if (!exact) {
             return (reg, false);
         }
-        IRegistry sub = reg.getSubregistry(name);
+        IRegistry sub = reg.getSubregistry(string(name[1:len+1]));
         if (sub == IRegistry(address(0))) {
             return (reg, false);
         }
@@ -43,6 +43,6 @@ contract UniversalResolver {
      */
     function getResolver(bytes calldata name) public view returns (address) {
         (IRegistry reg, ) = getRegistry(name);
-        return reg.getResolver(name);
+        return reg.getResolver();
     }
 }

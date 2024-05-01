@@ -63,14 +63,13 @@ contract RootRegistry is LockableRegistry, AccessControl {
         emit RegistryChanged(label, registry);
     }
 
-    function getSubregistry(bytes calldata name) external view returns (IRegistry) {
-        string memory label = string(name[1:1 + uint8(name[0])]);
+    function getSubregistry(string calldata label) external view returns (IRegistry) {
         uint256 tokenId = uint256(keccak256(bytes(label)));
         SubdomainData memory sub = subdomains[tokenId];
         return sub.registry;
     }
 
-    function getResolver(bytes calldata /*name*/ ) external pure returns (address) {
+    function getResolver() external pure returns (address) {
         return address(0);
     }
 
