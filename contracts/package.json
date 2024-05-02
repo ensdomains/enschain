@@ -2,7 +2,9 @@
   "name": "contracts",
   "module": "index.ts",
   "scripts": {
-    "test": "hardhat test"
+    "test:hardhat": "hardhat test",
+    "test:forge": "echo \"Skipping forge test for now since there are no tests...\"",
+    "test": "bun run test:forge && bun run test:hardhat"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-foundry": "^1.1.1",
@@ -13,6 +15,6 @@
     "viem": "^2.9.12"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.5"
   }
 }

@@ -1,30 +1,35 @@
-## Foundry
+# ENSv2 Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+The ENSv2 contracts module uses forge + hardhat combined to allow for simple unit testing, e2e tests (incl. CCIP-Read support), performant build forks, etc.
 
-Foundry consists of:
+## Foundry (forge) installation
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+https://book.getfoundry.sh/getting-started/installation
 
-## Documentation
+## Getting started
 
-https://book.getfoundry.sh/
+### Installation
 
-## Usage
+Install foundry: [guide](https://book.getfoundry.sh/getting-started/installation)
+
+Install packages (bun)
+
+```sh
+bun install
+```
 
 ### Build
 
-```shell
-$ forge build
+```sh
+forge build
 ```
 
 ### Test
 
-```shell
-$ forge test
+Testing is done in both forge and hardhat, so you can use the helper script.
+
+```sh
+bun run test
 ```
 
 ### Format
@@ -39,28 +44,6 @@ $ forge fmt
 $ forge snapshot
 ```
 
-### Anvil
+### Miscellaneous
 
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Foundry also comes with cast, anvil, and chisel, all of which are useful for local development ([docs](https://book.getfoundry.sh/))
