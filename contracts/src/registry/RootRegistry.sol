@@ -18,7 +18,7 @@ contract RootRegistry is LockableRegistry, AccessControl {
 
     bytes32 public constant SUBDOMAIN_ISSUER_ROLE = keccak256("SUBDOMAIN_ISSUER_ROLE");
 
-    constructor() LockableRegistry("\x00") ERC721("ENS Root Registry", "ENSROOT") {
+    constructor() LockableRegistry() ERC721("ENS Root Registry", "ENSROOT") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 

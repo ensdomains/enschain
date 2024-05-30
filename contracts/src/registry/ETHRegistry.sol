@@ -27,7 +27,7 @@ contract ETHRegistry is LockableRegistry, AccessControl {
     error CannotReduceExpiration(uint64 oldExpiration, uint64 newExpiration);
 
     constructor()
-        LockableRegistry("\x03eth\x00")
+        LockableRegistry()
         ERC721("ENS .eth Registry", ".eth")
     {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);

@@ -11,10 +11,7 @@ abstract contract LockableRegistry is IRegistry, ERC721 {
 
     event SubdomainLocked(string label);
 
-    bytes public canonicalName;
-
-    constructor(bytes memory _canonicalName) {
-        canonicalName = _canonicalName;
+    constructor() {
     }
 
     modifier onlyTokenOwner(string calldata label) {

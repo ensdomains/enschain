@@ -18,13 +18,15 @@ contract UserRegistry is LockableRegistry {
     mapping(uint256 => SubdomainData) internal subdomains;
     address internal _resolver;
     IRegistry public parent;
+    string public label;
 
     constructor(
         IRegistry _parent,
-        bytes memory name,
+        string memory _label,
         address newResolver
-    ) LockableRegistry(name) ERC721("ENS User Registry", "something.eth") {
+    ) LockableRegistry() ERC721("ENS User Registry", "something.eth") {
         parent = _parent;
+        label = _label;
         if (newResolver != address(0)) {
             _resolver = newResolver;
             emit ResolverChanged(newResolver);
@@ -32,7 +34,6 @@ contract UserRegistry is LockableRegistry {
     }
 
     modifier onlyNameOwner() {
-        string memory label = NameUtils.readLabel(canonicalName, 0);
         address owner = parent.ownerOf(uint256(keccak256(bytes(label))));
         if (owner != msg.sender) {
             revert AccessDenied(owner, msg.sender);
@@ -46,48 +47,48 @@ contract UserRegistry is LockableRegistry {
     }
 
     function mint(
-        string calldata label,
+        string calldata _label,
         address owner,
         IRegistry registry,
         bool locked
     ) external onlyNameOwner {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         _safeMint(owner, tokenId);
         subdomains[tokenId] = SubdomainData(registry, locked);
-        emit RegistryChanged(label, registry);
+        emit RegistryChanged(_label, registry);
         if (locked) {
-            emit SubdomainLocked(label);
+            emit SubdomainLocked(_label);
         }
     }
 
     function burn(
-        string calldata label
-    ) external onlyNameOwner onlyUnlocked(label) {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+        string calldata _label
+    ) external onlyNameOwner onlyUnlocked(_label) {
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         _burn(tokenId);
         subdomains[tokenId] = SubdomainData(IRegistry(address(0)), false);
-        emit RegistryChanged(label, IRegistry(address(0)));
+        emit RegistryChanged(_label, IRegistry(address(0)));
     }
 
     function _locked(
-        string memory label
+        string memory _label
     ) internal view override returns (bool) {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         return subdomains[tokenId].locked;
     }
 
-    function _lock(string memory label) internal override {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+    function _lock(string memory _label) internal override {
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         subdomains[tokenId].locked = true;
     }
 
     function setSubregistry(
-        string calldata label,
+        string calldata _label,
         IRegistry registry
-    ) external override onlyTokenOwner(label) onlyUnlocked(label) {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+    ) external override onlyTokenOwner(_label) onlyUnlocked(_label) {
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         subdomains[tokenId].registry = registry;
-        emit RegistryChanged(label, registry);
+        emit RegistryChanged(_label, registry);
     }
 
     function supportsInterface(
@@ -101,8 +102,8 @@ contract UserRegistry is LockableRegistry {
     function getSubregistry(
         bytes calldata name
     ) external view returns (IRegistry) {
-        string memory label = string(name[1:1 + uint8(name[0])]);
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+        string memory _label = string(name[1:1 + uint8(name[0])]);
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
         SubdomainData memory sub = subdomains[tokenId];
         return sub.registry;
     }

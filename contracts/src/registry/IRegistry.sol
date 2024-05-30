@@ -29,12 +29,4 @@ interface IRegistry is IERC721 {
      * @return The address of a resolver responsible for this name, or `address(0)` if none exists.
      */
     function getResolver(bytes calldata name) external view returns (address);
-
-    /**
-     * @dev Returns the registry's canonical name in DNS-encoded format.
-     *      While a registry may be referred to in multiple parts of the name hierarchy,
-     *      it is expected that it has one canonical name that uniquely represents it.
-     * @return The canonical name of this registry.
-     */
-    function canonicalName() external view returns (bytes memory);
 }
