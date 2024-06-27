@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-
 import {IRegistry} from "./IRegistry.sol";
+import {IRegistryDatastore} from "./IRegistryDatastore.sol";
+import {BaseRegistry} from "./BaseRegistry.sol";
 
-abstract contract LockableRegistry is IRegistry, ERC721 {
+abstract contract LockableRegistry is BaseRegistry {
     error NameLocked(string label);
     error AccessDenied(address owner, address caller);
 
     event SubdomainLocked(string label);
 
-    constructor() {
+    constructor(IRegistryDatastore _datastore) BaseRegistry(_datastore) {
     }
 
     modifier onlyTokenOwner(string calldata label) {
         uint256 tokenId = uint256(keccak256(bytes(label)));
-        address owner = _ownerOf(tokenId);
+        address owner = ownerOf(tokenId);
         if (owner != msg.sender) {
             revert AccessDenied(owner, msg.sender);
         }

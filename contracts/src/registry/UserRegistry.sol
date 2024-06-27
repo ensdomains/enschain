@@ -6,6 +6,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IRegistry} from "./IRegistry.sol";
+import {IRegistryDatastore} from "./IRegistryDatastore.sol";
 import {LockableRegistry} from "./LockableRegistry.sol";
 import {NameUtils} from "../utils/NameUtils.sol";
 
@@ -23,8 +24,9 @@ contract UserRegistry is LockableRegistry {
     constructor(
         IRegistry _parent,
         string memory _label,
-        address newResolver
-    ) LockableRegistry() ERC721("ENS User Registry", "something.eth") {
+        address newResolver,
+        IRegistryDatastore _datastore
+    ) LockableRegistry(_datastore) {
         parent = _parent;
         label = _label;
         if (newResolver != address(0)) {
@@ -41,6 +43,10 @@ contract UserRegistry is LockableRegistry {
         _;
     }
 
+    function uri(uint256 /*id*/) public override pure returns (string memory) {
+        return "";
+    }
+
     function setResolver(address newResolver) public onlyNameOwner {
         _resolver = newResolver;
         emit ResolverChanged(_resolver);
@@ -53,7 +59,7 @@ contract UserRegistry is LockableRegistry {
         bool locked
     ) external onlyNameOwner {
         uint256 tokenId = uint256(keccak256(bytes(_label)));
-        _safeMint(owner, tokenId);
+        _mint(owner, tokenId, 1, "");
         subdomains[tokenId] = SubdomainData(registry, locked);
         emit RegistryChanged(_label, registry);
         if (locked) {
@@ -65,7 +71,8 @@ contract UserRegistry is LockableRegistry {
         string calldata _label
     ) external onlyNameOwner onlyUnlocked(_label) {
         uint256 tokenId = uint256(keccak256(bytes(_label)));
-        _burn(tokenId);
+        address owner = ownerOf(tokenId);
+        _burn(owner, tokenId, 1);
         subdomains[tokenId] = SubdomainData(IRegistry(address(0)), false);
         emit RegistryChanged(_label, IRegistry(address(0)));
     }
@@ -93,7 +100,7 @@ contract UserRegistry is LockableRegistry {
 
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(IERC165, ERC721) returns (bool) {
+    ) public view override returns (bool) {
         return
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);

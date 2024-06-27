@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.13;
 
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC1155Singleton} from "./IERC1155Singleton.sol";
 
-interface IRegistry is IERC721 {
+interface IRegistry is IERC1155Singleton {
     event RegistryChanged(string label, IRegistry registry);
     event ResolverChanged(address resolver);
-
-    // TODO: Should `setSubregistry` be part of `IRegistry`?
 
     /**
      * @dev Fetches the registry for a subdomain of the current registry.

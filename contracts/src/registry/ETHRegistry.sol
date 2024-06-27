@@ -2,10 +2,12 @@
 pragma solidity >=0.8.13;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {ERC1155Singleton} from "./ERC1155Singleton.sol";
+import {IERC1155Singleton} from "./IERC1155Singleton.sol";
 import {IRegistry} from "./IRegistry.sol";
+import {IRegistryDatastore} from "./IRegistryDatastore.sol";
+import {BaseRegistry} from "./BaseRegistry.sol";
 import {LockableRegistry} from "./LockableRegistry.sol";
 
 contract ETHRegistry is LockableRegistry, AccessControl {
@@ -26,11 +28,14 @@ contract ETHRegistry is LockableRegistry, AccessControl {
     error NameExpired(string label);
     error CannotReduceExpiration(uint64 oldExpiration, uint64 newExpiration);
 
-    constructor()
-        LockableRegistry()
-        ERC721("ENS .eth Registry", ".eth")
+    constructor(IRegistryDatastore _datastore)
+        LockableRegistry(_datastore)
     {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    function uri(uint256 /*tokenId*/) public override pure returns(string memory) {
+        return "";
     }
 
     function setResolver(
@@ -40,15 +45,13 @@ contract ETHRegistry is LockableRegistry, AccessControl {
         emit ResolverChanged(_resolver);
     }
 
-    // TODO: OZ's implementation zeroes out allowance on mint, but our override here breaks that
-    // behaviour.
-    function _ownerOf(
+    function ownerOf(
         uint256 tokenId
-    ) internal view virtual override returns (address) {
+    ) public view virtual override(ERC1155Singleton, IERC1155Singleton) returns (address) {
         if (subdomains[tokenId].expires < block.timestamp) {
             return address(0);
         }
-        return super._ownerOf(tokenId);
+        return super.ownerOf(tokenId);
     }
 
     function register(
@@ -59,7 +62,7 @@ contract ETHRegistry is LockableRegistry, AccessControl {
         bool registryLocked
     ) public onlyRole(REGISTRAR_ROLE) {
         uint256 tokenId = uint256(keccak256(bytes(label)));
-        _safeMint(owner, tokenId);
+        _mint(owner, tokenId, 1, "");
         if (subdomains[tokenId].expires >= block.timestamp) {
             revert NameAlreadyRegistered(label);
         }
@@ -107,7 +110,7 @@ contract ETHRegistry is LockableRegistry, AccessControl {
 
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(IERC165, ERC721, AccessControl) returns (bool) {
+    ) public view override(BaseRegistry, AccessControl) returns (bool) {
         return
             interfaceId == type(IRegistry).interfaceId ||
             super.supportsInterface(interfaceId);

@@ -6,6 +6,8 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IRegistry} from "./IRegistry.sol";
+import {IRegistryDatastore} from "./IRegistryDatastore.sol";
+import {BaseRegistry} from "./BaseRegistry.sol";
 import {LockableRegistry} from "./LockableRegistry.sol";
 
 struct SubdomainData {
@@ -18,8 +20,12 @@ contract RootRegistry is LockableRegistry, AccessControl {
 
     bytes32 public constant SUBDOMAIN_ISSUER_ROLE = keccak256("SUBDOMAIN_ISSUER_ROLE");
 
-    constructor() LockableRegistry() ERC721("ENS Root Registry", "ENSROOT") {
+    constructor(IRegistryDatastore _datastore) LockableRegistry(_datastore) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    function uri(uint256 /*id*/) public override pure returns (string memory) {
+        return "";
     }
 
     function mint(string calldata label, address owner, IRegistry registry, bool locked)
@@ -27,7 +33,7 @@ contract RootRegistry is LockableRegistry, AccessControl {
         onlyRole(SUBDOMAIN_ISSUER_ROLE)
     {
         uint256 tokenId = uint256(keccak256(bytes(label)));
-        _safeMint(owner, tokenId);
+        _mint(owner, tokenId, 1, "");
         subdomains[tokenId] = SubdomainData(registry, locked);
         emit RegistryChanged(label, registry);
         if (locked) {
@@ -37,7 +43,8 @@ contract RootRegistry is LockableRegistry, AccessControl {
 
     function burn(string calldata label) external onlyRole(SUBDOMAIN_ISSUER_ROLE) onlyUnlocked(label) {
         uint256 tokenId = uint256(keccak256(bytes(label)));
-        _burn(tokenId);
+        address owner = ownerOf(tokenId);
+        _burn(owner, tokenId, 1);
         subdomains[tokenId] = SubdomainData(IRegistry(address(0)), false);
         emit RegistryChanged(label, IRegistry(address(0)));
     }
@@ -77,7 +84,7 @@ contract RootRegistry is LockableRegistry, AccessControl {
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(IERC165, ERC721, AccessControl)
+        override(BaseRegistry, AccessControl)
         returns (bool)
     {
         return interfaceId == type(IRegistry).interfaceId || super.supportsInterface(interfaceId);
