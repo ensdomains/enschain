@@ -16,10 +16,39 @@ import {IRegistryDatastore} from "./IRegistryDatastore.sol";
 import {IRegistry} from "./IRegistry.sol";
 
 abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
+    error AccessDenied(string label, address owner, address caller);
+    error InvalidSubregistryFlags(string label, uint96 flags, uint96 expected);
+    error InvalidResolverFlags(string label, uint96 flags, uint96 expected);
+
     IRegistryDatastore public datastore;
 
     constructor(IRegistryDatastore _datastore) {
         datastore = _datastore;
+    }
+
+    modifier onlyTokenOwner(string calldata label) {
+        uint256 tokenId = uint256(keccak256(bytes(label)));
+        address owner = ownerOf(tokenId);
+        if (owner != msg.sender) {
+            revert AccessDenied(label, owner, msg.sender);
+        }
+        _;
+    }
+
+    modifier withSubregistryFlags(string calldata label, uint96 mask, uint96 expected) {
+        (, uint96 flags) = datastore.getSubregistry(uint256(keccak256(bytes(label))));
+        if (flags & mask != expected) {
+            revert InvalidSubregistryFlags(label, flags & mask, expected);
+        }
+        _;
+    }
+
+    modifier withResolverFlags(string calldata label, uint96 mask, uint96 expected) {
+        (, uint96 flags) = datastore.getResolver(uint256(keccak256(bytes(label))));
+        if (flags & mask != expected) {
+            revert InvalidResolverFlags(label, flags & mask, expected);
+        }
+        _;
     }
 
     /**
@@ -35,7 +64,7 @@ abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
 
     /***********************
      * IRegistry functions *
-     ***********************/    
+     ***********************/
     
     /**
      * @dev Fetches the registry for a subdomain of the current registry.
