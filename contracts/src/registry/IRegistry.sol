@@ -4,6 +4,8 @@ pragma solidity >=0.8.13;
 import {IERC1155Singleton} from "./IERC1155Singleton.sol";
 
 interface IRegistry is IERC1155Singleton {
+    event NewSubname(string label);
+    
     /**
      * @dev Fetches the registry for a subdomain of the current registry.
      * @param label The label to resolve.

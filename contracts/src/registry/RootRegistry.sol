@@ -26,9 +26,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         external
         onlyRole(SUBDOMAIN_ISSUER_ROLE)
     {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
-        _mint(owner, tokenId, 1, "");
-        datastore.setSubregistry(tokenId, address(registry), locked ? SUBREGISTRY_FLAG_LOCKED : 0);
+        _mint(label, owner, registry, locked ? SUBREGISTRY_FLAG_LOCKED : 0);
     }
 
     function burn(string calldata label) 

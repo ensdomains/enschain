@@ -62,6 +62,13 @@ abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
             super.supportsInterface(interfaceId);
     }
 
+    function _mint(string calldata label, address owner, IRegistry registry, uint96 flags) internal {
+        uint256 tokenId = uint256(keccak256(bytes(label)));
+        _mint(owner, tokenId, 1, "");
+        datastore.setSubregistry(tokenId, address(registry), flags);
+        emit NewSubname(label);
+    }
+
     /***********************
      * IRegistry functions *
      ***********************/

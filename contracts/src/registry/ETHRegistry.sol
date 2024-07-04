@@ -53,8 +53,7 @@ contract ETHRegistry is BaseRegistry, AccessControl {
             revert NameAlreadyRegistered(label);
         }
         
-        _mint(owner, tokenId, 1, "");
-        datastore.setSubregistry(tokenId, address(registry), flags);
+        _mint(label, owner, registry, flags);
     }
 
     function renew(

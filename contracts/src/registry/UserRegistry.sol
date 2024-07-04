@@ -44,9 +44,7 @@ contract UserRegistry is BaseRegistry {
         IRegistry registry,
         uint96 flags
     ) external onlyNameOwner {
-        uint256 tokenId = uint256(keccak256(bytes(_label)));
-        _mint(owner, tokenId, 1, "");
-        datastore.setSubregistry(tokenId, address(registry), flags);
+        _mint(_label, owner, registry, flags);
     }
 
     function burn(
