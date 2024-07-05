@@ -8,8 +8,6 @@ import {IERC1155MetadataURI} from "@openzeppelin/contracts/token/ERC1155/extensi
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ERC1155Utils} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
-import {Arrays} from "@openzeppelin/contracts/utils/Arrays.sol";
 
 import {ERC1155Singleton} from "./ERC1155Singleton.sol";
 import {IRegistryDatastore} from "./IRegistryDatastore.sol";
