@@ -4,8 +4,9 @@ import { packetToBytes } from "../utils/utils";
 
 export async function deployEnsFixture() {
   const walletClients = await hre.viem.getWalletClients();
-  const rootRegistry = await hre.viem.deployContract("RootRegistry", []);
-  const ethRegistry = await hre.viem.deployContract("ETHRegistry", []);
+  const datastore = await hre.viem.deployContract("RegistryDatastore", []);
+  const rootRegistry = await hre.viem.deployContract("RootRegistry", [datastore.address]);
+  const ethRegistry = await hre.viem.deployContract("ETHRegistry", [datastore.address]);
   const universalResolver = await hre.viem.deployContract("UniversalResolver", [
     rootRegistry.address,
   ]);
@@ -24,7 +25,7 @@ export async function deployEnsFixture() {
     true,
   ]);
 
-  return { rootRegistry, ethRegistry, universalResolver };
+  return { datastore, rootRegistry, ethRegistry, universalResolver };
 }
 
 export type EnsFixture = Awaited<ReturnType<typeof deployEnsFixture>>;
@@ -32,18 +33,18 @@ export type EnsFixture = Awaited<ReturnType<typeof deployEnsFixture>>;
 export const deployUserRegistry = async ({
   name,
   parentRegistryAddress,
+  datastoreAddress,
   ownerIndex = 0,
-  resolverAddress = zeroAddress,
 }: {
   name: string;
   parentRegistryAddress: Address;
+  datastoreAddress: Address;
   ownerIndex?: number;
-  resolverAddress?: Address;
 }) => {
   const wallet = (await hre.viem.getWalletClients())[ownerIndex];
   return await hre.viem.deployContract(
     "UserRegistry",
-    [parentRegistryAddress, bytesToHex(packetToBytes(name)), resolverAddress],
+    [parentRegistryAddress, bytesToHex(packetToBytes(name)), datastoreAddress],
     {
       client: { wallet },
     }
@@ -66,5 +67,6 @@ export const registerName = async ({
 }) => {
   const owner =
     owner_ ?? (await hre.viem.getWalletClients())[0].account.address;
-  await ethRegistry.write.register([label, owner, subregistry, expiry, locked]);
+  const flags = (locked ? BigInt(0x100000000) : BigInt(0)) | expiry;
+  await ethRegistry.write.register([label, owner, subregistry, flags]);
 };

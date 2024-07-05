@@ -29,7 +29,8 @@ contract UniversalResolver {
         if (!exact) {
             return (reg, false);
         }
-        IRegistry sub = reg.getSubregistry(name);
+        string memory label = string(name[1:len + 1]);
+        IRegistry sub = reg.getSubregistry(label);
         if (sub == IRegistry(address(0))) {
             return (reg, false);
         }
@@ -43,6 +44,8 @@ contract UniversalResolver {
      */
     function getResolver(bytes calldata name) public view returns (address) {
         (IRegistry reg, ) = getRegistry(name);
-        return reg.getResolver(name);
+        uint8 len = uint8(name[0]);
+        string memory label = string(name[1:len + 1]);
+        return reg.getResolver(label);
     }
 }
