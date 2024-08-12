@@ -49,7 +49,7 @@ contract ETHRegistry is BaseRegistry, AccessControl {
         uint64 expires
     ) public onlyRole(REGISTRAR_ROLE) returns(uint256 tokenId) {
         flags &= FLAGS_MASK;
-        tokenId = (uint256(keccak256(bytes(label))) & ~FLAGS_MASK) | flags;
+        tokenId = (uint256(keccak256(bytes(label))) & ~uint256(FLAGS_MASK)) | flags;
         
         (, uint96 oldFlags) = datastore.getSubregistry(tokenId);
         uint64 oldExpiry = uint64(oldFlags >> 32);
@@ -88,11 +88,11 @@ contract ETHRegistry is BaseRegistry, AccessControl {
         withSubregistryFlags(tokenId, FLAG_FLAGS_LOCKED, 0)
     {
         (address subregistry, uint96 oldFlags) = datastore.getSubregistry(tokenId);
-        uint96 newFlags = (oldFlags & ~FLAGS_MASK) | flags;
+        uint96 newFlags = oldFlags | (flags & FLAGS_MASK);
         if(newFlags != oldFlags) {
             address owner = ownerOf(tokenId);
             _burn(owner, tokenId, 1);
-            uint256 newTokenId = (tokenId & ~FLAGS_MASK) | newFlags;
+            uint256 newTokenId = (tokenId & ~uint256(FLAGS_MASK)) | (newFlags & FLAGS_MASK);
             _mint(newTokenId, owner, IRegistry(subregistry), newFlags);
         }
     }

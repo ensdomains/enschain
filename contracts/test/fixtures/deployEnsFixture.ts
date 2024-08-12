@@ -57,7 +57,8 @@ export const registerName = async ({
   expiry = BigInt(Math.floor(Date.now() / 1000) + 1000000),
   owner: owner_,
   subregistry = "0x0000000000000000000000000000000000000000",
-  locked = false,
+  subregistryLocked = false,
+  resolverLocked = false,
 }: Pick<EnsFixture, "ethRegistry"> & {
   label: string;
   expiry?: bigint;
@@ -67,6 +68,6 @@ export const registerName = async ({
 }) => {
   const owner =
     owner_ ?? (await hre.viem.getWalletClients())[0].account.address;
-  const flags = (locked ? BigInt(0x100000000) : BigInt(0)) | expiry;
-  await ethRegistry.write.register([label, owner, subregistry, flags]);
+  const flags = (subregistryLocked ? 1n : 0n) | (resolverLocked ? 2n : 0n);
+  return await ethRegistry.write.register([label, owner, subregistry, flags, expiry]);
 };
