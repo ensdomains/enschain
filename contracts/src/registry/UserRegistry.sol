@@ -29,7 +29,7 @@ contract UserRegistry is BaseRegistry {
     modifier onlyNameOwner() {
         address owner = parent.ownerOf(uint256(keccak256(bytes(label))));
         if (owner != msg.sender) {
-            revert AccessDenied("", owner, msg.sender);
+            revert AccessDenied(0, owner, msg.sender);
         }
         _;
     }
@@ -44,37 +44,35 @@ contract UserRegistry is BaseRegistry {
         IRegistry registry,
         uint96 flags
     ) external onlyNameOwner {
-        _mint(_label, owner, registry, flags);
+        uint256 tokenId = uint256(keccak256(bytes(_label)));
+        _mint(tokenId, owner, registry, flags);
+        emit NewSubname(label);
     }
 
     function burn(
-        string calldata _label
-    ) external onlyNameOwner withSubregistryFlags(_label, SUBREGISTRY_FLAG_LOCKED, 0) {
-        uint256 tokenId = uint256(keccak256(bytes(_label)));
+        uint256 tokenId
+    ) external onlyNameOwner withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0) {
         address owner = ownerOf(tokenId);
         _burn(owner, tokenId, 1);
         datastore.setSubregistry(tokenId, address(0), 0);
     }
 
     function locked(
-        string memory _label
+        uint256 tokenId
     ) external view returns (bool) {
-        uint256 tokenId = uint256(keccak256(bytes(_label)));
         (, uint96 flags) = datastore.getSubregistry(tokenId);
         return flags & SUBREGISTRY_FLAG_LOCKED != 0;
     }
 
-    function lock(string calldata _label) external onlyTokenOwner(_label) {
-        uint256 tokenId = uint256(keccak256(bytes(_label)));
+    function lock(uint256 tokenId) external onlyTokenOwner(tokenId) {
         (address subregistry, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, subregistry, flags & SUBREGISTRY_FLAG_LOCKED);
     }
 
     function setSubregistry(
-        string calldata _label,
+        uint256 tokenId,
         IRegistry registry
-    ) external onlyTokenOwner(_label) withSubregistryFlags(_label, SUBREGISTRY_FLAG_LOCKED, 0) {
-        uint256 tokenId = uint256(keccak256(bytes(_label)));
+    ) external onlyTokenOwner(tokenId) withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0) {
         (, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, address(registry), flags);
     }
