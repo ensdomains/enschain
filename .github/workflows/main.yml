@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Hardhat Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Bun 1.1.16
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.1.16
+
+      - run: bun install --frozen-lockfile
+
+      - run: cd ./contracts
+
+      - name: Run tests
+        run: bun run test:hardhat
