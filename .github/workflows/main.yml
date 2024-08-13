@@ -7,10 +7,13 @@ on:
 
 jobs:
   test:
-    name: Hardhat Tests
+    name: Contract tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
 
       - name: Use Bun 1.1.16
         uses: oven-sh/setup-bun@v1
