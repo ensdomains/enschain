@@ -19,7 +19,5 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - run: cd ./contracts
-
       - name: Run tests
-        run: bun run test:hardhat
+        run: bun --filter contracts test:hardhat
