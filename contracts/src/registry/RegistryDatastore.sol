@@ -19,7 +19,7 @@ contract RegistryDatastore is IRegistryDatastore {
     }
 
     function getResolver(address registry, uint256 labelHash) public view returns(address resolver, uint96 flags) {
-        uint256 data = subregistries[registry][labelHash & LABEL_HASH_MASK];
+        uint256 data = resolvers[registry][labelHash & LABEL_HASH_MASK];
         resolver = address(uint160(data));
         flags = uint96(data >> 160);
     }

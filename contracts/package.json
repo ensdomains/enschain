@@ -4,7 +4,7 @@
   "scripts": {
     "compile:hardhat": "NODE_OPTIONS='--experimental-loader ts-node/esm/transpile-only' hardhat compile",
     "test:hardhat": "NODE_OPTIONS='--experimental-loader ts-node/esm/transpile-only' hardhat test",
-    "test:forge": "echo \"Skipping forge test for now since there are no tests...\"",
+    "test:forge": "forge test",
     "test": "bun run test:forge && bun run test:hardhat"
   },
   "devDependencies": {
