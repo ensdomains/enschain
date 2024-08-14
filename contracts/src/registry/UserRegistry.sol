@@ -17,11 +17,7 @@ contract UserRegistry is BaseRegistry {
     IRegistry public parent;
     string public label;
 
-    constructor(
-        IRegistry _parent,
-        string memory _label,
-        IRegistryDatastore _datastore
-    ) BaseRegistry(_datastore) {
+    constructor(IRegistry _parent, string memory _label, IRegistryDatastore _datastore) BaseRegistry(_datastore) {
         parent = _parent;
         label = _label;
     }
@@ -34,32 +30,23 @@ contract UserRegistry is BaseRegistry {
         _;
     }
 
-    function uri(uint256 /*id*/) public override pure returns (string memory) {
+    function uri(uint256 /*id*/ ) public pure override returns (string memory) {
         return "";
     }
 
-    function mint(
-        string calldata _label,
-        address owner,
-        IRegistry registry,
-        uint96 flags
-    ) external onlyNameOwner {
+    function mint(string calldata _label, address owner, IRegistry registry, uint96 flags) external onlyNameOwner {
         uint256 tokenId = uint256(keccak256(bytes(_label)));
         _mint(tokenId, owner, registry, flags);
         emit NewSubname(label);
     }
 
-    function burn(
-        uint256 tokenId
-    ) external onlyNameOwner withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0) {
+    function burn(uint256 tokenId) external onlyNameOwner withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0) {
         address owner = ownerOf(tokenId);
         _burn(owner, tokenId, 1);
         datastore.setSubregistry(tokenId, address(0), 0);
     }
 
-    function locked(
-        uint256 tokenId
-    ) external view returns (bool) {
+    function locked(uint256 tokenId) external view returns (bool) {
         (, uint96 flags) = datastore.getSubregistry(tokenId);
         return flags & SUBREGISTRY_FLAG_LOCKED != 0;
     }
@@ -69,19 +56,16 @@ contract UserRegistry is BaseRegistry {
         datastore.setSubregistry(tokenId, subregistry, flags & SUBREGISTRY_FLAG_LOCKED);
     }
 
-    function setSubregistry(
-        uint256 tokenId,
-        IRegistry registry
-    ) external onlyTokenOwner(tokenId) withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0) {
+    function setSubregistry(uint256 tokenId, IRegistry registry)
+        external
+        onlyTokenOwner(tokenId)
+        withSubregistryFlags(tokenId, SUBREGISTRY_FLAG_LOCKED, 0)
+    {
         (, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, address(registry), flags);
     }
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override returns (bool) {
-        return
-            interfaceId == type(IRegistry).interfaceId ||
-            super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return interfaceId == type(IRegistry).interfaceId || super.supportsInterface(interfaceId);
     }
 }

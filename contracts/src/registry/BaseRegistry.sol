@@ -51,12 +51,15 @@ abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
     /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155Singleton, IERC165) returns (bool) {
-        return
-            interfaceId == type(IERC1155).interfaceId ||
-            interfaceId == type(IERC1155MetadataURI).interfaceId ||
-            interfaceId == type(IRegistry).interfaceId ||
-            super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(ERC1155Singleton, IERC165)
+        returns (bool)
+    {
+        return interfaceId == type(IERC1155).interfaceId || interfaceId == type(IERC1155MetadataURI).interfaceId
+            || interfaceId == type(IRegistry).interfaceId || super.supportsInterface(interfaceId);
     }
 
     function _mint(uint256 tokenId, address owner, IRegistry registry, uint96 flags) internal {
@@ -64,16 +67,18 @@ abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
         datastore.setSubregistry(tokenId, address(registry), flags);
     }
 
-    /***********************
+    /**
+     *
      * IRegistry functions *
-     ***********************/
-    
+     *
+     */
+
     /**
      * @dev Fetches the registry for a subdomain of the current registry.
      * @param label The label to resolve.
      * @return The address of the registry for this subdomain, or `address(0)` if none exists.
      */
-    function getSubregistry(string calldata label) external virtual view returns (IRegistry) {
+    function getSubregistry(string calldata label) external view virtual returns (IRegistry) {
         (address subregistry,) = datastore.getSubregistry(uint256(keccak256(bytes(label))));
         return IRegistry(subregistry);
     }
@@ -83,7 +88,7 @@ abstract contract BaseRegistry is IRegistry, ERC1155Singleton {
      * @param label The label to fetch a resolver for.
      * @return resolver The address of a resolver responsible for this name, or `address(0)` if none exists.
      */
-    function getResolver(string calldata label) external virtual view returns (address resolver) {
+    function getResolver(string calldata label) external view virtual returns (address resolver) {
         (resolver,) = datastore.getResolver(uint256(keccak256(bytes(label))));
     }
 }

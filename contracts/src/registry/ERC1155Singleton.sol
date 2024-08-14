@@ -19,12 +19,8 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
     using Arrays for uint256[];
     using Arrays for address[];
 
-    event Approval(
-        address indexed owner,
-        address indexed approved,
-        uint256 indexed tokenId
-    );
-    
+    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
+
     mapping(uint256 id => address) private _owners;
 
     mapping(address account => mapping(address operator => bool)) private _operatorApprovals;
@@ -37,18 +33,16 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
      * @dev See {IERC165-supportsInterface}.
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
-        return
-            interfaceId == type(IERC1155).interfaceId ||
-            interfaceId == type(IERC1155Singleton).interfaceId ||
-            interfaceId == type(IERC1155MetadataURI).interfaceId ||
-            super.supportsInterface(interfaceId);
+        return interfaceId == type(IERC1155).interfaceId || interfaceId == type(IERC1155Singleton).interfaceId
+            || interfaceId == type(IERC1155MetadataURI).interfaceId || super.supportsInterface(interfaceId);
     }
 
-    /**************************************************************************
+    /**
+     *
      * ERC1155 methods
-     *************************************************************************/
-
-    function uri(uint256 /* id */) public view virtual returns (string memory);
+     *
+     */
+    function uri(uint256 /* id */ ) public view virtual returns (string memory);
 
     /**
      * @dev See {IERC1155-balanceOf}.
@@ -64,10 +58,12 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
      *
      * - `accounts` and `ids` must have the same length.
      */
-    function balanceOfBatch(
-        address[] memory accounts,
-        uint256[] memory ids
-    ) public view virtual returns (uint256[] memory) {
+    function balanceOfBatch(address[] memory accounts, uint256[] memory ids)
+        public
+        view
+        virtual
+        returns (uint256[] memory)
+    {
         if (accounts.length != ids.length) {
             revert ERC1155InvalidArrayLength(ids.length, accounts.length);
         }
@@ -148,11 +144,11 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
             uint256 id = ids.unsafeMemoryAccess(i);
             uint256 value = values.unsafeMemoryAccess(i);
 
-            if(value > 0) {
+            if (value > 0) {
                 address owner = _owners[id];
-                if(owner != from) {
+                if (owner != from) {
                     revert ERC1155InsufficientBalance(from, 0, value, id);
-                } else if(value > 1) {
+                } else if (value > 1) {
                     revert ERC1155InsufficientBalance(from, 1, value, id);
                 }
                 _owners[id] = to;
@@ -320,7 +316,7 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
         }
         _updateWithAcceptanceCheck(from, address(0), ids, values, "");
     }
-    
+
     /**
      * @dev Approve `operator` to operate on all of `owner` tokens
      *
@@ -341,10 +337,11 @@ abstract contract ERC1155Singleton is Context, ERC165, IERC1155Singleton, IERC11
     /**
      * @dev Creates an array in memory with only one value for each of the elements provided.
      */
-    function _asSingletonArrays(
-        uint256 element1,
-        uint256 element2
-    ) private pure returns (uint256[] memory array1, uint256[] memory array2) {
+    function _asSingletonArrays(uint256 element1, uint256 element2)
+        private
+        pure
+        returns (uint256[] memory array1, uint256[] memory array2)
+    {
         /// @solidity memory-safe-assembly
         assembly {
             // Load the free memory pointer

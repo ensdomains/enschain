@@ -18,7 +18,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function uri(uint256 /*id*/) public override pure returns (string memory) {
+    function uri(uint256 /*id*/ ) public pure override returns (string memory) {
         return "";
     }
 
@@ -31,7 +31,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         emit NewSubname(label);
     }
 
-    function burn(uint256 tokenId) 
+    function burn(uint256 tokenId)
         external
         onlyRole(SUBDOMAIN_ISSUER_ROLE)
         withSubregistryFlags(tokenId, SUBREGISTRY_FLAGS_MASK, 0)
@@ -41,10 +41,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         datastore.setSubregistry(tokenId, address(0), 0);
     }
 
-    function lock(uint256 tokenId)
-        external
-        onlyRole(SUBDOMAIN_ISSUER_ROLE)
-    {
+    function lock(uint256 tokenId) external onlyRole(SUBDOMAIN_ISSUER_ROLE) {
         (address subregistry, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, subregistry, flags & SUBREGISTRY_FLAG_LOCKED);
     }
@@ -58,12 +55,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         datastore.setSubregistry(tokenId, address(registry), flags);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(BaseRegistry, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(BaseRegistry, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

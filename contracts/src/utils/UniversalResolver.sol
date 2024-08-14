@@ -18,9 +18,7 @@ contract UniversalResolver {
      * @return reg A registry responsible for the name.
      * @return exact A boolean that is true if the registry is an exact match for `name`.
      */
-    function getRegistry(
-        bytes calldata name
-    ) public view returns (IRegistry reg, bool exact) {
+    function getRegistry(bytes calldata name) public view returns (IRegistry reg, bool exact) {
         uint8 len = uint8(name[0]);
         if (len == 0) {
             return (root, true);
@@ -43,7 +41,7 @@ contract UniversalResolver {
      * @return The resolver responsible for this name, or `address(0)` if none.
      */
     function getResolver(bytes calldata name) public view returns (address) {
-        (IRegistry reg, ) = getRegistry(name);
+        (IRegistry reg,) = getRegistry(name);
         uint8 len = uint8(name[0]);
         string memory label = string(name[1:len + 1]);
         return reg.getResolver(label);
