@@ -7,7 +7,7 @@ import "forge-std/console.sol";
 import "src/registry/RegistryDatastore.sol";
 
 contract TestETHRegistry is Test {
-    uint256 LABEL_HASH_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0000;
+    uint256 LABEL_HASH_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000000;
     uint256 labelHash = uint256(keccak256("test"));
     RegistryDatastore datastore;
 
