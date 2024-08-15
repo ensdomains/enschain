@@ -18,7 +18,7 @@ contract RootRegistry is BaseRegistry, AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function uri(uint256 /*id*/) public override pure returns (string memory) {
+    function uri(uint256 /*id*/ ) public pure override returns (string memory) {
         return "";
     }
 
@@ -26,45 +26,36 @@ contract RootRegistry is BaseRegistry, AccessControl {
         external
         onlyRole(SUBDOMAIN_ISSUER_ROLE)
     {
-        _mint(label, owner, registry, locked ? SUBREGISTRY_FLAG_LOCKED : 0);
+        uint256 tokenId = uint256(keccak256(bytes(label)));
+        _mint(tokenId, owner, registry, locked ? SUBREGISTRY_FLAG_LOCKED : 0);
+        emit NewSubname(label);
     }
 
-    function burn(string calldata label) 
+    function burn(uint256 tokenId)
         external
         onlyRole(SUBDOMAIN_ISSUER_ROLE)
-        withSubregistryFlags(label, SUBREGISTRY_FLAGS_MASK, 0)
+        withSubregistryFlags(tokenId, SUBREGISTRY_FLAGS_MASK, 0)
     {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
         address owner = ownerOf(tokenId);
         _burn(owner, tokenId, 1);
         datastore.setSubregistry(tokenId, address(0), 0);
     }
 
-    function lock(string calldata label)
-        external
-        onlyRole(SUBDOMAIN_ISSUER_ROLE)
-    {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+    function lock(uint256 tokenId) external onlyRole(SUBDOMAIN_ISSUER_ROLE) {
         (address subregistry, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, subregistry, flags & SUBREGISTRY_FLAG_LOCKED);
     }
 
-    function setSubregistry(string calldata label, IRegistry registry)
+    function setSubregistry(uint256 tokenId, IRegistry registry)
         external
-        onlyTokenOwner(label)
-        withSubregistryFlags(label, SUBREGISTRY_FLAGS_MASK, 0)
+        onlyTokenOwner(tokenId)
+        withSubregistryFlags(tokenId, SUBREGISTRY_FLAGS_MASK, 0)
     {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
         (, uint96 flags) = datastore.getSubregistry(tokenId);
         datastore.setSubregistry(tokenId, address(registry), flags);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(BaseRegistry, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(BaseRegistry, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

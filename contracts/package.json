@@ -1,17 +1,22 @@
 {
   "name": "contracts",
-  "module": "index.ts",
+  "type": "module",
   "scripts": {
-    "test:hardhat": "hardhat test",
-    "test:forge": "echo \"Skipping forge test for now since there are no tests...\"",
+    "compile:hardhat": "NODE_OPTIONS='--experimental-loader ts-node/esm/transpile-only' hardhat compile",
+    "test:hardhat": "NODE_OPTIONS='--experimental-loader ts-node/esm/transpile-only' hardhat test",
+    "test:forge": "forge test",
     "test": "bun run test:forge && bun run test:hardhat"
   },
   "devDependencies": {
+    "@ensdomains/hardhat-chai-matchers-viem": "^0.0.7",
     "@nomicfoundation/hardhat-foundry": "^1.1.1",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
     "@nomicfoundation/hardhat-viem": "^2.0.0",
     "@types/bun": "latest",
+    "@vitest/expect": "^1.6.0",
+    "chai": "^5.1.1",
     "hardhat": "^2.22.2",
+    "ts-node": "^10.9.2",
     "viem": "^2.9.12"
   },
   "peerDependencies": {
