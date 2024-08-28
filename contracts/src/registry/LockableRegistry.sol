@@ -18,13 +18,13 @@ abstract contract LockableRegistry is BaseRegistry {
     constructor(IRegistryDatastore _datastore) BaseRegistry(_datastore) {
     }
 
-    function _lock(uint256 tokenId, uint96 flags)
+    function _lock(uint256 tokenId, uint96 _flags)
         internal
         withSubregistryFlags(tokenId, FLAG_FLAGS_LOCKED, 0)
         returns(uint96 newFlags)
     {
         (address subregistry, uint96 oldFlags) = datastore.getSubregistry(tokenId);
-        newFlags = oldFlags | (flags & FLAGS_MASK);
+        newFlags = oldFlags | (_flags & FLAGS_MASK);
         if (newFlags != oldFlags) {
             datastore.setSubregistry(tokenId, subregistry, newFlags);
         }
@@ -35,8 +35,8 @@ abstract contract LockableRegistry is BaseRegistry {
         onlyTokenOwner(tokenId)
         withSubregistryFlags(tokenId, FLAG_SUBREGISTRY_LOCKED, 0)
     {
-        (, uint96 flags) = datastore.getSubregistry(tokenId);
-        datastore.setSubregistry(tokenId, address(registry), flags);
+        (, uint96 _flags) = datastore.getSubregistry(tokenId);
+        datastore.setSubregistry(tokenId, address(registry), _flags);
     }
 
     function setResolver(uint256 tokenId, address resolver)
@@ -44,7 +44,12 @@ abstract contract LockableRegistry is BaseRegistry {
         onlyTokenOwner(tokenId)
         withSubregistryFlags(tokenId, FLAG_RESOLVER_LOCKED, 0)
     {
-        (, uint96 flags) = datastore.getResolver(tokenId);
-        datastore.setResolver(tokenId, resolver, flags);
+        (, uint96 _flags) = datastore.getResolver(tokenId);
+        datastore.setResolver(tokenId, resolver, _flags);
+    }
+
+    function flags(uint256 tokenId) external view returns(uint96) {
+        (, uint96 _flags) = datastore.getSubregistry(tokenId);
+        return _flags;
     }
 }

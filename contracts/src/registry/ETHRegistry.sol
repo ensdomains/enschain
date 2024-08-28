@@ -98,18 +98,20 @@ contract ETHRegistry is LockableRegistry, AccessControl {
     function getSubregistry(string calldata label) external view virtual override returns (IRegistry) {
         (address subregistry, uint96 flags) = datastore.getSubregistry(uint256(keccak256(bytes(label))));
         uint64 expires = uint64(flags);
-        if (expires >= block.timestamp) {
+        if (expires <= block.timestamp) {
             return IRegistry(address(0));
         }
         return IRegistry(subregistry);
     }
 
     function getResolver(string calldata label) external view virtual override returns (address) {
-        (address resolver, uint96 flags) = datastore.getResolver(uint256(keccak256(bytes(label))));
+        (address subregistry, uint96 flags) = datastore.getSubregistry(uint256(keccak256(bytes(label))));
         uint64 expires = uint64(flags);
-        if (expires >= block.timestamp) {
+        if (expires <= block.timestamp) {
             return address(0);
         }
+
+        (address resolver, ) = datastore.getResolver(uint256(keccak256(bytes(label))));
         return resolver;
     }
 }

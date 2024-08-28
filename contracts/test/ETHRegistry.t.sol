@@ -70,4 +70,34 @@ contract TestETHRegistry is Test, ERC1155Holder {
         registry.register("test2", address(this), registry, flags, uint64(block.timestamp) + 86400);
         registry.register("test2", address(this), registry, 0, uint64(block.timestamp) + 86400);
     }
+
+    function test_set_subregistry() public {
+        uint256 tokenId = registry.register("test2", address(this), registry, 0, uint64(block.timestamp) + 86400);
+        registry.setSubregistry(tokenId, IRegistry(address(this)));
+        vm.assertEq(address(registry.getSubregistry("test2")), address(this));
+    }
+
+    function testFail_cannot_set_locked_subregistry() public {
+        uint96 flags = registry.FLAG_SUBREGISTRY_LOCKED();
+        uint256 tokenId = registry.register("test2", address(this), registry, flags, uint64(block.timestamp) + 86400);
+        registry.setSubregistry(tokenId, IRegistry(address(this)));
+    }
+
+    function test_set_resolver() public {
+        uint256 tokenId = registry.register("test2", address(this), registry, 0, uint64(block.timestamp) + 86400);
+        registry.setResolver(tokenId, address(this));
+        vm.assertEq(address(registry.getResolver("test2")), address(this));
+    }
+
+    function testFail_cannot_set_locked_resolver() public {
+        uint96 flags = registry.FLAG_RESOLVER_LOCKED();
+        uint256 tokenId = registry.register("test2", address(this), registry, flags, uint64(block.timestamp) + 86400);
+        registry.setResolver(tokenId, address(this));
+    }
+
+    function testFail_cannot_set_locked_flags() public {
+        uint96 flags = registry.FLAG_FLAGS_LOCKED();
+        uint256 tokenId = registry.register("test2", address(this), registry, flags, uint64(block.timestamp) + 86400);
+        registry.lock(tokenId, registry.FLAG_RESOLVER_LOCKED());
+    }
 }

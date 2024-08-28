@@ -28,11 +28,12 @@ contract RootRegistry is LockableRegistry, AccessControl {
      * @param registry The address of the registry to use.
      * @param flags Flags to set.
      */
-    function mint(string calldata label, address owner, IRegistry registry, uint32 flags)
+    function mint(string calldata label, address owner, IRegistry registry, uint96 flags)
         external
         onlyRole(TLD_ISSUER_ROLE)
+        returns(uint256 tokenId)
     {
-        uint256 tokenId = uint256(keccak256(bytes(label)));
+        tokenId = uint256(keccak256(bytes(label)));
         _mint(owner, tokenId, 1, "");
         datastore.setSubregistry(tokenId, address(registry), flags);
         emit NewSubname(label);
@@ -51,6 +52,14 @@ contract RootRegistry is LockableRegistry, AccessControl {
         address owner = ownerOf(tokenId);
         _burn(owner, tokenId, 1);
         datastore.setSubregistry(tokenId, address(0), 0);
+    }
+
+    function lock(uint256 tokenId, uint96 flags)
+        external
+        onlyTokenOwner(tokenId)
+        returns(uint96)
+    {
+        return _lock(tokenId, flags);
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(BaseRegistry, AccessControl) returns (bool) {
