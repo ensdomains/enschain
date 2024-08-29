@@ -19,7 +19,7 @@ export async function deployEnsFixture() {
     rootRegistry.address,
   ]);
   await rootRegistry.write.grantRole([
-    keccak256(stringToHex("SUBDOMAIN_ISSUER_ROLE")),
+    keccak256(stringToHex("TLD_ISSUER_ROLE")),
     accounts[0].address,
   ]);
   await ethRegistry.write.grantRole([
@@ -30,7 +30,7 @@ export async function deployEnsFixture() {
     "eth",
     accounts[0].address,
     ethRegistry.address,
-    true,
+    1n,
   ]);
 
   return {
@@ -84,6 +84,6 @@ export const registerName = async ({
 }) => {
   const owner =
     owner_ ?? (await hre.viem.getWalletClients())[0].account.address;
-  const flags = (subregistryLocked ? 1 : 0) | (resolverLocked ? 2 : 0);
+  const flags = (subregistryLocked ? 1n : 0n) | (resolverLocked ? 2n : 0n);
   return ethRegistry.write.register([label, owner, subregistry, flags, expiry]);
 };
