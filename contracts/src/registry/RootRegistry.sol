@@ -13,12 +13,14 @@ import {BaseRegistry} from "./BaseRegistry.sol";
 contract RootRegistry is LockableRegistry, AccessControl {
     bytes32 public constant TLD_ISSUER_ROLE = keccak256("TLD_ISSUER_ROLE");
 
+    mapping(uint256 tokenId=>string) uris;
+
     constructor(IRegistryDatastore _datastore) LockableRegistry(_datastore) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function uri(uint256 /*id*/ ) public pure override returns (string memory) {
-        return "";
+    function uri(uint256 tokenId ) public view override returns (string memory) {
+        return uris[tokenId];
     }
 
     /**
@@ -27,8 +29,9 @@ contract RootRegistry is LockableRegistry, AccessControl {
      * @param owner The new owner of the TLD token.
      * @param registry The address of the registry to use.
      * @param flags Flags to set.
+     * @param _uri URI for TLD metadata.
      */
-    function mint(string calldata label, address owner, IRegistry registry, uint96 flags)
+    function mint(string calldata label, address owner, IRegistry registry, uint96 flags, string memory _uri)
         external
         onlyRole(TLD_ISSUER_ROLE)
         returns(uint256 tokenId)
@@ -36,6 +39,8 @@ contract RootRegistry is LockableRegistry, AccessControl {
         tokenId = uint256(keccak256(bytes(label)));
         _mint(owner, tokenId, 1, "");
         datastore.setSubregistry(tokenId, address(registry), flags);
+        uris[tokenId] = _uri;
+        emit URI(_uri, tokenId);
         emit NewSubname(label);
     }
 
@@ -60,6 +65,14 @@ contract RootRegistry is LockableRegistry, AccessControl {
         returns(uint96)
     {
         return _lock(tokenId, flags);
+    }
+
+    function setUri(uint256 tokenId, string memory _uri) 
+        external
+        onlyTokenOwner(tokenId)
+    {
+        emit URI(_uri, tokenId);
+        uris[tokenId] = _uri;
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(BaseRegistry, AccessControl) returns (bool) {
