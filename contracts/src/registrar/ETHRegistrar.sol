@@ -35,7 +35,9 @@ contract ETHRegistrar is Ownable {
     function register(string calldata label, uint64 duration) public {
         // get labelhash
         bytes32 labelhash = keccak256(abi.encodePacked(label));
-        // check if the name has been registered
+        // check if msg.value given is enough
+
+        // check if commitment exists
 
         (uint64 expiry, uint96 flags) = registry.nameData(uint256(labelhash));
         registry.register(
@@ -45,6 +47,8 @@ contract ETHRegistrar is Ownable {
             0,
             uint64(block.timestamp) + duration
         );
+
+        // send back excess
     }
 
     function renew(bytes32 node) public {}
