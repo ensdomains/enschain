@@ -28,16 +28,23 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         vm.warp(1725513923);
         datastore = new RegistryDatastore();
         registry = new ETHRegistry(datastore);
-        registrar = new ETHRegistrar(28 days);
+        registrar = new ETHRegistrar(registry, 28 days);
         // Grant access to the registry to this contract
         registry.grantRole(registry.REGISTRAR_ROLE(), address(this));
         // Grant access to the registry to the registrar
         registry.grantRole(registry.REGISTRAR_ROLE(), address(registrar));
     }
 
-    function test_commit() public {
+    function testCommit() public {
         bytes32 expectedCommitment = keccak256("test");
         registrar.commit(expectedCommitment);
         assertEq(registrar.commitments(expectedCommitment), block.timestamp);
+    }
+
+    function testRegister() public {
+        bytes32 expectedCommitment = keccak256("test");
+        registrar.commit(expectedCommitment);
+        registrar.register("test", 365 days);
+        assertEq(true, true);
     }
 }
