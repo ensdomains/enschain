@@ -104,4 +104,14 @@ contract TestRootRegistry is Test, ERC1155Holder {
         actualUri = registry.uri(tokenId);
         vm.assertEq(actualUri, uri);
     }
+
+    function testFail_cannot_set_unauthorized_uri() public {
+        string memory uri = "https://example.com/";
+        uint256 tokenId = registry.mint("test2", address(registry), registry, 0, uri);
+        string memory actualUri = registry.uri(tokenId);
+        vm.assertEq(actualUri, uri);
+        
+        uri = "https://ens.domains/";
+        registry.setUri(tokenId, uri);
+    }
 }
