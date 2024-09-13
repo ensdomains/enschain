@@ -6,9 +6,6 @@ import "../registry/ETHRegistry.sol";
 import "../registry/IRegistry.sol";
 import "forge-std/console.sol";
 
-error UnexpiredCommitmentExists(bytes32 commitment);
-error ResolverRequiredWhenDataSupplied();
-
 contract ETHRegistrar is Ownable {
     uint256 public immutable MAX_COMMIT_AGE;
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
@@ -16,6 +13,10 @@ contract ETHRegistrar is Ownable {
     bytes32 public constant ETH_LABELHASH = keccak256(abi.encodePacked("eth"));
     ETHRegistry public registry;
     //IRegistry registry;
+
+    error UnexpiredCommitmentExists(bytes32 commitment);
+    error ResolverRequiredWhenDataSupplied();
+    error CommitmentDoesNotExist();
 
     constructor(
         ETHRegistry _registry,
@@ -63,14 +64,12 @@ contract ETHRegistrar is Ownable {
         // check if msg.value given is enough
 
         // check if commitment exists
-        if (
-            commitments[
-                makeCommitment(label, owner, duration, resolver, data, secret)
-            ] +
-                MAX_COMMIT_AGE <
-            block.timestamp
-        ) {
-            revert("Commitment does not exist or has expired");
+        uint256 commitmentTime = commitments[
+            makeCommitment(label, owner, duration, resolver, data, secret)
+        ];
+
+        if (commitmentTime + MAX_COMMIT_AGE < block.timestamp) {
+            revert CommitmentDoesNotExist();
         }
 
         (uint64 expiry, uint96 flags) = registry.nameData(uint256(labelhash));

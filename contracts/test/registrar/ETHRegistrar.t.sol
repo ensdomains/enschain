@@ -35,13 +35,13 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         registry.grantRole(registry.REGISTRAR_ROLE(), address(registrar));
     }
 
-    function testCommit() public {
+    function test_commit() public {
         bytes32 expectedCommitment = keccak256("test");
         registrar.commit(expectedCommitment);
         assertEq(registrar.commitments(expectedCommitment), block.timestamp);
     }
 
-    function testRegister() public {
+    function test_register() public {
         bytes32 secret = keccak256("secret");
         bytes32 commitment = registrar.makeCommitment(
             "test",
@@ -62,5 +62,18 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         );
         console.log(registry.ownerOf(uint256(keccak256("test"))));
         assertEq(registry.ownerOf(uint256(keccak256("test"))), address(this));
+    }
+
+    function test_register_uncommitted() public {
+        vm.expectRevert(ETHRegistrar.CommitmentDoesNotExist.selector);
+        bytes32 secret = keccak256("secret");
+        registrar.register(
+            "test",
+            address(this),
+            365 days,
+            address(0),
+            new bytes[](0),
+            secret
+        );
     }
 }
