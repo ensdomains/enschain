@@ -31,6 +31,7 @@ export async function deployEnsFixture() {
     accounts[0].address,
     ethRegistry.address,
     1n,
+    "https://example.com/"
   ]);
 
   return {
