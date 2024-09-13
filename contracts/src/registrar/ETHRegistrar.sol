@@ -7,6 +7,7 @@ import "../registry/IRegistry.sol";
 import "forge-std/console.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
+error ResolverRequiredWhenDataSupplied();
 
 contract ETHRegistrar is Ownable {
     uint256 public immutable MAX_COMMIT_AGE;
@@ -25,6 +26,23 @@ contract ETHRegistrar is Ownable {
         MAX_COMMIT_AGE = maxCommitAge;
     }
 
+    function makeCommitment(
+        string calldata label,
+        address owner,
+        uint64 duration,
+        address resolver,
+        bytes[] calldata data,
+        bytes32 secret
+    ) public pure returns (bytes32) {
+        if (data.length > 0 && resolver == address(0)) {
+            revert ResolverRequiredWhenDataSupplied();
+        }
+        return
+            keccak256(
+                abi.encode(label, owner, duration, resolver, data, secret)
+            );
+    }
+
     function commit(bytes32 commitment) public {
         if (commitments[commitment] + MAX_COMMIT_AGE >= block.timestamp) {
             revert UnexpiredCommitmentExists(commitment);
@@ -32,12 +50,28 @@ contract ETHRegistrar is Ownable {
         commitments[commitment] = block.timestamp;
     }
 
-    function register(string calldata label, uint64 duration) public {
+    function register(
+        string calldata label,
+        address owner,
+        uint64 duration,
+        address resolver,
+        bytes[] calldata data,
+        bytes32 secret
+    ) public {
         // get labelhash
         bytes32 labelhash = keccak256(abi.encodePacked(label));
         // check if msg.value given is enough
 
         // check if commitment exists
+        if (
+            commitments[
+                makeCommitment(label, owner, duration, resolver, data, secret)
+            ] +
+                MAX_COMMIT_AGE <
+            block.timestamp
+        ) {
+            revert("Commitment does not exist or has expired");
+        }
 
         (uint64 expiry, uint96 flags) = registry.nameData(uint256(labelhash));
         registry.register(

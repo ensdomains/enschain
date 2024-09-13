@@ -42,9 +42,25 @@ contract TestETHRegistrar is Test, ERC1155Holder {
     }
 
     function testRegister() public {
-        bytes32 expectedCommitment = keccak256("test");
-        registrar.commit(expectedCommitment);
-        registrar.register("test", 365 days);
-        assertEq(true, true);
+        bytes32 secret = keccak256("secret");
+        bytes32 commitment = registrar.makeCommitment(
+            "test",
+            address(this),
+            365 days,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        registrar.commit(commitment);
+        registrar.register(
+            "test",
+            address(this),
+            365 days,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        console.log(registry.ownerOf(uint256(keccak256("test"))));
+        assertEq(registry.ownerOf(uint256(keccak256("test"))), address(this));
     }
 }
