@@ -8,7 +8,11 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 
 import "src/registry/ETHRegistry.sol";
 import "src/registry/RegistryDatastore.sol";
-import "src/registrar/ETHRegistrar.sol";
+import {ETHRegistrar, CommitmentDoesNotExist} from "src/registrar/ETHRegistrar.sol";
+import {DummyOracle} from "src/registrar/DummyOracle.sol";
+import {ExponentialPremiumPriceOracle} from "src/registrar/ExponentialPremiumPriceOracle.sol";
+import {IPriceOracle} from "src/registrar/IPriceOracle.sol";
+import {AggregatorInterface} from "src/registrar/StablePriceOracle.sol";
 
 contract TestETHRegistrar is Test, ERC1155Holder {
     event TransferSingle(
@@ -22,13 +26,29 @@ contract TestETHRegistrar is Test, ERC1155Holder {
     RegistryDatastore datastore;
     ETHRegistry registry;
     ETHRegistrar registrar;
+    DummyOracle usdPriceOracle;
+    IPriceOracle priceOracle;
 
     function setUp() public {
         // Warp time to roughly current time
         vm.warp(1725513923);
+
         datastore = new RegistryDatastore();
         registry = new ETHRegistry(datastore);
-        registrar = new ETHRegistrar(registry, 28 days);
+        usdPriceOracle = new DummyOracle(1);
+        uint256[] memory prices = new uint256[](5);
+        prices[0] = 1;
+        prices[1] = 2;
+        prices[2] = 3;
+        prices[3] = 4;
+        prices[4] = 5;
+        priceOracle = new ExponentialPremiumPriceOracle(
+            AggregatorInterface(address(usdPriceOracle)),
+            prices,
+            1000000000000000000,
+            365
+        );
+        registrar = new ETHRegistrar(registry, priceOracle, 28 days);
         // Grant access to the registry to this contract
         registry.grantRole(registry.REGISTRAR_ROLE(), address(this));
         // Grant access to the registry to the registrar
@@ -43,34 +63,42 @@ contract TestETHRegistrar is Test, ERC1155Holder {
 
     function test_register() public {
         bytes32 secret = keccak256("secret");
+        string memory label = "test";
+        uint64 duration = 365 days;
         bytes32 commitment = registrar.makeCommitment(
-            "test",
+            label,
             address(this),
-            365 days,
+            duration,
             address(0),
             new bytes[](0),
             secret
         );
         registrar.commit(commitment);
-        registrar.register(
-            "test",
+        IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
+        registrar.register{value: price.base + price.premium}(
+            label,
             address(this),
-            365 days,
+            duration,
             address(0),
             new bytes[](0),
             secret
         );
-        console.log(registry.ownerOf(uint256(keccak256("test"))));
-        assertEq(registry.ownerOf(uint256(keccak256("test"))), address(this));
+        assertEq(
+            registry.ownerOf(uint256(keccak256(bytes(label)))),
+            address(this)
+        );
     }
 
     function test_register_uncommitted() public {
-        vm.expectRevert(ETHRegistrar.CommitmentDoesNotExist.selector);
         bytes32 secret = keccak256("secret");
-        registrar.register(
-            "test",
+        string memory label = "test";
+        uint64 duration = 365 days;
+        IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
+        vm.expectRevert(CommitmentDoesNotExist.selector);
+        registrar.register{value: price.base + price.premium}(
+            label,
             address(this),
-            365 days,
+            duration,
             address(0),
             new bytes[](0),
             secret

@@ -4,7 +4,13 @@ pragma solidity >=0.8.13;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import "../registry/ETHRegistry.sol";
 import "../registry/IRegistry.sol";
+import {IPriceOracle} from "./IPriceOracle.sol";
 import "forge-std/console.sol";
+
+error UnexpiredCommitmentExists(bytes32 commitment);
+error ResolverRequiredWhenDataSupplied();
+error CommitmentDoesNotExist();
+error InsufficientValue();
 
 contract ETHRegistrar is Ownable {
     uint256 public immutable MAX_COMMIT_AGE;
@@ -12,17 +18,16 @@ contract ETHRegistrar is Ownable {
     mapping(bytes32 => uint256) public commitments;
     bytes32 public constant ETH_LABELHASH = keccak256(abi.encodePacked("eth"));
     ETHRegistry public registry;
+    IPriceOracle public prices;
     //IRegistry registry;
-
-    error UnexpiredCommitmentExists(bytes32 commitment);
-    error ResolverRequiredWhenDataSupplied();
-    error CommitmentDoesNotExist();
 
     constructor(
         ETHRegistry _registry,
+        IPriceOracle _prices,
         uint256 maxCommitAge
     ) Ownable(msg.sender) {
         // constructor
+        prices = _prices;
         registry = _registry;
         MAX_COMMIT_AGE = maxCommitAge;
     }
@@ -51,6 +56,15 @@ contract ETHRegistrar is Ownable {
         commitments[commitment] = block.timestamp;
     }
 
+    function rentPrice(
+        string memory name,
+        uint256 duration
+    ) public view returns (IPriceOracle.Price memory price) {
+        bytes32 label = keccak256(bytes(name));
+        (uint64 expiry, ) = registry.nameData(uint256(label));
+        price = prices.price(name, expiry, duration);
+    }
+
     function register(
         string calldata label,
         address owner,
@@ -58,11 +72,7 @@ contract ETHRegistrar is Ownable {
         address resolver,
         bytes[] calldata data,
         bytes32 secret
-    ) public {
-        // get labelhash
-        bytes32 labelhash = keccak256(abi.encodePacked(label));
-        // check if msg.value given is enough
-
+    ) public payable {
         // check if commitment exists
         uint256 commitmentTime = commitments[
             makeCommitment(label, owner, duration, resolver, data, secret)
@@ -72,7 +82,15 @@ contract ETHRegistrar is Ownable {
             revert CommitmentDoesNotExist();
         }
 
-        (uint64 expiry, uint96 flags) = registry.nameData(uint256(labelhash));
+        IPriceOracle.Price memory price = rentPrice(label, duration);
+        if (msg.value < price.base + price.premium) {
+            revert InsufficientValue();
+        }
+        // check if msg.value given is enough
+
+        (uint64 expiry, uint96 flags) = registry.nameData(
+            uint256(keccak256(abi.encodePacked(label)))
+        );
         registry.register(
             label,
             msg.sender,
