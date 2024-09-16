@@ -9,10 +9,14 @@ import "forge-std/console.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
 error ResolverRequiredWhenDataSupplied();
-error CommitmentDoesNotExist();
 error InsufficientValue();
+error DurationTooShort(uint64 duration);
+error CommitmentTooNew(bytes32 commitment);
+error CommitmentTooOld(bytes32 commitment);
+error NameNotAvailable(string name);
 
 contract ETHRegistrar is Ownable {
+    uint256 public immutable MIN_COMMIT_AGE;
     uint256 public immutable MAX_COMMIT_AGE;
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
     mapping(bytes32 => uint256) public commitments;
@@ -24,12 +28,14 @@ contract ETHRegistrar is Ownable {
     constructor(
         ETHRegistry _registry,
         IPriceOracle _prices,
-        uint256 maxCommitAge
+        uint256 _minCommitAge,
+        uint256 _maxCommitAge
     ) Ownable(msg.sender) {
         // constructor
         prices = _prices;
         registry = _registry;
-        MAX_COMMIT_AGE = maxCommitAge;
+        MIN_COMMIT_AGE = _minCommitAge;
+        MAX_COMMIT_AGE = _maxCommitAge;
     }
 
     function makeCommitment(
@@ -56,6 +62,11 @@ contract ETHRegistrar is Ownable {
         commitments[commitment] = block.timestamp;
     }
 
+    function available(string memory label) public view returns (bool) {
+        (uint64 expiry, ) = registry.nameData(uint256(keccak256(bytes(label))));
+        return expiry < block.timestamp;
+    }
+
     function rentPrice(
         string memory name,
         uint256 duration
@@ -73,14 +84,11 @@ contract ETHRegistrar is Ownable {
         bytes[] calldata data,
         bytes32 secret
     ) public payable {
-        // check if commitment exists
-        uint256 commitmentTime = commitments[
+        _consumeCommitment(
+            label,
+            duration,
             makeCommitment(label, owner, duration, resolver, data, secret)
-        ];
-
-        if (commitmentTime + MAX_COMMIT_AGE < block.timestamp) {
-            revert CommitmentDoesNotExist();
-        }
+        );
 
         IPriceOracle.Price memory price = rentPrice(label, duration);
         if (msg.value < price.base + price.premium) {
@@ -91,6 +99,7 @@ contract ETHRegistrar is Ownable {
         (uint64 expiry, uint96 flags) = registry.nameData(
             uint256(keccak256(abi.encodePacked(label)))
         );
+
         registry.register(
             label,
             msg.sender,
@@ -106,5 +115,32 @@ contract ETHRegistrar is Ownable {
 
     function withdraw() public {
         payable(owner()).transfer(address(this).balance);
+    }
+
+    /* Internal functions */
+
+    function _consumeCommitment(
+        string memory label,
+        uint64 duration,
+        bytes32 commitment
+    ) internal {
+        // Require an old enough commitment.
+        if (commitments[commitment] + MIN_COMMIT_AGE > block.timestamp) {
+            revert CommitmentTooNew(commitment);
+        }
+
+        // If the commitment is too old, or the name is registered, stop
+        if (commitments[commitment] + MAX_COMMIT_AGE <= block.timestamp) {
+            revert CommitmentTooOld(commitment);
+        }
+        if (!available(label)) {
+            revert NameNotAvailable(label);
+        }
+
+        delete (commitments[commitment]);
+
+        if (duration < MIN_REGISTRATION_DURATION) {
+            revert DurationTooShort(duration);
+        }
     }
 }

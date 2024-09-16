@@ -8,7 +8,7 @@ import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155
 
 import "src/registry/ETHRegistry.sol";
 import "src/registry/RegistryDatastore.sol";
-import {ETHRegistrar, CommitmentDoesNotExist} from "src/registrar/ETHRegistrar.sol";
+import {ETHRegistrar, InsufficientValue, CommitmentTooNew, CommitmentTooOld} from "src/registrar/ETHRegistrar.sol";
 import {DummyOracle} from "src/registrar/DummyOracle.sol";
 import {ExponentialPremiumPriceOracle} from "src/registrar/ExponentialPremiumPriceOracle.sol";
 import {IPriceOracle} from "src/registrar/IPriceOracle.sol";
@@ -28,10 +28,12 @@ contract TestETHRegistrar is Test, ERC1155Holder {
     ETHRegistrar registrar;
     DummyOracle usdPriceOracle;
     IPriceOracle priceOracle;
+    uint256 currentTime = 1725513923;
+    uint256 minCommitAge = 1 minutes;
 
     function setUp() public {
         // Warp time to roughly current time
-        vm.warp(1725513923);
+        vm.warp(currentTime);
 
         datastore = new RegistryDatastore();
         registry = new ETHRegistry(datastore);
@@ -48,7 +50,7 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             1000000000000000000,
             365
         );
-        registrar = new ETHRegistrar(registry, priceOracle, 28 days);
+        registrar = new ETHRegistrar(registry, priceOracle, 1 minutes, 7 days);
         // Grant access to the registry to this contract
         registry.grantRole(registry.REGISTRAR_ROLE(), address(this));
         // Grant access to the registry to the registrar
@@ -74,6 +76,7 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             secret
         );
         registrar.commit(commitment);
+        vm.warp(currentTime + minCommitAge);
         IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
         registrar.register{value: price.base + price.premium}(
             label,
@@ -94,8 +97,43 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         string memory label = "test";
         uint64 duration = 365 days;
         IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
-        vm.expectRevert(CommitmentDoesNotExist.selector);
+        bytes32 commitment = registrar.makeCommitment(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(CommitmentTooOld.selector, commitment)
+        );
         registrar.register{value: price.base + price.premium}(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+    }
+
+    function test_register_valueProvidedNotEnough() public {
+        bytes32 secret = keccak256("secret");
+        string memory label = "test";
+        uint64 duration = 365 days;
+        bytes32 commitment = registrar.makeCommitment(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        registrar.commit(commitment);
+        vm.warp(currentTime + minCommitAge);
+        vm.expectRevert(InsufficientValue.selector);
+        registrar.register{value: 1}(
             label,
             address(this),
             duration,
