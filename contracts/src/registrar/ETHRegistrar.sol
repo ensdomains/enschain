@@ -90,15 +90,15 @@ contract ETHRegistrar is Ownable {
             makeCommitment(label, owner, duration, resolver, data, secret)
         );
 
+        // check if msg.value given is enough
         IPriceOracle.Price memory price = rentPrice(label, duration);
         if (msg.value < price.base + price.premium) {
             revert InsufficientValue();
         }
-        // check if msg.value given is enough
 
-        (uint64 expiry, uint96 flags) = registry.nameData(
-            uint256(keccak256(abi.encodePacked(label)))
-        );
+        if (data.length > 0) {
+            _setRecords(resolver, keccak256(bytes(name)), data);
+        }
 
         registry.register(
             label,
@@ -142,5 +142,16 @@ contract ETHRegistrar is Ownable {
         if (duration < MIN_REGISTRATION_DURATION) {
             revert DurationTooShort(duration);
         }
+    }
+
+    function _setRecords(
+        address resolverAddress,
+        bytes32 label,
+        bytes[] calldata data
+    ) internal {
+        // use hardcoded .eth namehash
+        bytes32 nodehash = keccak256(abi.encodePacked(ETH_NODE, label));
+        Resolver resolver = Resolver(resolverAddress);
+        resolver.multicallWithNodeCheck(nodehash, data);
     }
 }
