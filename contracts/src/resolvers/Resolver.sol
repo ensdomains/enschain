@@ -36,42 +36,42 @@ interface Resolver is
 
     function setApprovalForAll(address, bool) external;
 
-    function approve(bytes32 node, address delegate, bool approved) external;
+    function approve(bytes calldata dnsEncodedName, address delegate, bool approved) external;
 
     function isApprovedForAll(address account, address operator) external;
 
     function isApprovedFor(
         address owner,
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         address delegate
     ) external;
 
     function setABI(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         uint256 contentType,
         bytes calldata data
     ) external;
 
-    function setAddr(bytes32 node, address addr) external;
+    function setAddr(bytes calldata dnsEncodedName, address addr) external;
 
-    function setAddr(bytes32 node, uint256 coinType, bytes calldata a) external;
+    function setAddr(bytes calldata dnsEncodedName, uint256 coinType, bytes calldata a) external;
 
-    function setContenthash(bytes32 node, bytes calldata hash) external;
+    function setContenthash(bytes calldata dnsEncodedName, bytes calldata hash) external;
 
-    function setDnsrr(bytes32 node, bytes calldata data) external;
+    function setDnsrr(bytes calldata dnsEncodedName, bytes calldata data) external;
 
-    function setName(bytes32 node, string calldata _name) external;
+    function setName(bytes calldata dnsEncodedName, string calldata _name) external;
 
-    function setPubkey(bytes32 node, bytes32 x, bytes32 y) external;
+    function setPubkey(bytes calldata dnsEncodedName bytes32 x, bytes32 y) external;
 
     function setText(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         string calldata key,
         string calldata value
     ) external;
 
     function setInterface(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         bytes4 interfaceID,
         address implementer
     ) external;
@@ -81,7 +81,7 @@ interface Resolver is
     ) external returns (bytes[] memory results);
 
     function multicallWithNodeCheck(
-        bytes32 nodehash,
+       bytes calldata dnsEncodedName,
         bytes[] calldata data
     ) external returns (bytes[] memory results);
 
