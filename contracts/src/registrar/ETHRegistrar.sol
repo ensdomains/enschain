@@ -6,6 +6,7 @@ import "../registry/ETHRegistry.sol";
 import "../registry/IRegistry.sol";
 import {IPriceOracle} from "./IPriceOracle.sol";
 import "forge-std/console.sol";
+import {NameEncoder} from "../utils/NameEncoder.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
 error ResolverRequiredWhenDataSupplied();
@@ -16,6 +17,8 @@ error CommitmentTooOld(bytes32 commitment);
 error NameNotAvailable(string name);
 
 contract ETHRegistrar is Ownable {
+    using NameEncoder for string;
+
     uint256 public immutable MIN_COMMIT_AGE;
     uint256 public immutable MAX_COMMIT_AGE;
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
@@ -96,9 +99,7 @@ contract ETHRegistrar is Ownable {
             revert InsufficientValue();
         }
 
-        if (data.length > 0) {
-            _setRecords(resolver, keccak256(bytes(name)), data);
-        }
+        // Todo add setRecords
 
         registry.register(
             label,
@@ -142,16 +143,5 @@ contract ETHRegistrar is Ownable {
         if (duration < MIN_REGISTRATION_DURATION) {
             revert DurationTooShort(duration);
         }
-    }
-
-    function _setRecords(
-        address resolverAddress,
-        bytes32 label,
-        bytes[] calldata data
-    ) internal {
-        // use hardcoded .eth namehash
-        bytes32 nodehash = keccak256(abi.encodePacked(ETH_NODE, label));
-        Resolver resolver = Resolver(resolverAddress);
-        resolver.multicallWithNodeCheck(nodehash, data);
     }
 }
