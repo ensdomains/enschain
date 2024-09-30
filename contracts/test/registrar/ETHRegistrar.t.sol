@@ -171,6 +171,46 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             secret
         );
 
-        //assertEq(address(registrar).balance, price.base + price.premium);
+        assertEq(address(registrar).balance, price.base + price.premium);
+        assertEq(
+            address(this).balance,
+            startingBalance - (price.base + price.premium)
+        );
+    }
+
+    function test_register_emitsEvent() public {
+        bytes32 secret = keccak256("secret");
+        string memory label = "test";
+        uint64 duration = 365 days;
+        bytes32 commitment = registrar.makeCommitment(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        registrar.commit(commitment);
+        vm.warp(currentTime + minCommitAge);
+        IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
+
+        vm.expectEmit(address(registrar));
+        emit ETHRegistrar.NameRegistered(
+            label,
+            keccak256(bytes(label)),
+            address(this),
+            price.base,
+            price.premium,
+            uint64(block.timestamp) + duration
+        );
+
+        registrar.register{value: price.base + price.premium}(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
     }
 }

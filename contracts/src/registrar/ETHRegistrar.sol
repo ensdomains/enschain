@@ -25,6 +25,15 @@ contract ETHRegistrar is Ownable {
     IPriceOracle public prices;
     //IRegistry registry;
 
+    event NameRegistered(
+        string label,
+        bytes32 labelHash,
+        address owner,
+        uint256 base,
+        uint256 premium,
+        uint256 expires
+    );
+
     constructor(
         ETHRegistry _registry,
         IPriceOracle _prices,
@@ -97,13 +106,19 @@ contract ETHRegistrar is Ownable {
         }
 
         // Todo add setRecords
+        // Todo set ENS chain reverse\
 
-        registry.register(
+        uint64 expires = uint64(block.timestamp) + duration;
+
+        registry.register(label, msg.sender, registry, 0, expires);
+
+        emit NameRegistered(
             label,
-            msg.sender,
-            registry,
-            0,
-            uint64(block.timestamp) + duration
+            keccak256(bytes(label)),
+            owner,
+            price.base,
+            price.premium,
+            expires
         );
 
         // send back excess
