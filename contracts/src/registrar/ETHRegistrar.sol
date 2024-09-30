@@ -6,7 +6,6 @@ import "../registry/ETHRegistry.sol";
 import "../registry/IRegistry.sol";
 import {IPriceOracle} from "./IPriceOracle.sol";
 import "forge-std/console.sol";
-import {NameEncoder} from "../utils/NameEncoder.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
 error ResolverRequiredWhenDataSupplied();
@@ -17,8 +16,6 @@ error CommitmentTooOld(bytes32 commitment);
 error NameNotAvailable(string name);
 
 contract ETHRegistrar is Ownable {
-    using NameEncoder for string;
-
     uint256 public immutable MIN_COMMIT_AGE;
     uint256 public immutable MAX_COMMIT_AGE;
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
@@ -110,6 +107,11 @@ contract ETHRegistrar is Ownable {
         );
 
         // send back excess
+        if (msg.value > (price.base + price.premium)) {
+            payable(msg.sender).transfer(
+                msg.value - (price.base + price.premium)
+            );
+        }
     }
 
     function renew(bytes32 node) public {}

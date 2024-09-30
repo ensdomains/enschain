@@ -30,8 +30,12 @@ contract TestETHRegistrar is Test, ERC1155Holder {
     IPriceOracle priceOracle;
     uint256 currentTime = 1725513923;
     uint256 minCommitAge = 1 minutes;
+    uint256 startingBalance;
+
+    receive() external payable {}
 
     function setUp() public {
+        startingBalance = address(this).balance;
         // Warp time to roughly current time
         vm.warp(currentTime);
 
@@ -141,5 +145,32 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             new bytes[](0),
             secret
         );
+    }
+
+    function test_register_excessValue() public {
+        bytes32 secret = keccak256("secret");
+        string memory label = "test";
+        uint64 duration = 365 days;
+        bytes32 commitment = registrar.makeCommitment(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        registrar.commit(commitment);
+        vm.warp(currentTime + minCommitAge);
+        IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
+        registrar.register{value: price.base + price.premium + 10000}(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+
+        //assertEq(address(registrar).balance, price.base + price.premium);
     }
 }
