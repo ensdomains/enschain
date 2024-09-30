@@ -2,10 +2,10 @@
 // Portions from OpenZeppelin Contracts (last updated v5.0.0) (token/ERC1155/ERC1155.sol)
 pragma solidity >=0.8.13;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import "../registry/ETHRegistry.sol";
-import "../registry/IRegistry.sol";
+import {ETHRegistry} from "../registry/ETHRegistry.sol";
+import {IRegistry} from "../registry/IRegistry.sol";
 import {IPriceOracle} from "./IPriceOracle.sol";
-import "forge-std/console.sol";
+import {StringUtils} from "../utils/StringUtils.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
 error ResolverRequiredWhenDataSupplied();
@@ -13,9 +13,12 @@ error InsufficientValue();
 error DurationTooShort(uint64 duration);
 error CommitmentTooNew(bytes32 commitment);
 error CommitmentTooOld(bytes32 commitment);
-error NameNotAvailable(string name);
+error NameNotAvailable(string label);
+error NameExpired(bytes32 labelHash);
 
 contract ETHRegistrar is Ownable {
+    using StringUtils for string;
+
     uint256 public immutable MIN_COMMIT_AGE;
     uint256 public immutable MAX_COMMIT_AGE;
     uint256 public constant MIN_REGISTRATION_DURATION = 28 days;
@@ -31,6 +34,13 @@ contract ETHRegistrar is Ownable {
         address owner,
         uint256 base,
         uint256 premium,
+        uint256 expires
+    );
+
+    event NameRenewed(
+        string label,
+        bytes32 indexed labelHash,
+        uint256 cost,
         uint256 expires
     );
 
@@ -106,7 +116,7 @@ contract ETHRegistrar is Ownable {
         }
 
         // Todo add setRecords
-        // Todo set ENS chain reverse\
+        // Todo set ENS chain reverse
 
         uint64 expires = uint64(block.timestamp) + duration;
 
@@ -129,10 +139,32 @@ contract ETHRegistrar is Ownable {
         }
     }
 
-    function renew(bytes32 node) public {}
+    function renew(string calldata label, uint64 duration) public payable {
+        bytes32 labelHash = keccak256(bytes(label));
+        // Get current expiry of name
+        (uint64 currentExpiry, ) = registry.nameData(uint256(labelHash));
+        if (currentExpiry < block.timestamp) {
+            revert NameExpired(labelHash);
+        }
+
+        // Calculate new expiry
+        uint64 expires = currentExpiry + duration;
+
+        // Check if the provided value is sufficient
+        IPriceOracle.Price memory price = rentPrice(label, duration);
+        if (msg.value < price.base + price.premium) {
+            revert InsufficientValue();
+        }
+        registry.renew(uint256(labelHash), expires);
+        emit NameRenewed(label, labelHash, duration, expires);
+    }
 
     function withdraw() public {
         payable(owner()).transfer(address(this).balance);
+    }
+
+    function valid(string memory label) public pure returns (bool) {
+        return label.strlen() >= 3;
     }
 
     /* Internal functions */
