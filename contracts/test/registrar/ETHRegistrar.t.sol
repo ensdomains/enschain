@@ -245,4 +245,56 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         );
         assertEq(currentExpiry, uint64(block.timestamp) + duration);
     }
+
+    function test_withdraw() public {
+        // Setup: Register a name to add funds to the contract
+        bytes32 secret = keccak256("secret");
+        string memory label = "withdrawtest";
+        uint64 duration = 365 days;
+        bytes32 commitment = registrar.makeCommitment(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+        registrar.commit(commitment);
+        vm.warp(currentTime + minCommitAge);
+        IPriceOracle.Price memory price = registrar.rentPrice(label, duration);
+        registrar.register{value: price.base + price.premium}(
+            label,
+            address(this),
+            duration,
+            address(0),
+            new bytes[](0),
+            secret
+        );
+
+        // Get the initial balance of the contract
+        uint256 initialBalance = address(registrar).balance;
+        assertGt(initialBalance, 0, "Contract should have a balance");
+
+        // Get the initial balance of the owner
+        address owner = registrar.owner();
+        uint256 ownerInitialBalance = owner.balance;
+
+        // Call withdraw as the owner
+        vm.prank(address(0x1234));
+        registrar.withdraw();
+
+        // Check that the contract balance is now 0
+        assertEq(
+            address(registrar).balance,
+            0,
+            "Contract balance should be 0 after withdrawal"
+        );
+
+        // Check that the owner's balance increased by the contract's initial balance
+        assertEq(
+            owner.balance,
+            ownerInitialBalance + initialBalance,
+            "Owner should receive the full contract balance"
+        );
+    }
 }

@@ -26,7 +26,6 @@ contract ETHRegistrar is Ownable {
     bytes32 public constant ETH_LABELHASH = keccak256(abi.encodePacked("eth"));
     ETHRegistry public registry;
     IPriceOracle public prices;
-    //IRegistry registry;
 
     event NameRegistered(
         string label,
