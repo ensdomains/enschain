@@ -43,7 +43,7 @@ contract ETHRegistrar is Ownable {
         uint256 expires
     );
 
-    event CommitmentMade(bytes32 commitment, uint256 timestamp);
+    event CommitmentMade(bytes32 commitment);
 
     constructor(
         ETHRegistry _registry,
@@ -80,7 +80,7 @@ contract ETHRegistrar is Ownable {
             revert UnexpiredCommitmentExists(commitment);
         }
         commitments[commitment] = block.timestamp;
-        emit CommitmentMade(commitment, block.timestamp);
+        emit CommitmentMade(commitment);
     }
 
     function available(string memory label) public view returns (bool) {

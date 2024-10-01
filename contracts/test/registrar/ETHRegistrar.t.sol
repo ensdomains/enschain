@@ -71,7 +71,7 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         bytes32 commitment = keccak256("test");
 
         vm.expectEmit(true, true, true, true);
-        emit ETHRegistrar.CommitmentMade(commitment, block.timestamp);
+        emit ETHRegistrar.CommitmentMade(commitment);
 
         registrar.commit(commitment);
     }
