@@ -43,6 +43,8 @@ contract ETHRegistrar is Ownable {
         uint256 expires
     );
 
+    event CommitmentMade(bytes32 commitment, uint256 timestamp);
+
     constructor(
         ETHRegistry _registry,
         IPriceOracle _prices,
@@ -78,6 +80,7 @@ contract ETHRegistrar is Ownable {
             revert UnexpiredCommitmentExists(commitment);
         }
         commitments[commitment] = block.timestamp;
+        emit CommitmentMade(commitment, block.timestamp);
     }
 
     function available(string memory label) public view returns (bool) {

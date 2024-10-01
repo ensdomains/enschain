@@ -67,6 +67,15 @@ contract TestETHRegistrar is Test, ERC1155Holder {
         assertEq(registrar.commitments(expectedCommitment), block.timestamp);
     }
 
+    function test_commit_event() public {
+        bytes32 commitment = keccak256("test");
+
+        vm.expectEmit(true, true, true, true);
+        emit ETHRegistrar.CommitmentMade(commitment, block.timestamp);
+
+        registrar.commit(commitment);
+    }
+
     function test_register() public {
         bytes32 secret = keccak256("secret");
         string memory label = "test";
