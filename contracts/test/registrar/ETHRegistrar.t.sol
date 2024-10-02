@@ -84,8 +84,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
@@ -95,8 +93,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         assertEq(
@@ -114,8 +110,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         vm.expectRevert(
@@ -125,8 +119,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
     }
@@ -139,21 +131,12 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
         vm.warp(currentTime + minCommitAge);
         vm.expectRevert(InsufficientValue.selector);
-        registrar.register{value: 1}(
-            label,
-            address(this),
-            duration,
-            address(0),
-            new bytes[](0),
-            secret
-        );
+        registrar.register{value: 1}(label, address(this), duration, secret);
     }
 
     function test_register_excessValue() public {
@@ -164,8 +147,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
@@ -175,8 +156,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
 
@@ -195,8 +174,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
@@ -217,8 +194,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
     }
@@ -231,8 +206,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
@@ -242,8 +215,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         vm.warp(currentTime + minCommitAge + duration);
@@ -264,8 +235,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
         registrar.commit(commitment);
@@ -275,8 +244,6 @@ contract TestETHRegistrar is Test, ERC1155Holder {
             label,
             address(this),
             duration,
-            address(0),
-            new bytes[](0),
             secret
         );
 

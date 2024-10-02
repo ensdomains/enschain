@@ -8,7 +8,6 @@ import {IPriceOracle} from "./IPriceOracle.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 
 error UnexpiredCommitmentExists(bytes32 commitment);
-error ResolverRequiredWhenDataSupplied();
 error InsufficientValue();
 error DurationTooShort(uint64 duration);
 error CommitmentTooNew(bytes32 commitment);
@@ -62,17 +61,9 @@ contract ETHRegistrar is Ownable {
         string calldata label,
         address owner,
         uint64 duration,
-        address resolver,
-        bytes[] calldata data,
         bytes32 secret
     ) public pure returns (bytes32) {
-        if (data.length > 0 && resolver == address(0)) {
-            revert ResolverRequiredWhenDataSupplied();
-        }
-        return
-            keccak256(
-                abi.encode(label, owner, duration, resolver, data, secret)
-            );
+        return keccak256(abi.encode(label, owner, duration, secret));
     }
 
     function commit(bytes32 commitment) public {
@@ -101,14 +92,12 @@ contract ETHRegistrar is Ownable {
         string calldata label,
         address owner,
         uint64 duration,
-        address resolver,
-        bytes[] calldata data,
         bytes32 secret
     ) public payable {
         _consumeCommitment(
             label,
             duration,
-            makeCommitment(label, owner, duration, resolver, data, secret)
+            makeCommitment(label, owner, duration, secret)
         );
 
         // check if msg.value given is enough
@@ -116,9 +105,6 @@ contract ETHRegistrar is Ownable {
         if (msg.value < price.base + price.premium) {
             revert InsufficientValue();
         }
-
-        // Todo add setRecords
-        // Todo set ENS chain reverse
 
         uint64 expires = uint64(block.timestamp) + duration;
 
