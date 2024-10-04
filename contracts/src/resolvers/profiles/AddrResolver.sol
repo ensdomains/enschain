@@ -4,12 +4,14 @@ pragma solidity >=0.8.4;
 import "../ResolverBase.sol";
 import "./IAddrResolver.sol";
 import "./IAddressResolver.sol";
+import {BytesUtils} from "../../utils/BytesUtils.sol";
 
 abstract contract AddrResolver is
     IAddrResolver,
     IAddressResolver,
     ResolverBase
 {
+    using BytesUtils for bytes;
     uint256 private constant COIN_TYPE_ETH = 60;
 
     mapping(uint64 => mapping(bytes32 => mapping(uint256 => bytes))) versionable_addresses;
@@ -17,14 +19,14 @@ abstract contract AddrResolver is
     /**
      * Sets the address associated with an ENS node.
      * May only be called by the owner of that node in the ENS registry.
-     * @param node The node to update.
+     * @param dnsEncodedName The name to update.
      * @param a The address to set.
      */
     function setAddr(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         address a
-    ) external virtual authorised(node) {
-        setAddr(node, COIN_TYPE_ETH, addressToBytes(a));
+    ) external virtual authorised(dnsEncodedName) {
+        setAddr(dnsEncodedName, COIN_TYPE_ETH, addressToBytes(a));
     }
 
     /**
@@ -43,10 +45,11 @@ abstract contract AddrResolver is
     }
 
     function setAddr(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         uint256 coinType,
         bytes memory a
-    ) public virtual authorised(node) {
+    ) public virtual authorised(dnsEncodedName) {
+        bytes32 node = dnsEncodedName.namehash(0);
         emit AddressChanged(node, coinType, a);
         if (coinType == COIN_TYPE_ETH) {
             emit AddrChanged(node, bytesToAddress(a));

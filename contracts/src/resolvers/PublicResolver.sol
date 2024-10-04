@@ -102,7 +102,7 @@ contract PublicResolver is
     }
 
     function isAuthorised(
-        string memory name
+        bytes calldata name
     ) internal view override returns (bool) {
         //TODO implement isAuthorised with recursive lookup
         // return

@@ -3,8 +3,10 @@ pragma solidity >=0.8.4;
 
 import "../ResolverBase.sol";
 import "./IPubkeyResolver.sol";
+import {BytesUtils} from "../../utils/BytesUtils.sol";
 
 abstract contract PubkeyResolver is IPubkeyResolver, ResolverBase {
+    using BytesUtils for bytes;
     struct PublicKey {
         bytes32 x;
         bytes32 y;
@@ -14,15 +16,16 @@ abstract contract PubkeyResolver is IPubkeyResolver, ResolverBase {
 
     /**
      * Sets the SECP256k1 public key associated with an ENS node.
-     * @param node The ENS node to query
+     * @param dnsEncodedName The name to update
      * @param x the X coordinate of the curve point for the public key.
      * @param y the Y coordinate of the curve point for the public key.
      */
     function setPubkey(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         bytes32 x,
         bytes32 y
-    ) external virtual authorised(node) {
+    ) external virtual authorised(dnsEncodedName) {
+        bytes32 node = BytesUtils.namehash(dnsEncodedName, 0);
         versionable_pubkeys[recordVersions[node]][node] = PublicKey(x, y);
         emit PubkeyChanged(node, x, y);
     }

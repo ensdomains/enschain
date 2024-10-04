@@ -5,22 +5,25 @@ import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "../ResolverBase.sol";
 import "./AddrResolver.sol";
 import "./IInterfaceResolver.sol";
+import {BytesUtils} from "../../utils/BytesUtils.sol";
 
 abstract contract InterfaceResolver is IInterfaceResolver, AddrResolver {
+    using BytesUtils for bytes;
     mapping(uint64 => mapping(bytes32 => mapping(bytes4 => address))) versionable_interfaces;
 
     /**
      * Sets an interface associated with a name.
      * Setting the address to 0 restores the default behaviour of querying the contract at `addr()` for interface support.
-     * @param node The node to update.
+     * @param dnsEncodedName The name to update.
      * @param interfaceID The EIP 165 interface ID.
      * @param implementer The address of a contract that implements this interface for this node.
      */
     function setInterface(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         bytes4 interfaceID,
         address implementer
-    ) external virtual authorised(node) {
+    ) external virtual authorised(dnsEncodedName) {
+        bytes32 node = dnsEncodedName.namehash(0);
         versionable_interfaces[recordVersions[node]][node][
             interfaceID
         ] = implementer;

@@ -3,20 +3,22 @@ pragma solidity >=0.8.4;
 
 import "../ResolverBase.sol";
 import "./IContentHashResolver.sol";
-
+import {BytesUtils} from "../../utils/BytesUtils.sol";
 abstract contract ContentHashResolver is IContentHashResolver, ResolverBase {
+    using BytesUtils for bytes;
     mapping(uint64 => mapping(bytes32 => bytes)) versionable_hashes;
 
     /**
      * Sets the contenthash associated with an ENS node.
      * May only be called by the owner of that node in the ENS registry.
-     * @param node The node to update.
+     * @param dnsEncodedName The name to update.
      * @param hash The contenthash to set
      */
     function setContenthash(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         bytes calldata hash
-    ) external virtual authorised(node) {
+    ) external virtual authorised(dnsEncodedName) {
+        bytes32 node = dnsEncodedName.namehash(0);
         versionable_hashes[recordVersions[node]][node] = hash;
         emit ContenthashChanged(node, hash);
     }

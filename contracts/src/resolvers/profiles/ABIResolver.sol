@@ -3,23 +3,26 @@ pragma solidity >=0.8.4;
 
 import "./IABIResolver.sol";
 import "../ResolverBase.sol";
+import {BytesUtils} from "../../utils/BytesUtils.sol";
 
 abstract contract ABIResolver is IABIResolver, ResolverBase {
+    using BytesUtils for bytes;
     mapping(uint64 => mapping(bytes32 => mapping(uint256 => bytes))) versionable_abis;
 
     /**
      * Sets the ABI associated with an ENS node.
      * Nodes may have one ABI of each content type. To remove an ABI, set it to
      * the empty string.
-     * @param node The node to update.
+     * @param dnsEncodedName The name to update.
      * @param contentType The content type of the ABI
      * @param data The ABI data.
      */
     function setABI(
-        bytes32 node,
+        bytes calldata dnsEncodedName,
         uint256 contentType,
         bytes calldata data
-    ) external virtual authorised(node) {
+    ) external virtual authorised(dnsEncodedName) {
+        bytes32 node = dnsEncodedName.namehash(0);
         // Content types must be powers of 2
         require(((contentType - 1) & contentType) == 0);
 
