@@ -213,6 +213,17 @@ const plugin: HardhatPlugin = {
         name: "keepAnvil",
         description: "Leave the local Anvil process running",
       })
+      .addFlag({
+        name: "requireFullCoverage",
+        description:
+          "Fail instead of silently running a reduced set of smoke checks",
+      })
+      .addOption({
+        name: "resolutionNames",
+        description:
+          "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+        defaultValue: "",
+      })
       .setAction(() => import("./tasks/fork-full.ts"))
       .build(),
     task(

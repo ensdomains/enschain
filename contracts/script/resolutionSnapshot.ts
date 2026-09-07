@@ -9,10 +9,12 @@
 // than a liveness probe.
 
 import {
+  decodeAbiParameters,
   decodeFunctionResult,
   encodeFunctionData,
   namehash,
   parseAbi,
+  zeroAddress,
   type Address,
   type Hex,
 } from "viem";
@@ -226,4 +228,38 @@ export function decodeRecord(record: string, value: Hex | null): string {
     // fall through to the raw value
   }
   return value;
+}
+
+// Whether an answer means the name carries no such record. A lookup that reverts and
+// one that answers with the empty value are the same "no record", but raw bytes
+// cannot be tested for emptiness directly: the encoding of an empty `bytes` or
+// `string` still carries a non-zero offset word. Decode by the record's own type.
+export function recordIsEmpty(record: string, value: Hex | null): boolean {
+  if (value === null) return true;
+  try {
+    if (record === "addr") {
+      const [address] = decodeAbiParameters([{ type: "address" }], value);
+      return address === zeroAddress;
+    }
+    if (record.startsWith("text(")) {
+      const [text] = decodeAbiParameters([{ type: "string" }], value);
+      return text.length === 0;
+    }
+    const [bytes] = decodeAbiParameters([{ type: "bytes" }], value);
+    return bytes === "0x";
+  } catch {
+    // An answer that will not decode carries no record either.
+    return true;
+  }
+}
+
+// Whether a snapshot holds anything a comparison can prove. A record that reads the
+// same nothing on both sides of a cutover counts as unchanged, so a sample made only
+// of empty answers reports success while having compared nothing.
+export function snapshotCarriesRecords(snapshot: ResolutionSnapshot): boolean {
+  return snapshot.names.some((entry) =>
+    Object.entries(entry.records).some(
+      ([record, value]) => !recordIsEmpty(record, value),
+    ),
+  );
 }

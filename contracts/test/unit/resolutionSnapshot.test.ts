@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import type { Hex } from "viem";
+import { encodeAbiParameters, zeroAddress, type Hex } from "viem";
 
 import {
   diffResolutionSnapshots,
   queriesFromSnapshot,
+  recordIsEmpty,
   recordQueries,
+  snapshotCarriesRecords,
   type ResolutionSnapshot,
 } from "../../script/resolutionSnapshot.js";
 
@@ -177,5 +179,66 @@ describe("diffResolutionSnapshots", () => {
       "addr",
       "text(url)",
     ]);
+  });
+});
+
+// An empty `bytes` or `string` answer is not all zeroes: it carries an offset word.
+// Testing the raw bytes for emptiness therefore reads every empty dynamic answer as
+// a record, which is what makes a vacuous cutover comparison look verified.
+const EMPTY_ADDR = encodeAbiParameters([{ type: "address" }], [zeroAddress]);
+const EMPTY_BYTES = encodeAbiParameters([{ type: "bytes" }], ["0x"]);
+const EMPTY_TEXT = encodeAbiParameters([{ type: "string" }], [""]);
+const REAL_ADDR = encodeAbiParameters(
+  [{ type: "address" }],
+  ["0x7f1266aa4e48567f42e02e9da040eeec33edd5cb"],
+);
+const REAL_TEXT = encodeAbiParameters([{ type: "string" }], ["hello"]);
+
+describe("recordIsEmpty", () => {
+  it("treats a reverted lookup as no record", () => {
+    expect(recordIsEmpty("addr", null)).toBe(true);
+  });
+
+  it("treats the zero address as no record", () => {
+    expect(recordIsEmpty("addr", EMPTY_ADDR)).toBe(true);
+    expect(recordIsEmpty("addr", REAL_ADDR)).toBe(false);
+  });
+
+  it("sees through the offset word of an empty bytes answer", () => {
+    expect(recordIsEmpty("contenthash", EMPTY_BYTES)).toBe(true);
+    expect(recordIsEmpty("addr(60)", EMPTY_BYTES)).toBe(true);
+  });
+
+  it("sees through the offset word of an empty string answer", () => {
+    expect(recordIsEmpty("text(url)", EMPTY_TEXT)).toBe(true);
+    expect(recordIsEmpty("text(url)", REAL_TEXT)).toBe(false);
+  });
+
+  it("treats an answer that will not decode as no record", () => {
+    expect(recordIsEmpty("text(url)", "0xdeadbeef")).toBe(true);
+  });
+});
+
+describe("snapshotCarriesRecords", () => {
+  it("rejects a sample whose every answer is empty or reverted", () => {
+    expect(
+      snapshotCarriesRecords(
+        snapshot([
+          { name: "a.eth", records: { addr: EMPTY_ADDR, "text(url)": null } },
+          { name: "b.eth", records: { contenthash: EMPTY_BYTES } },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts a sample where one name answers one record", () => {
+    expect(
+      snapshotCarriesRecords(
+        snapshot([
+          { name: "a.eth", records: { addr: EMPTY_ADDR } },
+          { name: "b.eth", records: { addr: REAL_ADDR } },
+        ]),
+      ),
+    ).toBe(true);
   });
 });

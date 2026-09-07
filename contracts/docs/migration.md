@@ -462,8 +462,14 @@ than only checking that the renewer is an authorized controller.
 > contenthash — and `verify-resolution` re-asks exactly those questions afterwards and fails on any
 > record that changed, in either direction: a record that stops resolving, one that starts, and one
 > that returns something different are all differences. Include awkward cases in `--names`: a name
-> with no resolver, a wildcard/offchain name, and a DNS TLD mirror. `fork full` does this
-> automatically around phase 7 and prints any differences.
+> with no resolver, a wildcard/offchain name, and a DNS TLD mirror.
+>
+> `fork full` does this automatically around phase 7 and prints any differences. Its sample is the
+> run's own smoke names plus names drawn from `--csv-file` that are confirmed to carry records before
+> the switch — a record that reverts on both sides counts as unchanged, so a sample of names that
+> resolve nothing would pass while proving nothing. Add your own with `--resolution-names
+> <comma-separated>`. When no sampled name resolves anything, the run says the cutover was **not
+> verified** rather than reporting an unchanged result.
 - **Re-deploying fresh:** on a reuse network (sepolia) the top **and** intermediate URPs are adopted by
   address and never redeployed — phase 1 deploys a fresh `UniversalResolverV2` implementation and
   `upgrade-managed-urp` re-points the reused intermediate URP at it, orphaning the prior
@@ -580,7 +586,8 @@ produced it. Flags after `--` pass through (e.g. `bun run verify -- --network se
 
 ```bash
 bun run migration -- fork full --network sepolia --csv-file ./csv-data/ens-registrations-sepolia.csv \
-  [--work-dir <dir>] [--save-deployments] [--snapshot-file <path>]
+  [--work-dir <dir>] [--save-deployments] [--snapshot-file <path>] \
+  [--require-full-coverage] [--resolution-names <comma-separated>]
 ```
 
 Spawns a local Anvil fork of the network RPC (default port 8547 sepolia / 8548 mainnet), impersonates
@@ -593,11 +600,17 @@ smoke checks interleaved:
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
   after it, and accepts a fresh name after enablement.
 
-When the target chain has already completed the v1 hand-off (re-running against an already-migrated
-Sepolia, or a repeat mainnet run), `fork full` detects this from the v1 registrar-controller state and
-skips the smoke checks that require live v1 registration, while still running the deploy,
-pre-migration, renewer authorization, the pre-enablement rejection, and the URP cutover. A pristine
-chain runs all of them; it is detected automatically.
+When the target chain has already completed the v1 hand-off, `fork full` detects this from the v1
+registrar-controller state — the run calls it **post-migration mode** — and skips the smoke checks
+that require live v1 registration, while still running the deploy, pre-migration, renewer
+authorization, the pre-enablement rejection, and the URP cutover. A pristine chain runs all of them;
+it is detected automatically.
+
+**Live Sepolia is already migrated, so every Sepolia rehearsal runs reduced.** This is expected, not a
+misconfiguration, and no flag or CSV changes it — the fork inherits a chain on which no v1
+registration controller is authorized, so nothing can mint a v1 name to test against. To exercise the
+full set you need a chain whose v1 is still live: `fork full --network mainnet` (mainnet has not
+migrated), or [`clean-testnet`](#clean-testnet), which deploys a fresh v1 stack you own.
 
 > **Know what a run actually covered.** Post-migration mode drops the live v1 registrations, the
 > phase 3 freeze rejection, the pre-migration `RESERVED` assertions, and the only v1 → v2 migration
@@ -612,11 +625,15 @@ chain runs all of them; it is detected automatically.
 > locating the token's balances storage slot on Anvil) and runs the same registration and renewal
 > checks against the real token. Only when that is not possible are they dropped.
 >
-> Every run therefore ends with a **coverage summary** naming what did not execute, and
-> `--require-full-coverage` turns a reduced run into a failure instead. Detection reads *every* known
-> v1 registration controller rather than the bundled `ETHRegistrarController` alone: reading one
-> address would report a pristine chain as already-migrated if ENS ever rotated that controller, which
-> would silently drop most of the rehearsal's assertions.
+> Every run therefore ends with a **coverage summary**: what stopped the rehearsal covering
+> everything, the checks that cost, what still ran, and the command that would exercise the rest.
+> `--require-full-coverage` turns a reduced run into a failure instead — post-migration mode fails
+> before the rehearsal starts, and a fork that could not fund a payment token fails at the end.
+>
+> Detection reads *every* known v1 registration controller rather than the bundled
+> `ETHRegistrarController` alone: reading one address would report a pristine chain as
+> already-migrated if ENS ever rotated that controller, which would silently drop most of the
+> rehearsal's assertions.
 
 The rehearsal deploys into a `<network>-fork` namespace (gitignored, re-created each
 run) rather than the live one, so it never tries to adopt the real chain's proxies —

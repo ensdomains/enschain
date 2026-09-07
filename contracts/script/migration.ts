@@ -104,6 +104,7 @@ import {
   diffResolutionSnapshots,
   queriesFromSnapshot,
   recordQueries,
+  snapshotCarriesRecords,
   type NameSnapshot,
   type ResolutionSnapshot,
 } from "./resolutionSnapshot.js";
@@ -319,6 +320,27 @@ type WalletAccount =
   | ReturnType<typeof privateKeyToAccount>
   | ReturnType<typeof mnemonicToAccount>;
 
+// A gas estimate is made against the latest block, but the transaction runs in
+// the next one. A call whose cost depends on state the estimate warmed — a price
+// oracle read, a balance that changes from zero — can then need more gas than it
+// was given and run out part-way. The receipt reports that as a plain failure, so
+// a rehearsal aborts with a revert that names no reason. Unused gas is refunded,
+// so padding every estimate costs nothing and removes the whole failure class.
+const GAS_ESTIMATE_PERCENT = 130n;
+
+function withGasBuffer<T extends (...args: never[]) => Promise<unknown>>(
+  request: T,
+): T {
+  return (async (...args: Parameters<T>) => {
+    const result = await request(...args);
+    const { method } = args[0] as { method: string };
+    if (method !== "eth_estimateGas" || typeof result !== "string") {
+      return result;
+    }
+    return `0x${((BigInt(result) * GAS_ESTIMATE_PERCENT) / 100n).toString(16)}`;
+  }) as T;
+}
+
 function walletClient({
   rpcUrl,
   chain,
@@ -336,12 +358,19 @@ function walletClient({
   if (!walletAccount) {
     throw new Error("A private key or impersonated account is required");
   }
+  const base = provider
+    ? custom(provider as any)
+    : http(rpcUrl, { retryCount: RPC_RETRY_COUNT });
   return createWalletClient({
     account: walletAccount,
     chain,
-    transport: provider
-      ? custom(provider as any)
-      : http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
+    // The wrapped transport keeps its own retry policy, so the wrapper adds none
+    // of its own — nesting them would multiply the attempts behind every call.
+    transport: (config) =>
+      custom(
+        { request: withGasBuffer(base(config).request) },
+        { retryCount: 0 },
+      )(config),
   });
 }
 
@@ -3660,6 +3689,36 @@ async function captureResolutionSnapshot(opts: {
   };
 }
 
+// How many candidate names to probe, and how many resolvable ones to keep. The pool
+// is larger than the sample because most names carry no records at all.
+const RESOLUTION_CANDIDATE_POOL = 25;
+const RESOLUTION_SAMPLE_SIZE = 5;
+
+// Picks names that actually carry records, so the cutover comparison has something
+// to compare. Candidates are probed with the address lookups alone rather than the
+// full record set, keeping the cost proportional to the pool size rather than to the
+// records per name.
+async function selectResolvableNames(opts: {
+  client: ReturnType<typeof publicClient>;
+  universalResolver: Address;
+  candidates: string[];
+  limit: number;
+}): Promise<string[]> {
+  const chosen: string[] = [];
+  for (const name of opts.candidates) {
+    if (chosen.length >= opts.limit) break;
+    const probe = await captureResolutionSnapshot({
+      client: opts.client,
+      universalResolver: opts.universalResolver,
+      names: [name],
+      coinTypes: [],
+      textKeys: [],
+    });
+    if (snapshotCarriesRecords(probe)) chosen.push(name);
+  }
+  return chosen;
+}
+
 function dnsEncodeName(name: string): Hex {
   const bytes: number[] = [];
   for (const label of name.split(".")) {
@@ -6634,6 +6693,74 @@ async function disableAndVerifyBatchRegistrar(opts: {
   await verifyBatchRegistrarDisabled(opts);
 }
 
+// The smoke checks a rehearsal reports on. Naming each once keeps the "not
+// exercised" and "still exercised" lists describing the same check in the same
+// words, so a reader can line the two up.
+const SMOKE_CHECKS = {
+  v1Registration: "live v1 registration before the phase 3 freeze",
+  freezeRejection:
+    "the phase 3 freeze rejecting a registration that previously succeeded",
+  reservedAssertions: "the pre-migration RESERVED assertions",
+  migration: "the v1 → v2 migration smoke, unwrapped and wrapped",
+  reservedRejection: "the phase 6 rejection of a pre-migrated reserved name",
+  renewal:
+    "the ETHRenewerV1 renewal smoke, and with it the v1 ↔ v2 expiry-sync invariant",
+  preEnableRejection:
+    "the v2 registrar rejecting a registration before phase 6 grants it REGISTRAR",
+  paidRegistration:
+    "every paid-registration smoke — the ETHRegistrar commit/reveal, pricing, and ERC-20 payment path",
+  deployAndPreMigration:
+    "the deploy, and pre-migration of the CSV names into v2 (phases 1, 2 and 5)",
+  freezeAndHandoff:
+    "the phase 3 freeze of the v1 registrars, and the v1 authorization handoff",
+  renewerAuthorization:
+    "phase 4 authorizing ETHRenewerV1 as a v1 renewal controller",
+  freshV2Registration:
+    "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
+} as const;
+
+// One condition that stopped a rehearsal from covering everything, together with
+// the checks it cost and the way to exercise them. Skips are filed under their
+// cause rather than listed flat: several checks usually fall to a single condition,
+// and a flat list reads as several independent problems.
+type CoverageGap = {
+  /** Short name for the condition, also used to merge later skips into it. */
+  cause: string;
+  why: string[];
+  checks: string[];
+  remedy: string[];
+};
+
+// Renders the end-of-run coverage report: the cause first, then what it cost, then
+// what still ran, then what to run instead. A reader reaching this line has just
+// watched a long rehearsal report success and needs to know how much that is worth.
+function reportCoverage(opts: {
+  skipped: CoverageGap[];
+  covered: string[];
+}): void {
+  console.log("");
+  if (opts.skipped.length === 0) {
+    console.log("coverage: all smoke checks ran");
+    return;
+  }
+  console.log("coverage: this rehearsal ran a reduced set of smoke checks.");
+  for (const gap of opts.skipped) {
+    console.log("");
+    console.log(`  why: ${gap.why[0]}`);
+    for (const line of gap.why.slice(1)) console.log(`  ${line}`);
+    console.log("");
+    console.log("  not exercised:");
+    for (const check of gap.checks) console.log(`    - ${check}`);
+    console.log("");
+    for (const line of gap.remedy) console.log(`  ${line}`);
+  }
+  if (opts.covered.length > 0) {
+    console.log("");
+    console.log("  still exercised:");
+    for (const check of opts.covered) console.log(`    - ${check}`);
+  }
+}
+
 export async function runForkFull(opts: RunForkFullOptions) {
   if (opts.direct || opts.debugRpc)
     installRpcCompatibility(Boolean(opts.debugRpc));
@@ -6858,18 +6985,61 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
     const postMigration = enabledV1Controllers.length === 0;
 
-    // Records what a run did not cover, so a rehearsal cannot report success while
-    // silently having proven far less than it appears to.
-    const skippedCoverage: string[] = [];
+    // Records what a run did and did not cover, so a rehearsal cannot report success
+    // while silently having proven far less than it appears to.
+    const skippedCoverage: CoverageGap[] = [];
+    const coveredChecks: string[] = [];
+    const recordSkipped = (gap: CoverageGap) => {
+      const existing = skippedCoverage.find(
+        (entry) => entry.cause === gap.cause,
+      );
+      if (existing) existing.checks.push(...gap.checks);
+      else skippedCoverage.push(gap);
+    };
+    // The paid smokes and the renewal smoke share this condition, so they share one
+    // entry rather than appearing as two unrelated problems.
+    const noPaymentTokenGap = (checks: string[]): CoverageGap => ({
+      cause: "no mintable payment token",
+      why: [
+        `no free-mint mock token is deployed on ${opts.network} and real USDC could not be`,
+        "funded on this fork, so nothing can pay the v2 registrar. This is not expected on a",
+        "fork with state controls, which writes a USDC balance for the smoke account directly.",
+      ],
+      checks,
+      remedy: [
+        "to exercise these, re-run against a local Anvil fork or a Tenderly virtual testnet, or",
+        "add --require-full-coverage to make a run that cannot fund the token fail outright.",
+      ],
+    });
     if (postMigration) {
       console.log(
         `post-migration mode: no v1 registration controller is authorized (checked ${v1RegistrationControllers
           .map((entry) => entry.name)
           .join(", ")}); skipping live v1 registration smokes`,
       );
-      skippedCoverage.push(
-        "live v1 registration, the phase 3 freeze rejection, the pre-migration RESERVED assertions, and the v1 → v2 migration smoke (post-migration mode)",
-      );
+      recordSkipped({
+        cause: "post-migration mode",
+        why: [
+          `${opts.network} has already completed the v1 → v2 migration, so the fork starts from a`,
+          "chain where no v1 registration controller is authorized on the v1 BaseRegistrar.",
+          `Checked: ${v1RegistrationControllers.map((entry) => entry.name).join(", ")}.`,
+          "Nothing can register a v1 name, so every check that needs one was skipped. This is",
+          `expected on ${opts.network} and is not a failure; the code calls it post-migration mode.`,
+        ],
+        checks: [
+          SMOKE_CHECKS.v1Registration,
+          SMOKE_CHECKS.freezeRejection,
+          SMOKE_CHECKS.reservedAssertions,
+          SMOKE_CHECKS.migration,
+          SMOKE_CHECKS.reservedRejection,
+          SMOKE_CHECKS.renewal,
+        ],
+        remedy: [
+          "to exercise these, rehearse against a chain whose v1 is still live:",
+          "  bun run migration -- fork full --network mainnet --csv-file <csv>",
+          "  bun run migration -- clean-testnet --network sepolia --rpc-url <url> --deployer <addr>",
+        ],
+      });
       if (opts.requireFullCoverage) {
         throw new Error(
           "post-migration mode detected but --require-full-coverage was set: the rehearsal would skip the live v1 registration, freeze, and migration smokes",
@@ -7140,6 +7310,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `v1 registration succeeded before registrar disablement: ${smokeLabels.v1BeforeDisable}.eth`,
       );
+      coveredChecks.push(SMOKE_CHECKS.v1Registration);
     }
 
     console.log("phase 2: initial pre-migration");
@@ -7173,6 +7344,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.RESERVED,
       });
       console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
+      coveredChecks.push(SMOKE_CHECKS.reservedAssertions);
     }
 
     console.log("phase 3: disable v1 registrars");
@@ -7197,6 +7369,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         // registration must fail with a revert (at simulation or in the receipt).
         /revert/i,
       );
+      coveredChecks.push(SMOKE_CHECKS.freezeRejection);
     }
 
     console.log(
@@ -7229,6 +7402,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         );
       }
       console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
+      coveredChecks.push(SMOKE_CHECKS.renewerAuthorization);
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -7254,6 +7428,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       },
       existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
+    coveredChecks.push(SMOKE_CHECKS.deployAndPreMigration);
     if (!postMigration) {
       await assertV2State({
         rpcUrl,
@@ -7326,6 +7501,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `smoke migration registered wrapped ${smokeLabels.migrateWrapped}.eth on v2`,
       );
+      coveredChecks.push(SMOKE_CHECKS.migration);
     }
 
     console.log(
@@ -7401,10 +7577,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
         mockUsdc,
         preFunded: paymentTokenPreFunded,
       });
-    } else {
-      skippedCoverage.push(
-        "the ETHRenewerV1 renewal smoke — the v1/v2/NameWrapper expiry-sync invariant was not exercised",
-      );
+      coveredChecks.push(SMOKE_CHECKS.renewal);
+    } else if (!postMigration) {
+      // Post-migration mode already accounts for this skip: the renewal needs the
+      // v1 name that mode could not register. Recording it again would name the
+      // same loss under a cause that is not the one that stopped it.
+      recordSkipped(noPaymentTokenGap([SMOKE_CHECKS.renewal]));
     }
 
     // The handoff grants above are the last thing to touch v1 authorizations, so
@@ -7424,6 +7602,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentNetwork,
       requireActiveGrants: true,
     });
+    coveredChecks.push(SMOKE_CHECKS.freezeAndHandoff);
     await verifyReverseAdapters({
       network: opts.network,
       rpcUrl,
@@ -7466,6 +7645,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         // The registry raises this when the registrar lacks REGISTRAR at root.
         /EACUnauthorizedAccountRoles/i,
       );
+      coveredChecks.push(SMOKE_CHECKS.preEnableRejection);
     }
     await enableV2Registrar({
       network: opts.network,
@@ -7499,6 +7679,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
           // RESERVED rather than merely taken is asserted separately above.
           /NameNotAvailable/i,
         );
+        coveredChecks.push(SMOKE_CHECKS.reservedRejection);
       }
       await registerViaV2Registrar({
         rpcUrl,
@@ -7522,6 +7703,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`,
       );
+      coveredChecks.push(SMOKE_CHECKS.freshV2Registration);
     } else {
       const afterEnabled = await client.readContract({
         address: ethRegistry.address,
@@ -7535,8 +7717,11 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
-      skippedCoverage.push(
-        "every paid-registration smoke — the ETHRegistrar commit/reveal, pricing, and ERC-20 payment path was not executed (no mintable payment token on this network)",
+      recordSkipped(
+        noPaymentTokenGap([
+          SMOKE_CHECKS.paidRegistration,
+          SMOKE_CHECKS.preEnableRejection,
+        ]),
       );
     }
 
@@ -7594,11 +7779,28 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // is unaffected. Sampling it would report that accepted difference on every
     // run, which trains readers to ignore an output whose whole purpose is to
     // surface real regressions. Names are what the cutover has to preserve.
+    //
+    // The smoke names alone cannot carry the comparison: they are registered with no
+    // resolver, so every lookup reverts on both sides and the diff is empty however
+    // the cutover behaves. Names from the operator's CSV already existed on the
+    // forked chain with real records, which is precisely what the cutover must
+    // preserve. The source is the operator's CSV, not the transformed one, because
+    // phase 3 prepends the generated smoke labels to the latter.
+    const resolvableCsvNames = await selectResolvableNames({
+      client,
+      universalResolver: topUrp.address,
+      candidates: readLabelsFromCsv(
+        resolve(opts.csvFile),
+        RESOLUTION_CANDIDATE_POOL,
+      ).map((label) => `${label}.eth`),
+      limit: RESOLUTION_SAMPLE_SIZE,
+    });
     const resolutionNames = [
       ...new Set(
         [
           smokeLabels.migrate && `${smokeLabels.migrate}.eth`,
           smokeLabels.v2AfterEnable && `${smokeLabels.v2AfterEnable}.eth`,
+          ...resolvableCsvNames,
           ...(opts.resolutionNames?.split(",").map((name) => name.trim()) ??
             []),
         ].filter((name): name is string => Boolean(name)),
@@ -7610,7 +7812,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       names: resolutionNames,
     });
     console.log(
-      `captured pre-cutover resolution for ${resolutionBefore.names.length} name(s)`,
+      `captured pre-cutover resolution for ${resolutionBefore.names.length} name(s), ${resolvableCsvNames.length} of them carrying records before the switch`,
     );
 
     // Reuse flow: the top URP already fronts the intermediate URP, so the switch
@@ -7710,22 +7912,26 @@ export async function runForkFull(opts: RunForkFullOptions) {
       resolutionBefore,
       resolutionAfter,
     );
-    // A record that reverted on both sides counts as unchanged, so a sample whose
-    // every record reverted throughout compares nothing and still reports success.
-    // Say that rather than letting a vacuous pass read like a verified cutover.
+    // A sample that carried nothing on either side compares nothing and still
+    // reports success. Say that rather than letting a vacuous pass read like a
+    // verified cutover.
     const resolvedAnything = [resolutionBefore, resolutionAfter].some(
-      (snapshot) =>
-        snapshot.names.some((entry) =>
-          Object.values(entry.records).some((value) => value !== null),
-        ),
+      snapshotCarriesRecords,
     );
     if (!resolvedAnything) {
       console.log(
-        `resolution across the cutover was not verified: none of ${resolutionNames.length} sampled name(s) resolved any record before or after, so there was nothing to compare — pass --resolution-names with a name that has records`,
+        `resolution across the cutover was not verified: none of the ${resolutionNames.length} sampled name(s) resolved any record before or after, so there was nothing to compare — pass --resolution-names with a name that has records`,
+      );
+      console.log(`  sampled: ${resolutionNames.join(", ")}`);
+      coveredChecks.push(
+        "the phase 7 URP cutover, though resolution across it was not verified",
       );
     } else if (resolutionDifferences.length === 0) {
       console.log(
         `resolution unchanged across the cutover for ${resolutionNames.length} name(s)`,
+      );
+      coveredChecks.push(
+        `the phase 7 URP cutover, with resolution unchanged across it for ${resolutionNames.length} name(s)`,
       );
     } else {
       console.log(
@@ -7734,6 +7940,9 @@ export async function runForkFull(opts: RunForkFullOptions) {
       for (const difference of resolutionDifferences.slice(0, 20)) {
         console.log(`  ${describeDifference(difference)}`);
       }
+      coveredChecks.push(
+        `the phase 7 URP cutover, with ${resolutionDifferences.length} record(s) reported as changed across it`,
+      );
     }
 
     if (opts.network === "mainnet") {
@@ -7745,19 +7954,20 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // A rehearsal that quietly covered less than it appears to is worse than one
     // that fails, so what was not exercised is stated at the end rather than left in
     // scrollback thousands of lines up.
+    reportCoverage({ skipped: skippedCoverage, covered: coveredChecks });
     console.log("");
-    if (skippedCoverage.length === 0) {
-      console.log("coverage: all smoke checks ran");
-    } else {
-      console.log(
-        `coverage: ${skippedCoverage.length} group(s) of smoke checks did NOT run —`,
-      );
-      for (const skipped of skippedCoverage) console.log(`  - ${skipped}`);
-      console.log(
-        "  re-run with --require-full-coverage to make a reduced run fail instead",
+    console.log(`rehearsal work dir: ${workDir}`);
+    // Post-migration mode fails early, before the rehearsal runs. The conditions
+    // detected mid-run — a payment token that could not be funded — reach here
+    // instead, and the flag has to fail on those too or it enforces only the case
+    // that was already caught.
+    if (opts.requireFullCoverage && skippedCoverage.length > 0) {
+      throw new Error(
+        `--require-full-coverage was set but the rehearsal ran a reduced set of smoke checks: ${skippedCoverage
+          .map((gap) => gap.cause)
+          .join("; ")}`,
       );
     }
-    console.log(`rehearsal work dir: ${workDir}`);
   } finally {
     if (anvil && !opts.keepAnvil) {
       anvil.kill();
@@ -9696,6 +9906,15 @@ export async function main(argv = process.argv): Promise<void> {
             .option("--owner <address>", "Migration owner/admin address")
             .option("--v1-owner <address>", "V1 owner address")
             .option("--ur-manager <address>", "Managed URP admin address")
+            .option(
+              "--require-full-coverage",
+              "Fail instead of silently running a reduced set of smoke checks",
+              false,
+            )
+            .option(
+              "--resolution-names <list>",
+              "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+            )
             .option("--debug-rpc", "Log JSON-RPC error responses", false),
         ),
       ),
