@@ -40,7 +40,7 @@ contract LibResolutionTest is Test, ERC1155Holder {
         view
     {
         (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) =
-            LibResolution.findResolverUnsafe(rootRegistry, name, 0);
+            LibResolution.findResolverUnvalidated(rootRegistry, name, 0);
         assertEq(
             address(LibResolution.findExactRegistry(rootRegistry, name, 0)),
             address(registry),

@@ -47,7 +47,7 @@ contract FindResolverTest is V1Fixture, V2Fixture {
                 (address resolver1, bytes32 node1, uint256 offset1) =
                     RegistryUtils.findResolver(registryV1, childName, 0);
                 (, address resolver2, bytes32 node2, uint256 offset2) =
-                    LibResolution.findResolverUnsafe(rootRegistry, childName, 0);
+                    LibResolution.findResolverUnvalidated(rootRegistry, childName, 0);
                 assertEq(resolver1, address(i), "resolver[i]");
                 assertEq(resolver1, resolver2, "resolver");
                 assertEq(node1, node2, "node");

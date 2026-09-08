@@ -24,7 +24,7 @@ library LibResolution {
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
     {
-        (exactRegistry, resolver, node, resolverOffset) = findResolverUnsafe(
+        (exactRegistry, resolver, node, resolverOffset) = findResolverUnvalidated(
             rootRegistry,
             name,
             offset
@@ -32,7 +32,7 @@ library LibResolution {
         resolver = validateResolver(resolver, resolverOffset == offset);
     }
 
-    /// @dev Check resolver for validity.
+    /// @dev Check resolver for validity according to ENSIP-10.
     /// @param resolver The resolver to check.
     /// @param foundAtLeaf `true` if resolver was found for the complete name.
     /// @return Same resolver or null if not valid.
@@ -55,7 +55,7 @@ library LibResolution {
     /// @return resolver The resolver or null if not found.
     /// @return node The namehash of `name[offset:]`.
     /// @return resolverOffset The offset into `name` corresponding to `resolver`.
-    function findResolverUnsafe(IRegistry rootRegistry, bytes memory name, uint256 offset)
+    function findResolverUnvalidated(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
@@ -66,7 +66,7 @@ library LibResolution {
             return (rootRegistry, address(0), bytes32(0), 0);
         }
         // lookup parent name
-        (exactRegistry, resolver, node, resolverOffset) = findResolverUnsafe(
+        (exactRegistry, resolver, node, resolverOffset) = findResolverUnvalidated(
             rootRegistry,
             name,
             next
