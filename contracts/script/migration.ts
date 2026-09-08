@@ -80,6 +80,7 @@ import {
 } from "./migrationFixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
 import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
+import { dnsEncodeName, errorMessageChain } from "./migrationPlumbing.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   CHECKPOINT_FILE,
@@ -3922,17 +3923,6 @@ async function selectResolvableNames(opts: {
   return chosen;
 }
 
-function dnsEncodeName(name: string): Hex {
-  const bytes: number[] = [];
-  for (const label of name.split(".")) {
-    const labelBytes = Buffer.from(label, "utf8");
-    if (labelBytes.length > 255) throw new Error(`label is too long: ${label}`);
-    bytes.push(labelBytes.length, ...labelBytes);
-  }
-  bytes.push(0);
-  return `0x${Buffer.from(bytes).toString("hex")}`;
-}
-
 export async function snapshotResolution(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -6367,16 +6357,6 @@ async function readV1Owner({
     functionName: "ownerOf",
     args: [labelId(label)],
   })) as Address;
-}
-
-function errorMessageChain(error: unknown): string[] {
-  const messages: string[] = [];
-  let current: unknown = error;
-  while (current !== undefined && current !== null && messages.length < 10) {
-    messages.push(current instanceof Error ? current.message : String(current));
-    current = current instanceof Error ? current.cause : undefined;
-  }
-  return messages;
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   ROLES,
 } from "../../../script/deploy-constants.js";
+import { dnsEncodeName } from "../../../script/migrationPlumbing.js";
 
 type VerifyAllTaskArgs = {
   migrationNetwork: string;
@@ -49,19 +50,6 @@ const v1RegistrarAbi = parseAbi([
   "function owner() view returns (address)",
   "function controllers(address) view returns (bool)",
 ]);
-
-function dnsEncodeName(name: string): Hex {
-  const bytes: number[] = [];
-  for (const label of name.split(".")) {
-    const labelBytes = Buffer.from(label, "utf8");
-    if (labelBytes.length > 255) {
-      throw new Error(`label is too long: ${label}`);
-    }
-    bytes.push(labelBytes.length, ...labelBytes);
-  }
-  bytes.push(0);
-  return `0x${Buffer.from(bytes).toString("hex")}`;
-}
 
 async function loadDeployment(
   deploymentsDir: string,
