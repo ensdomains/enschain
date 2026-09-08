@@ -16,7 +16,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice PublicResolver that respects the ENSv2 registry.
@@ -176,7 +176,7 @@ contract PublicResolverV2 is
         if (name.length == 0) {
             return false;
         }
-        address owner = LibRegistry.findExactOwner(ROOT_REGISTRY, name, 0);
+        address owner = LibResolution.findExactOwner(ROOT_REGISTRY, name, 0);
         return
             owner == operator ||
             isApprovedForAll(owner, operator) ||

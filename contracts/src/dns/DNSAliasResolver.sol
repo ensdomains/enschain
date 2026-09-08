@@ -13,7 +13,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {ResolverProfileRewriterLib} from "../resolver/libraries/ResolverProfileRewriterLib.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @notice Gasless DNSSEC resolver that rewrites DNS names according to an alias rule encoded in
@@ -24,7 +24,7 @@ import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 /// - Replace: context is `<newName>` (no space) — replaces the entire name.
 ///
 /// After rewriting, resolves the new name through the v2 registry via
-/// `LibRegistry.findResolver()`, rewriting the node in the calldata via
+/// `LibResolution.findResolver()`, rewriting the node in the calldata via
 /// `ResolverProfileRewriterLib`.
 ///
 /// Only invoked indirectly by `DNSTLDResolver` when processing an `ENS1` TXT record.
@@ -105,7 +105,7 @@ contract DNSAliasResolver is
         returns (bytes memory)
     {
         bytes memory newName = rewriteNameWithContext(name, context);
-        (, address resolver, bytes32 node, ) = LibRegistry.findResolver(ROOT_REGISTRY, newName, 0);
+        (, address resolver, bytes32 node, ) = LibResolution.findResolver(ROOT_REGISTRY, newName, 0);
         callResolver(
             resolver,
             newName,

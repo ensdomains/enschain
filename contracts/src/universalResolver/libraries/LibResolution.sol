@@ -10,7 +10,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
-library LibRegistry {
+library LibResolution {
     /// @dev Find the valid resolver address for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
@@ -150,10 +150,10 @@ library LibRegistry {
         view
         returns (IRegistry)
     {
-        IRegistry registry = LibRegistry.findExactRegistry(rootRegistry, name, 0);
+        IRegistry registry = LibResolution.findExactRegistry(rootRegistry, name, 0);
         return
             address(registry) != address(0) &&
-            keccak256(bytes(LibRegistry.findCanonicalName(rootRegistry, registry))) ==
+            keccak256(bytes(LibResolution.findCanonicalName(rootRegistry, registry))) ==
             keccak256(name)
             ? registry
             : IRegistry(address(0));

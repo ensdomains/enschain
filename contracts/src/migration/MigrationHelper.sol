@@ -8,7 +8,7 @@ import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
@@ -131,7 +131,7 @@ contract MigrationHelper is DelegatedContractNamer {
         _transferWrappedGroups(sender, NameCoder.ETH_NODE, address(LOCKED_CONTROLLER), lockedGroups);
         for (uint256 j; j < lockedChildrenGroups.length; ++j) {
             LockedChildren calldata lc = lockedChildrenGroups[j];
-            IRegistry registry = LibRegistry.findExactRegistry(ROOT_REGISTRY, lc.parentName, 0);
+            IRegistry registry = LibResolution.findExactRegistry(ROOT_REGISTRY, lc.parentName, 0);
             if (address(registry) == address(0)) {
                 revert ParentNotMigrated(lc.parentName);
             }
