@@ -49,7 +49,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| F1 | *(optional)* Seed the ENSv1 test fixture corpus, check the shaped v1 state, and optionally hand it to a tester | `fixture seed-v1` → `verify-v1` → `handover` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
+| F1 | *(optional)* Seed the ENSv1 test fixture corpus and check the shaped v1 state | `fixture seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
@@ -350,9 +350,9 @@ prerequisites, and result:
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
    Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
-   `fixture seed-v1` → `fixture verify-v1`, and `fixture handover` to put the names in a tester's
-   wallet. **This must sit after phase 1**, which deploys the `MigrationHelper` the corpus approves,
-   **and before phase 3**, which freezes v1 registration.
+   `fixture seed-v1` → `fixture verify-v1`, passing `--fixture-owner-key` if the names should belong
+   to a tester. **This must sit after phase 1**, which deploys the `MigrationHelper` the corpus
+   approves, **and before phase 3**, which freezes v1 registration.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
    Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
@@ -419,8 +419,8 @@ pre-migration phases.
 
 The corpus seeds v1 state and gets labels reserved. It does **not** migrate names: migrating a name is
 a manual action its owner takes whenever they choose, and no phase performs it. Seeded names can be
-[handed to a tester's wallet](#handing-the-corpus-to-a-tester) so that owner is a person rather than a
-throwaway key.
+[registered to a tester's wallet](#choosing-who-owns-the-seeded-names) so that owner is a person
+rather than a throwaway key.
 
 This is test scaffolding. It is refused against live mainnet, and nothing in the canonical phases
 depends on it.
@@ -502,8 +502,9 @@ Requires `bun run compile` first, a funded operator key, and a dedicated actor m
 (`MIGRATION_FIXTURE_ACTOR_MNEMONIC`) — never a mnemonic used for anything else. Fixture names are
 distributed across five named actors, which need funding because a large share of the state shaping
 must be signed by the holder rather than batched. Those actors hold the names because shaping demands
-it, not because they are meant to keep them: to put the cohort in a tester's wallet, add
-[`--fixture-handover-to`](#handing-the-corpus-to-a-tester).
+it, not because they are meant to keep them — [nominate an owner
+wallet](#choosing-who-owns-the-seeded-names) with `--fixture-owner-key` and the names are registered
+to it instead.
 
 ```bash
 export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
@@ -571,72 +572,40 @@ not take can still be reshaped.
 > [in a rehearsal it aborts the run](#in-a-rehearsal). Until the corpus is fixed, pin the cohort with
 > `--fixture-ids` from a list the affected vectors are excluded from.
 
-### Handing the corpus to a tester
+### Choosing who owns the seeded names
 
-Seeding leaves every name on the actor its scenario names. `handover` gives the whole selection to one
-wallet instead, so a tester holds the names on v1 and can drive the migration from the app:
+By default the corpus is owned by the five actor accounts the mnemonic derives, which is fine when
+nobody but the tooling needs to touch it. To put it in a tester's hands, nominate the wallet with
+`--fixture-owner-key` and every name is registered to it from the start:
 
 ```bash
-bun run migration -- fixture handover --network sepolia \
+bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --fixture-scenarios live_now --fixture-replicas-per-vector 4 --fixture-handover-to 0x<tester>
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4 \
+  --fixture-owner-key 0x<tester key>
 ```
 
-Passing `--fixture-handover-to` to `seed-v1` runs the same three steps in order — seed, check, hand
-over — and `fork full` and `clean-testnet` take the same flag. However it is reached, the
-handover runs **after** `verify-v1`: the corpus declares which actor holds each name, so the shaped
-state is proved as written before that owner stops being the one holding it. Afterwards `verify-v1`
-expects the recipient instead, which it reads back from the run state, so it can be re-run at any
-point.
+`fork full` and `clean-testnet` take the same flag. It is a **key**, not an address, and that is the
+whole trick: shaping a name means signing as its owner — reverse claims, operator approvals, unwraps,
+records written after the name leaves the batcher — so an owner we can sign for can be the tester
+from the first block. Nothing is transferred afterwards, which means nothing can refuse to be: the
+196 names carrying `CANNOT_TRANSFER`, which no transfer could ever have moved, are the tester's on
+the same terms as every other name. Subnames come with the name above them, so they can actually be
+migrated.
 
-Ownership is all that moves: fuses, expiry, resolver, records and wrapper form are untouched, and an
-unwrapped name's registry record travels with its token. One recipient owns everything — a second
-address in the same work directory is refused, because splitting a cohort across wallets is almost
-always a mistake. Nothing asks the recipient to sign, and the run is idempotent: a name already held
-is left alone, so an interrupted handover resumes.
+The key covers `owner_a`, `owner_b` and `owner_c` — every alias the corpus ever names as an owner.
+`operator` and `attacker` stay on the mnemonic, because each is only meaningful as an address the
+owner is *not*.
 
-Three limits worth knowing before pointing a tester at the result:
+> **What one wallet costs.** Collapsing the three owner aliases onto one account means the scenarios
+> that turn on owners differing no longer do: 356 `transfer_registrant` steps become self-transfers,
+> 2,034 scenarios name an `alternate_owner` that is now the owner itself, and 16 of the 48 helper
+> batches stop spanning more than one owner — so `MigrationHelper`'s per-owner grouping goes
+> unexercised. Nothing fails; the coverage is simply narrower. Seed without the flag when the point
+> is to exercise the migration paths rather than to hand someone a wallet.
 
-- **Some names cannot move at all.** The wrapper refuses a name with `CANNOT_TRANSFER` burned — 196
-  corpus names, 172 of them `live_now`, all `wrapped_locked` or `locked_child` — and refuses an
-  emancipated `.eth` 2LD that has reached its grace period, or an emancipated subname past its
-  expiry. Those stay with their actor, and so does the parent of a subname that stayed: moving the
-  parent alone would split a pair that has to travel together, since neither wallet could then drive
-  the scenario. The run reports each one with its reason rather than failing.
-- **Blanket operator approvals lapse; frozen per-token ones do not.** 1,288 corpus names approve
-  `MigrationHelper` or a fixture operator with `setApprovalForAll`, which is scoped to the owner that
-  granted it, so all of those are inert the moment the name moves — a recipient migrating through a
-  helper route grants their own first, which is what the app asks for anyway. A further 72 names (56
-  `live_now`) instead approve a single wrapper token and then burn `CANNOT_APPROVE`.
-  `NameWrapper._beforeTransfer` clears a token approval only while that fuse is *unburned*, so those
-  approvals survive the transfer and the recipient cannot revoke them. The residual capability is
-  narrow — a stale approval feeds only `canExtendSubnames` and `upgrade`, never transfer authority or
-  `canModifyName` — but it is real, and it is deliberate: those scenarios exist to exercise a frozen
-  approval.
-- **Reverse records stay behind.** `set_reverse_claim` writes the *claiming actor's* reverse node,
-  not the owner's, so the actors keep reverse records naming fixtures they no longer hold and the
-  recipient's primary name is untouched.
-
-Child scenarios move with their parent 2LD, which seeding leaves wrapped to the batcher. Without it
-the recipient could never migrate the subname: `MigrationHelper` reverts `ParentNotMigrated` until
-the name above it has migrated, and only the parent's owner can do that. The pair is all-or-nothing —
-a subname the wrapper refuses to move leaves its parent on the batcher.
-
-A cohort travels in batches, not one transaction per name. Each holder grants the batcher operator
-rights once per registry — at most six transactions for the three owner actors — and every transfer
-then runs inside the batcher. The grant confers nothing over a name once it has reached the
-recipient.
-
-The run writes `<work-dir>/fixture-handover.json`: what moved, with transaction hashes, and what was
-left behind with the reason. It is written even when the run fails partway, and a rerun merges into
-it rather than replacing it, so the record of what moved survives the reruns the command invites.
-A `completed` flag says whether the batches finished; after an interrupted run, re-run the command
-before re-running `verify-v1`.
-
-After a handover `verify-v1` expects the recipient wherever the corpus names the actor the name was
-taken from, and says so — its summary reports how many ownership assertions were satisfied that way
-rather than against the declared actor. A name that moved off any other holder keeps asserting
-exactly what the corpus declares.
+The operator key (`--fixture-private-key`) is separate and still needed: it pays for the batcher and
+the registrations. Only ownership moves to the nominated wallet.
 
 ### Reserving the fixture labels on v2
 
@@ -687,8 +656,8 @@ bun run migration -- fork full --network sepolia \
 The fixture flags are spelled exactly as they are standalone — every one carries the `--fixture-`
 prefix, so a cohort selected on one is selected the same way on the other, and none of them can be
 mistaken for the rehearsal's own `--initial-limit`, `--finish-limit` or signer options. That includes
-`--fixture-handover-to <address>`, which
-[hands the seeded cohort to a tester](#handing-the-corpus-to-a-tester) once the state check passes.
+`--fixture-owner-key <key>`, which
+[registers the cohort to a tester's wallet](#choosing-who-owns-the-seeded-names).
 Keep a rehearsal cohort small:
 every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
 costs far more wall-clock than the rest of the rehearsal put together.
@@ -869,7 +838,6 @@ and idempotency rules.
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
 | `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
 | `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
-| `fixture handover` | Give every seeded name in the selection to one wallet, so a tester holds them on v1 (after `verify-v1`) |
 | `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the phase-1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
@@ -933,6 +901,7 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
 | `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--fixture-private-key` is omitted |
+| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted |
 | `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
 | `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |

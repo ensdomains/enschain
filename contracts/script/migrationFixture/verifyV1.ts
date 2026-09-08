@@ -10,11 +10,9 @@ import {
   isChild,
   isWrapped,
   isLocked,
-  preMigrationOwnerAlias,
   resolveFuses,
   resolveOptionalRef,
   resolveRef,
-  stripActorPrefix,
   v1Form,
   type RefContext,
 } from "./scenario.js";
@@ -87,9 +85,6 @@ type Check = {
     ok: boolean,
     result: any,
   ) => { expected: string; actual: string } | null;
-  /// How many of this name's ownership assertions expect a handover recipient
-  /// instead of the actor the corpus declares.
-  relaxedOwners?: number;
 };
 
 const addrEq = (a: unknown, b: Address) =>
@@ -214,7 +209,6 @@ export function buildV1Checks(
   row: FixtureEnvelope,
   ctx: RefContext,
   addresses: V1Addresses,
-  handover?: { to: Address; from?: Address },
 ): Check[] {
   const scenario = row.scenario;
   const pre = scenario.v1.expected_pre_migration;
@@ -234,27 +228,7 @@ export function buildV1Checks(
   // naming the wrapper, a counterparty contract or a different actor still
   // resolve as written, and so do the record values spelled with the same
   // alias, which describe content rather than ownership.
-  const terminalAlias = preMigrationOwnerAlias(scenario);
-  // The relaxation is doubly gated: the ref has to name the terminal owner, and
-  // the name has to have been taken off the address that alias resolves to. A
-  // name that had drifted to some other holder before the handover keeps
-  // asserting exactly what the corpus declares, so the drift still surfaces.
-  // A name already at the recipient records no origin, and cannot: what it
-  // relaxes is the only reading left.
-  const relaxes =
-    handover &&
-    (handover.from === undefined ||
-      addrEq(handover.from, resolveRef(terminalAlias, ctx)));
-  let relaxed = 0;
-  const ownerRef = (ref: string | null | undefined): Address => {
-    if (relaxes && ref && stripActorPrefix(ref) === terminalAlias) {
-      relaxed += 1;
-      return handover.to;
-    }
-    return resolveRef(ref, ctx);
-  };
-
-  const registryOwner = ownerRef(pre.registry_owner_ref);
+  const registryOwner = resolveRef(pre.registry_owner_ref, ctx);
   checks.push({
     ...base,
     field: "registry.owner",
@@ -309,7 +283,7 @@ export function buildV1Checks(
   });
 
   // The registrar token tracks the 2LD, which for a child scenario is its parent.
-  const registrarOwner = ownerRef(pre.base_registrar_owner_ref);
+  const registrarOwner = resolveRef(pre.base_registrar_owner_ref, ctx);
   checks.push({
     ...base,
     field: child ? "baseRegistrar.ownerOf(parent)" : "baseRegistrar.ownerOf",
@@ -329,7 +303,7 @@ export function buildV1Checks(
   });
 
   const wrapperOwner = pre.wrapper_owner_ref
-    ? ownerRef(pre.wrapper_owner_ref)
+    ? resolveRef(pre.wrapper_owner_ref, ctx)
     : zeroAddress;
   checks.push({
     ...base,
@@ -409,7 +383,6 @@ export function buildV1Checks(
     ...recordChecks(row, ctx, resolver, node, pre.records ?? [], { form }),
   );
 
-  for (const check of checks) check.relaxedOwners = relaxed;
   return checks;
 }
 
@@ -418,10 +391,6 @@ export type V1VerifyResult = {
   checks: number;
   issues: V1Issue[];
   byField: Record<string, number>;
-  /// Ownership assertions that were satisfied against a handover recipient
-  /// rather than the actor the corpus declares. A non-zero count means the run
-  /// checked something weaker than its own summary line otherwise implies.
-  relaxedOwnerChecks: number;
 };
 
 /// Reads the shaped v1 state back and compares it with what each scenario says
@@ -431,16 +400,9 @@ export async function verifySeededV1State(
   rows: FixtureEnvelope[],
   ctx: RefContext,
   addresses: V1Addresses,
-  handedOver: Map<string, { to: Address; from?: Address }> = new Map(),
   batchSize = 400,
 ): Promise<V1VerifyResult> {
-  const checks = rows.flatMap((row) =>
-    buildV1Checks(row, ctx, addresses, handedOver.get(row.fixture_id)),
-  );
-  const relaxedOwnerChecks = rows.reduce((total, row) => {
-    const first = checks.find((c) => c.fixtureId === row.fixture_id);
-    return total + (first?.relaxedOwners ?? 0);
-  }, 0);
+  const checks = rows.flatMap((row) => buildV1Checks(row, ctx, addresses));
   const issues: V1Issue[] = [];
 
   for (let i = 0; i < checks.length; i += batchSize) {
@@ -469,11 +431,5 @@ export async function verifySeededV1State(
   for (const issue of issues) {
     byField[issue.field] = (byField[issue.field] ?? 0) + 1;
   }
-  return {
-    names: rows.length,
-    checks: checks.length,
-    issues,
-    byField,
-    relaxedOwnerChecks,
-  };
+  return { names: rows.length, checks: checks.length, issues, byField };
 }

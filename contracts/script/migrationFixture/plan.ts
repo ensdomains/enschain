@@ -28,7 +28,6 @@ import {
   type SetupStep,
 } from "./types.js";
 
-import { sameAddress } from "./config.js";
 import {
   BaseRegistrar,
   EnsRegistry,
@@ -132,7 +131,7 @@ export function tokenIdOf(label: string): bigint {
 /// `signer` and `from` are separate because an approved operator may send on
 /// the holder's behalf, which is how a whole cohort moves in batches instead of
 /// one transaction per name.
-export function transferNameCalls(args: {
+function transferNameCalls(args: {
   wrapped: boolean;
   signer: Signer;
   from: Address;
@@ -926,178 +925,38 @@ export function planSetupSteps(
         tokenId,
         node,
         addresses: ctx.addresses,
-        label: `${row.fixture_id} handover`,
+        label: `${row.fixture_id} owner transfer`,
+      }),
+    );
+  }
+
+  // A subname's parent goes to its owner too. Creating the child needs the
+  // batcher to hold the parent, so the parent is wrapped to the batcher and
+  // would otherwise stay there — leaving a holder who can never migrate the
+  // subname, because `MigrationHelper` refuses one whose parent has not
+  // migrated and only the parent's owner can migrate the parent.
+  //
+  // The corpus declares whose it should be and the planner has always ignored
+  // it, defaulting to the batcher; use the declared owner, falling back to the
+  // child's. The parent carries `CANNOT_UNWRAP` and never `CANNOT_TRANSFER`, so
+  // this always moves.
+  if (child) {
+    const parentOwner = stripActorPrefix(
+      scenario.v1.parent_fixture?.owner_actor ?? terminalOwner,
+    );
+    calls.push(
+      ...transferNameCalls({
+        wrapped: true,
+        signer: BATCHER,
+        from: ctx.batcher,
+        to: resolveRef(parentOwner, ctx),
+        tokenId,
+        node: topNode,
+        addresses: ctx.addresses,
+        label: `${row.fixture_id} parent owner transfer`,
       }),
     );
   }
 
   return calls;
-}
-
-/// The wrapper treats a `.eth` 2LD as expiring when its grace period opens,
-/// which is what decides whether a transfer is refused.
-const WRAPPER_GRACE_PERIOD = 90n * 86_400n;
-
-/// What a name looks like on chain when a handover is planned, read once per
-/// name rather than replayed from the seeding plan — a name may have moved
-/// between actors during setup, and a rerun must see where it actually is.
-export type HandoverState = {
-  /// NameWrapper owner, fuses and expiry for the name's own node.
-  wrapperOwner: Address;
-  wrapperFuses: number;
-  wrapperExpiry: bigint;
-  /// BaseRegistrar registrant of the 2LD. For a wrapped name this is the
-  /// NameWrapper itself.
-  registrant: Address;
-  /// The same wrapper reading for a child's parent 2LD.
-  parentWrapperOwner?: Address;
-  parentWrapperFuses?: number;
-  parentWrapperExpiry?: bigint;
-  /// Seconds since the epoch the plan is built against.
-  now: bigint;
-};
-
-/// A name, or a child's parent, the handover cannot move, and why.
-export type HandoverSkip = { subject: string; reason: string };
-
-export type HandoverPlan = {
-  calls: PlannedCall[];
-  skips: HandoverSkip[];
-  /// Addresses the plan moves a token away from. Each has to approve the
-  /// batcher before the batch runs.
-  holders: Address[];
-  /// Who holds the name itself right now — which is what a later check has to
-  /// compare against, since it may not be the actor the corpus declares.
-  nameHolder: Address;
-};
-
-/// Mirrors `NameWrapper._beforeTransfer`: an emancipated name is frozen once it
-/// expires, and a live one is frozen by `CANNOT_TRANSFER`. Reproducing the rule
-/// here turns a whole batch that would revert on one member into a name that is
-/// reported as left behind.
-function wrapperTransferBlock(
-  fuses: number,
-  expiry: bigint,
-  now: bigint,
-): string | null {
-  const effective =
-    fuses & FUSES.IS_DOT_ETH ? expiry - WRAPPER_GRACE_PERIOD : expiry;
-  if (effective < now) {
-    return fuses & FUSES.PARENT_CANNOT_CONTROL ? "expired" : null;
-  }
-  return fuses & FUSES.CANNOT_TRANSFER ? "CANNOT_TRANSFER burned" : null;
-}
-
-/// Calls that give one seeded name to `to`, planned against what the chain
-/// currently says rather than against the plan that shaped it.
-///
-/// Every call is sent by the batcher, which the holders approve as an operator
-/// beforehand, so a cohort moves in batches rather than one transaction per
-/// name. A name already at the target plans nothing, which makes a rerun a
-/// no-op and lets an interrupted run resume.
-///
-/// A child's parent moves too: it stays wrapped to the batcher throughout
-/// setup, and the helper refuses a subname whose parent has not migrated, so a
-/// recipient holding only the child could never migrate it.
-export function planHandover(
-  row: FixtureEnvelope,
-  ctx: PlanContext,
-  to: Address,
-  state: HandoverState,
-): HandoverPlan {
-  const scenario = row.scenario;
-  const form = v1Form(scenario);
-  const topLabel = scenario.top_level_label;
-  const wrapped = isWrapped(form);
-
-  type Subject = {
-    subject: string;
-    wrapped: boolean;
-    holder: Address;
-    fuses: number;
-    expiry: bigint;
-    tokenId: bigint;
-    node: Hex;
-  };
-
-  /// Why this subject cannot move, or null when it can. A subject already at
-  /// the recipient needs no calls and blocks nothing.
-  const refusal = (s: Subject): string | null => {
-    if (sameAddress(s.holder, to)) return null;
-    if (s.holder === zeroAddress) return "no v1 holder";
-    if (!s.wrapped && sameAddress(s.holder, ctx.addresses.wrapper)) {
-      return "held by the NameWrapper";
-    }
-    return s.wrapped
-      ? wrapperTransferBlock(s.fuses, s.expiry, state.now)
-      : null;
-  };
-
-  const name: Subject = {
-    subject: scenario.name,
-    wrapped,
-    holder: wrapped ? state.wrapperOwner : state.registrant,
-    fuses: state.wrapperFuses,
-    expiry: state.wrapperExpiry,
-    tokenId: tokenIdOf(topLabel),
-    node: namehash(scenario.name) as Hex,
-  };
-
-  // A subname and the name above it are one unit. The helper refuses a subname
-  // whose parent has not migrated, and only the parent's owner can migrate the
-  // parent — so a wallet holding one without the other can drive neither. Both
-  // are therefore decided before either is scheduled: whichever is refused, the
-  // pair stays put.
-  const subjects: Subject[] = [name];
-  if (isChild(form)) {
-    subjects.push({
-      subject: `${topLabel}.eth`,
-      wrapped: true,
-      holder: state.parentWrapperOwner ?? zeroAddress,
-      fuses: state.parentWrapperFuses ?? 0,
-      expiry: state.parentWrapperExpiry ?? 0n,
-      tokenId: tokenIdOf(topLabel),
-      node: namehash(`${topLabel}.eth`) as Hex,
-    });
-  }
-
-  const refusals = subjects.map((s) => ({ subject: s, reason: refusal(s) }));
-  const refused = refusals.find((r) => r.reason);
-  if (refused) {
-    return {
-      calls: [],
-      skips: refusals.map((r) => ({
-        subject: r.subject.subject,
-        reason:
-          r.reason ??
-          (r.subject === name ? "its parent stayed" : "its child stayed"),
-      })),
-      holders: [],
-      nameHolder: name.holder,
-    };
-  }
-
-  const calls: PlannedCall[] = [];
-  const holders: Address[] = [];
-  for (const s of subjects) {
-    if (sameAddress(s.holder, to)) continue;
-    holders.push(s.holder);
-    calls.push(
-      ...transferNameCalls({
-        wrapped: s.wrapped,
-        signer: BATCHER,
-        from: s.holder,
-        to,
-        tokenId: s.tokenId,
-        node: s.node,
-        addresses: ctx.addresses,
-        label:
-          s.subject === scenario.name
-            ? `${row.fixture_id} handover`
-            : `${row.fixture_id} handover (${s.subject})`,
-      }),
-    );
-  }
-
-  return { calls, skips: [], holders, nameHolder: name.holder };
 }

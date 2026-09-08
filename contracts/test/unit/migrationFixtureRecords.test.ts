@@ -1,28 +1,19 @@
 import { describe, expect, it } from "bun:test";
-import {
-  decodeFunctionData,
-  getAddress,
-  namehash,
-  zeroAddress,
-  type Address,
-} from "viem";
+import { zeroAddress, type Address } from "viem";
 
 import { isRetryableRpcRequest } from "../../script/migration.js";
 import {
   clearedRecord,
-  planHandover,
+  planSetupSteps,
   recordValue,
-  tokenIdOf,
-  type HandoverState,
   type PlanContext,
 } from "../../script/migrationFixture/plan.js";
+import { accounts } from "../../script/migrationFixture/config.js";
 import { assertSeedable } from "../../script/migrationFixture.js";
-import { buildV1Checks } from "../../script/migrationFixture/verifyV1.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
-import {
-  FUSES,
-  type FixtureEnvelope,
-  type RecordSpec,
+import type {
+  FixtureEnvelope,
+  RecordSpec,
 } from "../../script/migrationFixture/types.js";
 
 const OWNER = "0x00000000000000000000000000000000000000a1" as Address;
@@ -212,18 +203,82 @@ describe("retryable rpc requests", () => {
   });
 });
 
-const REGISTRAR = "0x00000000000000000000000000000000000000b1" as Address;
-const WRAPPER = "0x00000000000000000000000000000000000000b2" as Address;
-const BATCHER = "0x00000000000000000000000000000000000000b3" as Address;
-const TESTER = "0x00000000000000000000000000000000000000c1" as Address;
+const OWNER_KEY =
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
+const KEY_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
+const MNEMONIC = "test test test test test test test test test test test junk";
+
+describe("the wallet that owns the seeded names", () => {
+  it("derives every actor from the mnemonic when no owner is nominated", () => {
+    const derived = accounts({ fixtureActorMnemonic: MNEMONIC } as never);
+    expect(derived.map((a) => a.alias)).toEqual([
+      "owner_a",
+      "owner_b",
+      "owner_c",
+      "operator",
+      "attacker",
+    ]);
+    // Five accounts, five addresses.
+    expect(new Set(derived.map((a) => a.account.address)).size).toBe(5);
+  });
+
+  it("puts the three owner aliases on the nominated key", () => {
+    const derived = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: OWNER_KEY,
+    } as never);
+    const address = (alias: string) =>
+      derived.find((a) => a.alias === alias)!.account.address;
+
+    for (const alias of ["owner_a", "owner_b", "owner_c"]) {
+      expect(address(alias)).toBe(KEY_ADDRESS);
+    }
+    // The counterparties stay separate: an operator or an attacker means
+    // nothing if it is the owner.
+    expect(address("operator")).not.toBe(KEY_ADDRESS);
+    expect(address("attacker")).not.toBe(KEY_ADDRESS);
+    expect(address("operator")).not.toBe(address("attacker"));
+  });
+
+  it("still needs the mnemonic, which the counterparties come from", () => {
+    expect(() => accounts({ fixtureOwnerKey: OWNER_KEY } as never)).toThrow(
+      /fixture-actor-mnemonic/,
+    );
+  });
+
+  it("refuses a key that is not one", () => {
+    expect(() =>
+      accounts({
+        fixtureActorMnemonic: MNEMONIC,
+        fixtureOwnerKey: "0xnope",
+      } as never),
+    ).toThrow(/fixture-owner-key/);
+  });
+});
+
+const PLAN_BATCHER = "0x00000000000000000000000000000000000000b3" as Address;
+const PLAN_WRAPPER = "0x00000000000000000000000000000000000000b2" as Address;
+const PARENT_OWNER = "0x00000000000000000000000000000000000000a2" as Address;
 
 const planCtx = {
-  ...ctx,
-  batcher: BATCHER,
+  actors: new Map([
+    ["owner_a", OWNER],
+    ["owner_b", PARENT_OWNER],
+  ]),
+  fixtureContracts: {},
+  v1Address: (name: string) => {
+    if (name === "PublicResolver")
+      return "0x00000000000000000000000000000000000000b6";
+    throw new Error(`unexpected v1 lookup: ${name}`);
+  },
+  v2Address: (name: string) => {
+    throw new Error(`unexpected v2 lookup: ${name}`);
+  },
+  batcher: PLAN_BATCHER,
   addresses: {
-    baseRegistrar: REGISTRAR,
+    baseRegistrar: "0x00000000000000000000000000000000000000b1",
     registry: "0x00000000000000000000000000000000000000b4",
-    wrapper: WRAPPER,
+    wrapper: PLAN_WRAPPER,
     controller: "0x00000000000000000000000000000000000000b5",
     publicResolver: "0x00000000000000000000000000000000000000b6",
     reverseRegistrar: "0x00000000000000000000000000000000000000b7",
@@ -231,456 +286,65 @@ const planCtx = {
   },
 } as unknown as PlanContext;
 
-const NOW = 2_000_000_000n;
-const YEAR_AHEAD = NOW + 31_536_000n;
-
-const handoverEnvelope = (
-  tags: string[],
-  overrides: Record<string, any> = {},
-): FixtureEnvelope =>
+const childRow = (parentOwner?: string): FixtureEnvelope =>
   ({
-    fixture_id: "FX-H01",
-    source_scenario_id: "FX-H",
-    label: "fxh",
-    name: "fxh.eth",
+    fixture_id: "FX-C01",
+    source_scenario_id: "FX-C",
+    label: "fxc",
+    name: "sub.fxc.eth",
     scenario: {
-      scenario_id: "FX-H01",
-      name: "fxh.eth",
-      top_level_label: "fxh",
-      child_label: null,
-      tags,
+      scenario_id: "FX-C01",
+      name: "sub.fxc.eth",
+      top_level_label: "fxc",
+      child_label: "sub",
+      tags: ["locked_child"],
       execution: { scenario: "live_now", expected_result: "success" },
       actors: { pre_migration_owner: "owner_a" },
       v1: {
-        registration: { label: "fxh", owner_actor: "owner_a" },
-        setup_steps: [],
+        registration: { label: "fxc", owner_actor: "owner_a" },
+        parent_fixture: parentOwner ? { owner_actor: parentOwner } : null,
+        setup_steps: [
+          {
+            action: "ensure_wrapped_parent_and_child",
+            wrapped_owner_actor: "owner_a",
+          },
+        ],
         expected_pre_migration: {},
       },
-      ...overrides,
     },
   }) as unknown as FixtureEnvelope;
 
-const liveState = (over: Partial<HandoverState> = {}): HandoverState => ({
-  wrapperOwner: zeroAddress,
-  wrapperFuses: 0,
-  wrapperExpiry: 0n,
-  registrant: zeroAddress,
-  now: NOW,
-  ...over,
-});
-
-const decoded = (call: { target: Address; data: `0x${string}` }) =>
-  decodeFunctionData({
-    abi: [...ERC721_HANDOVER_ABI, ...ERC1155_HANDOVER_ABI],
-    data: call.data,
-  });
-
-const ERC721_HANDOVER_ABI = [
-  {
-    type: "function",
-    name: "transferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "reclaim",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "id", type: "uint256" },
-      { name: "owner", type: "address" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const ERC1155_HANDOVER_ABI = [
-  {
-    type: "function",
-    name: "safeTransferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "id", type: "uint256" },
-      { name: "amount", type: "uint256" },
-      { name: "data", type: "bytes" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-describe("handing a seeded name to a wallet", () => {
-  it("reclaims an unwrapped name before transferring it", () => {
-    const plan = planHandover(
-      handoverEnvelope(["unwrapped"]),
-      planCtx,
-      TESTER,
-      liveState({ registrant: OWNER }),
+describe("a subname's parent", () => {
+  const parentTransfer = (row: FixtureEnvelope) =>
+    planSetupSteps(row, planCtx).filter((c) =>
+      c.label.includes("parent owner transfer"),
     );
 
-    expect(plan.skips).toEqual([]);
-    expect(plan.holders).toEqual([OWNER]);
-    expect(plan.calls.map((c) => c.signer.kind)).toEqual([
-      "batcher",
-      "batcher",
-    ]);
-    // Reclaim first: after the token moves the sender loses standing to make it.
-    const [reclaim, transfer] = plan.calls.map(decoded);
-    expect(reclaim.functionName).toBe("reclaim");
-    expect(reclaim.args?.[1]).toBe(getAddress(TESTER));
-    expect(transfer.functionName).toBe("transferFrom");
-    expect(transfer.args?.[0]).toBe(getAddress(OWNER));
-    expect(transfer.args?.[1]).toBe(getAddress(TESTER));
-    const tokenId = tokenIdOf("fxh");
-    expect(reclaim.args?.[0]).toBe(tokenId);
-    expect(transfer.args?.[2]).toBe(tokenId);
+  it("goes to the owner the corpus declares for it", () => {
+    // Creating the child needs the batcher to hold the parent, so seeding wraps
+    // it there. Left there, the holder of the subname could never migrate it.
+    const calls = parentTransfer(childRow("owner_b"));
+    expect(calls).toHaveLength(1);
+    expect(calls[0].signer).toEqual({ kind: "batcher" });
+    expect(calls[0].target).toBe(PLAN_WRAPPER);
   });
 
-  it("moves a wrapped name with one wrapper transfer", () => {
-    const plan = planHandover(
-      handoverEnvelope(["wrapped_unlocked"]),
-      planCtx,
-      TESTER,
-      liveState({ wrapperOwner: OWNER, wrapperExpiry: YEAR_AHEAD }),
-    );
-
-    expect(plan.calls).toHaveLength(1);
-    expect(plan.calls[0].target).toBe(WRAPPER);
-    const transfer = decoded(plan.calls[0]);
-    expect(transfer.functionName).toBe("safeTransferFrom");
-    expect(transfer.args?.slice(0, 2)).toEqual([
-      getAddress(OWNER),
-      getAddress(TESTER),
-    ]);
-    // The wrapper token is the namehash, not the registrar's labelhash id.
-    expect(transfer.args?.[2]).toBe(BigInt(namehash("fxh.eth")));
-    expect(transfer.args?.[3]).toBe(1n);
+  it("falls back to the child's owner when none is declared", () => {
+    expect(parentTransfer(childRow())).toHaveLength(1);
   });
 
-  it("leaves a name whose transfer fuse is burned", () => {
-    const plan = planHandover(
-      handoverEnvelope(["wrapped_locked"]),
-      planCtx,
-      TESTER,
-      liveState({
-        wrapperOwner: OWNER,
-        wrapperFuses: FUSES.CANNOT_TRANSFER,
-        wrapperExpiry: YEAR_AHEAD,
-      }),
-    );
-
-    expect(plan.calls).toEqual([]);
-    expect(plan.skips).toEqual([
-      { subject: "fxh.eth", reason: "CANNOT_TRANSFER burned" },
-    ]);
-  });
-
-  it("leaves an emancipated name that has reached its grace period", () => {
-    const plan = planHandover(
-      handoverEnvelope(["wrapped_locked"]),
-      planCtx,
-      TESTER,
-      liveState({
-        wrapperOwner: OWNER,
-        // The wrapper treats a .eth 2LD as expiring when its grace period opens.
-        wrapperFuses: FUSES.IS_DOT_ETH | FUSES.PARENT_CANNOT_CONTROL,
-        wrapperExpiry: NOW + 1n,
-      }),
-    );
-
-    expect(plan.calls).toEqual([]);
-    expect(plan.skips).toEqual([{ subject: "fxh.eth", reason: "expired" }]);
-  });
-
-  it("plans nothing for a name the wallet already holds", () => {
-    const plan = planHandover(
-      handoverEnvelope(["unwrapped"]),
-      planCtx,
-      TESTER,
-      liveState({ registrant: TESTER }),
-    );
-
-    expect(plan.calls).toEqual([]);
-    expect(plan.skips).toEqual([]);
-    expect(plan.holders).toEqual([]);
-  });
-
-  it("moves a child's parent as well, so the child can be migrated", () => {
-    const child = handoverEnvelope(["locked_child"], {
-      name: "sub.fxh.eth",
-      child_label: "sub",
-    });
-    const plan = planHandover(
-      child,
-      planCtx,
-      TESTER,
-      liveState({
-        wrapperOwner: OWNER,
-        wrapperExpiry: YEAR_AHEAD,
-        parentWrapperOwner: BATCHER,
-        parentWrapperExpiry: YEAR_AHEAD,
-      }),
-    );
-
-    expect(plan.calls).toHaveLength(2);
-    expect(plan.holders).toEqual([OWNER, BATCHER]);
-    const [childCall, parentCall] = plan.calls.map(decoded);
-    expect(plan.calls[0].target).toBe(WRAPPER);
-    expect(plan.calls[1].target).toBe(WRAPPER);
-    expect(childCall.args?.[0]).toBe(getAddress(OWNER));
-    expect(childCall.args?.[2]).toBe(BigInt(namehash("sub.fxh.eth")));
-    expect(parentCall.args?.[0]).toBe(getAddress(BATCHER));
-    expect(parentCall.args?.[2]).toBe(BigInt(namehash("fxh.eth")));
-    for (const call of [childCall, parentCall]) {
-      expect(call.args?.[1]).toBe(getAddress(TESTER));
-    }
-  });
-
-  it("keeps a refused child's parent with the batcher", () => {
-    const child = handoverEnvelope(["locked_child"], {
-      name: "sub.fxh.eth",
-      child_label: "sub",
-    });
-    const plan = planHandover(
-      child,
-      planCtx,
-      TESTER,
-      liveState({
-        wrapperOwner: OWNER,
-        wrapperFuses: FUSES.CANNOT_TRANSFER,
-        wrapperExpiry: YEAR_AHEAD,
-        parentWrapperOwner: BATCHER,
-        parentWrapperExpiry: YEAR_AHEAD,
-      }),
-    );
-
-    // Moving the parent alone would split the pair: the recipient cannot
-    // migrate a subname it does not hold, and the actor left holding the
-    // subname can no longer migrate the name above it.
-    expect(plan.calls).toEqual([]);
-    expect(plan.holders).toEqual([]);
-    expect(plan.skips).toEqual([
-      { subject: "sub.fxh.eth", reason: "CANNOT_TRANSFER burned" },
-      { subject: "fxh.eth", reason: "its child stayed" },
-    ]);
-  });
-
-  it("keeps a movable child with a parent that cannot move", () => {
-    const child = handoverEnvelope(["locked_child"], {
-      name: "sub.fxh.eth",
-      child_label: "sub",
-    });
-    const plan = planHandover(child, planCtx, TESTER, {
-      wrapperOwner: OWNER,
-      wrapperFuses: 0,
-      // The child is live...
-      wrapperExpiry: YEAR_AHEAD,
-      registrant: zeroAddress,
-      parentWrapperOwner: BATCHER,
-      // ...while its 2LD parent has entered the grace period the wrapper
-      // treats as expiry, which only the parent's fuses make fatal.
-      parentWrapperFuses: FUSES.IS_DOT_ETH | FUSES.PARENT_CANNOT_CONTROL,
-      parentWrapperExpiry: NOW + 1n,
-      now: NOW,
-    });
-
-    // Moving the child alone would leave a subname its holder can never
-    // migrate, because the helper reverts until the parent has.
-    expect(plan.calls).toEqual([]);
-    expect(plan.holders).toEqual([]);
-    expect(plan.skips).toEqual([
-      { subject: "sub.fxh.eth", reason: "its parent stayed" },
-      { subject: "fxh.eth", reason: "expired" },
-    ]);
-  });
-
-  it("leaves a name whose holder is gone, and one the wrapper holds", () => {
-    const absent = planHandover(
-      handoverEnvelope(["unwrapped"]),
-      planCtx,
-      TESTER,
-      liveState({ registrant: zeroAddress }),
-    );
-    expect(absent.calls).toEqual([]);
-    expect(absent.skips).toEqual([
-      { subject: "fxh.eth", reason: "no v1 holder" },
-    ]);
-
-    const wrapped = planHandover(
-      handoverEnvelope(["unwrapped"]),
-      planCtx,
-      TESTER,
-      liveState({ registrant: WRAPPER }),
-    );
-    expect(wrapped.calls).toEqual([]);
-    expect(wrapped.skips).toEqual([
-      { subject: "fxh.eth", reason: "held by the NameWrapper" },
-    ]);
-  });
-
-  it("moves an expired name that was never emancipated", () => {
-    const plan = planHandover(
-      handoverEnvelope(["wrapped_unlocked"]),
-      planCtx,
-      TESTER,
-      liveState({
-        wrapperOwner: OWNER,
-        // Expired, but PARENT_CANNOT_CONTROL is clear, so the wrapper still
-        // allows the transfer.
-        wrapperFuses: 0,
-        wrapperExpiry: NOW - 1n,
-      }),
-    );
-    expect(plan.skips).toEqual([]);
-    expect(plan.calls).toHaveLength(1);
-  });
-});
-
-describe("checking a handed-over name against its scenario", () => {
-  const RESOLVER = "0x00000000000000000000000000000000000000d4" as Address;
-  const OTHER_ACTOR = "0x00000000000000000000000000000000000000a2" as Address;
-  const V1 = {
-    registry: "0x00000000000000000000000000000000000000d1",
-    baseRegistrar: "0x00000000000000000000000000000000000000d2",
-    nameWrapper: "0x00000000000000000000000000000000000000d3",
-  } as const;
-
-  const refCtx = {
-    actors: new Map([
-      ["owner_a", OWNER],
-      ["owner_b", OTHER_ACTOR],
-    ]),
-    fixtureContracts: {},
-    v1Address: (name: string) => {
-      if (name === "NameWrapper") return V1.nameWrapper;
-      if (name === "PublicResolver") return RESOLVER;
-      throw new Error(`unexpected v1 lookup: ${name}`);
-    },
-    v2Address: (name: string) => {
-      throw new Error(`unexpected v2 lookup: ${name}`);
-    },
-  } as unknown as RefContext;
-
-  const row = (pre: Record<string, any>, tags: string[]): FixtureEnvelope =>
-    ({
-      fixture_id: "FX-V01",
-      label: "fxv",
-      name: "fxv.eth",
+  it("is not emitted for a name that has no parent", () => {
+    const flat = {
+      ...childRow(),
+      name: "fxc.eth",
       scenario: {
-        scenario_id: "FX-V01",
-        name: "fxv.eth",
-        top_level_label: "fxv",
-        tags,
-        actors: { pre_migration_owner: "owner_a" },
-        v1: {
-          registration: { label: "fxv", owner_actor: "owner_a" },
-          setup_steps: [],
-          expected_pre_migration: pre,
-        },
+        ...childRow().scenario,
+        name: "fxc.eth",
+        child_label: null,
+        tags: ["unwrapped"],
+        v1: { ...childRow().scenario.v1, setup_steps: [] },
       },
-    }) as unknown as FixtureEnvelope;
-
-  const expectedFor = (checks: any[], field: string) =>
-    checks.find((c) => c.field === field)?.assert(true, zeroAddress)?.expected;
-
-  it("expects the recipient on both owner records of an unwrapped name", () => {
-    const checks = buildV1Checks(
-      row(
-        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
-        ["unwrapped"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER, from: OWNER },
-    );
-    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
-    expect(expectedFor(checks, "baseRegistrar.ownerOf")).toBe(TESTER);
-  });
-
-  it("relaxes only the wrapper owner of a wrapped name", () => {
-    const checks = buildV1Checks(
-      row(
-        {
-          registry_owner_ref: "v1.NameWrapper",
-          base_registrar_owner_ref: "v1.NameWrapper",
-          wrapper_owner_ref: "owner_a",
-        },
-        ["wrapped_unlocked"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER, from: OWNER },
-    );
-    expect(expectedFor(checks, "nameWrapper.ownerOf")).toBe(TESTER);
-    expect(expectedFor(checks, "registry.owner")).toBe(V1.nameWrapper);
-    expect(expectedFor(checks, "baseRegistrar.ownerOf")).toBe(V1.nameWrapper);
-  });
-
-  it("leaves a record spelled with the same alias resolving to the actor", () => {
-    const checks = buildV1Checks(
-      row(
-        {
-          registry_owner_ref: "owner_a",
-          base_registrar_owner_ref: "owner_a",
-          resolver_ref: "v1.PublicResolver",
-          records: [{ kind: "addr", coin_type: 60, value_actor: "owner_a" }],
-        },
-        ["unwrapped"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER, from: OWNER },
-    );
-    // The alias names ownership in one place and content in the other; only the
-    // ownership reading moves.
-    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
-    expect(expectedFor(checks, "record addr(60)")).toBe(OWNER);
-  });
-
-  it("treats an unknown origin as unknown, not as the recipient", () => {
-    // A name found already at the recipient records no origin: its history is
-    // gone. Reading that absence as "it came from the recipient" would refuse
-    // to relax and fail every later check against the actor it left.
-    const checks = buildV1Checks(
-      row(
-        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
-        ["unwrapped"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER },
-    );
-    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
-
-    // Recording the recipient as the origin is what must never happen.
-    const wrong = buildV1Checks(
-      row(
-        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
-        ["unwrapped"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER, from: TESTER },
-    );
-    expect(expectedFor(wrong, "registry.owner")).toBe(OWNER);
-  });
-
-  it("keeps asserting the declared owner when the name moved off another holder", () => {
-    const checks = buildV1Checks(
-      row(
-        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
-        ["unwrapped"],
-      ),
-      refCtx,
-      V1,
-      { to: TESTER, from: OTHER_ACTOR },
-    );
-    expect(expectedFor(checks, "registry.owner")).toBe(OWNER);
+    } as unknown as FixtureEnvelope;
+    expect(parentTransfer(flat)).toEqual([]);
   });
 });

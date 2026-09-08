@@ -1,5 +1,5 @@
 import type { Address, Hex } from "viem";
-import type { HDAccount } from "viem/accounts";
+import type { LocalAccount } from "viem/accounts";
 
 export const DAY = 86_400n;
 
@@ -119,7 +119,10 @@ export type FixtureEnvelope = {
   scenario: Scenario;
 };
 
-export type FixtureActor = { alias: string; account: HDAccount };
+/// An actor and the account that signs for it. The account is any local signer
+/// rather than specifically a derived one, because the owner aliases resolve to
+/// a supplied key when a run nominates an owner wallet.
+export type FixtureActor = { alias: string; account: LocalAccount };
 
 export type FixtureRunName = {
   fixtureId: string;
@@ -140,15 +143,6 @@ export type FixtureRunName = {
   /// as it is registered, so an interrupted run can tell a finished name from
   /// one whose state is only part-shaped.
   setupComplete: boolean;
-  /// Address the name was given to after its state was shaped and checked.
-  /// Absent while the name is still held by the actor its scenario names, which
-  /// is what every other stage expects.
-  handedOverTo?: Address;
-  /// Address the name was actually taken from, read off the chain rather than
-  /// assumed from the corpus. The owner checks relax onto the recipient only
-  /// when this is the holder the scenario declares, so a name that had drifted
-  /// to some other actor keeps asserting what the corpus says.
-  handedOverFrom?: Address;
 };
 
 export type FixtureRunState = {
@@ -188,8 +182,9 @@ export type CommonOptions = {
   fixtureIds?: string;
   fixtureReplicasPerVector?: string;
   fixtureScenarios?: string;
-  /// Wallet the seeded names are given to once their state is checked.
-  fixtureHandoverTo?: Address;
+  /// Key for the wallet that owns every seeded name. Collapses the three owner
+  /// aliases onto one account, so a tester owns the corpus from registration.
+  fixtureOwnerKey?: Hex;
 };
 
 export type BatchCall = {

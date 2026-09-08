@@ -4527,7 +4527,7 @@ export type FixtureRehearsalOptions = {
   fixtureReplicasPerVector?: string;
   fixtureActorMnemonic?: string;
   fixturePrivateKey?: string;
-  fixtureHandoverTo?: string;
+  fixtureOwnerKey?: string;
 };
 
 // The corpus needs an operator account and a set of actor accounts. On a
@@ -4619,7 +4619,7 @@ async function fixtureRunOptions(
     fixtureIds: opts.fixtureIds,
     fixtureReplicasPerVector: opts.fixtureReplicasPerVector,
     rpcStateControls: base.useRpcStateControls,
-    fixtureHandoverTo: opts.fixtureHandoverTo,
+    fixtureOwnerKey: opts.fixtureOwnerKey,
   };
 }
 
@@ -5646,8 +5646,8 @@ function addFixtureRehearsalOptions(
       `Fixture operator key (generated per run ${wording.generated})`,
     )
     .option(
-      "--fixture-handover-to <address>",
-      "Give the seeded fixture names to this wallet once they are checked",
+      "--fixture-owner-key <key>",
+      "Private key of the wallet that should own every seeded fixture name",
     );
 }
 

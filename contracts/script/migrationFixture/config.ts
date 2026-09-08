@@ -5,9 +5,7 @@ import {
   createPublicClient,
   createWalletClient,
   defineChain,
-  getAddress,
   http,
-  isAddress,
   keccak256,
   stringToHex,
   type Address,
@@ -211,8 +209,19 @@ export function fixtureDigest(rows: FixtureEnvelope[]): Hex {
   return keccak256(stringToHex(rows.map((r) => r.fixture_id).join("\n")));
 }
 
+/// The aliases the corpus ever names as a name's owner. Measured across all
+/// 7,104 scenarios, a terminal owner is only ever one of these three;
+/// `operator` and `attacker` appear solely as counterparties.
+const OWNER_ALIASES = new Set(["owner_a", "owner_b", "owner_c"]);
+
 /// Builds the named actor set. Unlike the previous hash-derived scheme, an alias
 /// maps to a fixed mnemonic index so `owner_b` is the same account everywhere.
+///
+/// An owner key collapses the three owner aliases onto the one account it
+/// controls, which is what lets a tester own every seeded name from the moment
+/// it is registered rather than receiving it afterwards. The counterparties stay
+/// on the mnemonic: an operator or an attacker is only meaningful as an address
+/// the owner is *not*.
 export function accounts(opts: CommonOptions): FixtureActor[] {
   const mnemonic =
     opts.fixtureActorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
@@ -221,10 +230,43 @@ export function accounts(opts: CommonOptions): FixtureActor[] {
       "missing --fixture-actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC; use a dedicated fixture mnemonic",
     );
   }
+  const owner = optionalOwnerKey(opts);
+  const ownerAccount = owner ? privateKeyToAccount(owner) : null;
   return ACTOR_ALIASES.map((alias, accountIndex) => ({
     alias,
-    account: mnemonicToAccount(mnemonic, { accountIndex }),
+    account:
+      ownerAccount && OWNER_ALIASES.has(alias)
+        ? ownerAccount
+        : mnemonicToAccount(mnemonic, { accountIndex }),
   }));
+}
+
+/// The wallet that owns every seeded name, when one is nominated.
+///
+/// Supplying a key rather than an address is what removes the need to transfer
+/// anything: the shaping calls a name's owner has to sign — reverse claims,
+/// operator approvals, unwraps, records written after the name leaves the
+/// batcher — can be signed as the owner, so the owner can be the tester from
+/// the start. Names the wrapper would refuse to move, `CANNOT_TRANSFER` among
+/// them, are theirs on the same terms as any other.
+export function optionalOwnerKey(opts: CommonOptions): Hex | null {
+  const key =
+    opts.fixtureOwnerKey ??
+    (process.env.MIGRATION_FIXTURE_OWNER_KEY as Hex | undefined);
+  if (!key) return null;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error(
+      "malformed --fixture-owner-key: expected a 32-byte hex private key",
+    );
+  }
+  return key;
+}
+
+/// The address the owner key controls, for reporting which account a run put
+/// the corpus on.
+export function ownerAddress(opts: CommonOptions): Address | null {
+  const key = optionalOwnerKey(opts);
+  return key ? privateKeyToAccount(key).address : null;
 }
 
 export function requirePrivateKey(opts: CommonOptions): Hex {
@@ -236,26 +278,6 @@ export function requirePrivateKey(opts: CommonOptions): Hex {
       "missing --fixture-private-key or MIGRATION_FIXTURE_PRIVATE_KEY",
     );
   return key;
-}
-
-/// The wallet a handover gives the cohort to.
-///
-/// Checksummed here so a typo in a hand-copied address is caught before any
-/// name moves. There is deliberately no environment fallback: giving the corpus
-/// away is irreversible, so the recipient is named on the command line every
-/// time rather than inherited from a shell.
-/// Case-insensitive address comparison, for the many places one address read
-/// off the chain has to be matched against another that was checksummed
-/// elsewhere.
-export const sameAddress = (a: Address, b: Address): boolean =>
-  a.toLowerCase() === b.toLowerCase();
-
-export function requireHandoverTarget(opts: CommonOptions): Address {
-  const value = opts.fixtureHandoverTo ?? "";
-  if (!isAddress(value)) {
-    throw new Error(`missing or malformed handover recipient: "${value}"`);
-  }
-  return getAddress(value);
 }
 
 export function clients(opts: CommonOptions) {
