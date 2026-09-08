@@ -28,6 +28,7 @@ import {
   getGatewayEndpoint,
   type ENSRegistrationNetwork,
 } from "./exportTheGraphRegistrations.js";
+import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";
@@ -535,17 +536,16 @@ export function createRpcIndexClient(opts: {
         })) as Array<{ topics: string[] }>;
         return logs.map((log) => log.topics[1]);
       } catch (error) {
-        // Providers phrase the refusal differently — too many results, span too
-        // wide, query timed out — and all of them mean the same thing to the
-        // caller: ask for less. Anything else is a real failure and propagates.
+        // Providers phrase the refusal differently, and all of them mean the same
+        // thing to the caller: ask for less. Anything else is a real failure and
+        // propagates — including a rate limit, which a keyword match would read as a
+        // span refusal and answer by bisecting a range that was never the problem.
         const message = String(
           (error as { details?: string; message?: string })?.details ??
             (error as { message?: string })?.message ??
             error,
         );
-        if (
-          /too many|exceeds|limit|range|timeout|timed out|narrow/i.test(message)
-        ) {
+        if (isLogSpanRefusalMessage(message)) {
           throw new RangeTooWideError(message);
         }
         throw error;
@@ -648,11 +648,18 @@ export function readCsvSourceStamp(csvFile: string): {
   complete?: boolean;
 } | null {
   const path = `${csvFile}.source.json`;
+  // Absent and unparseable are different answers. A CSV with no stamp arrived out of
+  // band and is the operator's to vouch for; a stamp that will not parse is a stamp
+  // whose contents are unknown, and reading it as "no stamp" turns off both the
+  // completeness refusal and the independence refusal at once.
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return null;
+  } catch (error) {
+    throw new Error(
+      `cannot read the export stamp beside ${csvFile}: ${path} is not valid JSON (${String(error)}). ` +
+        `It records whether the export completed and which indexer produced it; delete it to vouch for the CSV yourself, or re-export.`,
+    );
   }
 }
 

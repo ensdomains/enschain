@@ -401,13 +401,30 @@ export function formatExpiry(expiry: bigint): string {
 // Wall-clock time only agrees with it on a live network: against a fork pinned to a
 // past block it runs ahead, marking names released that the chain still holds in
 // grace, and against a fork that has time-travelled it runs behind.
+/// Chain time on the v1 side, which is what the grace-period rule is about.
+///
+/// The error is not caught: substituting wall-clock time changes which names count as
+/// claimable, and on a fork pinned to a past block it marks names released that the
+/// chain still holds. A failed read has to be a failed run.
 async function readV1Timestamp(v1Client: any): Promise<bigint> {
-  try {
-    const block = await v1Client.getBlock();
-    return BigInt(block.timestamp);
-  } catch {
-    return BigInt(Math.floor(Date.now() / 1000));
+  const block = await v1Client.getBlock();
+  return BigInt(block.timestamp);
+}
+
+/// Days added to a v1 expiry to reach the expected v2 expiry.
+///
+/// A value that will not parse is an error rather than a silent default: every name
+/// in the run gets its v2 expiry from this, so a typo would seed the whole set
+/// against the wrong bonus.
+function parseBonusPeriodDays(value: string | undefined): number {
+  if (value === undefined || value === "") return 62;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `--bonus-period-days must be a non-negative number, got: ${JSON.stringify(value)}`,
+    );
   }
+  return parsed;
 }
 
 export async function verifyNameOnV1(
@@ -1437,9 +1454,7 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
-      ? 62
-      : parseInt(opts.bonusPeriodDays),
+    bonusPeriodDays: parseBonusPeriodDays(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };

@@ -7,7 +7,7 @@
 // and the next phase proceeds regardless. This turns the runbook's ordering into
 // something the tool knows about.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const PHASE_GATE_FILE = ".verifications.json";
@@ -70,7 +70,10 @@ export function recordVerification(
 ): void {
   const path = gatePath(deploymentsDir, namespace);
   const dir = join(deploymentsDir, namespace);
-  if (!existsSync(dir)) return;
+  // A namespace directory that does not exist yet is created rather than treated as
+  // a reason to drop the record. Returning silently loses the pass and sends the
+  // operator to debug the phase that refuses, not the one that recorded nothing.
+  mkdirSync(dir, { recursive: true });
 
   const gate = readGate(path);
   const records = gate.records.filter((entry) => entry.check !== record.check);

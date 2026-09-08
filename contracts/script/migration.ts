@@ -79,6 +79,7 @@ import {
   runFixtureSeedStage,
 } from "./migrationFixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
+import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   CHECKPOINT_FILE,
@@ -2776,26 +2777,8 @@ type ScannedLog = {
   transactionHash: `0x${string}`;
 };
 
-// Refusals of the span rather than of the query: the block range or the result count
-// exceeded a server-side cap. Both are answered by requesting a narrower span.
-const LOG_SCAN_SPAN_REFUSALS = [
-  "block range",
-  "range exceeds",
-  // Some providers put the offending count between the words, e.g. Infura's
-  // "range 11390003 exceeds limit of 10000", which "range exceeds" misses —
-  // without this entry that refusal is rethrown as fatal instead of bisected.
-  "exceeds limit",
-  "narrow your filter",
-  "query returned more than",
-  "more than 10000 results",
-  "log response size",
-  "response size exceeded",
-  "query timeout exceeded",
-];
-
 function isLogSpanRefusal(error: unknown): boolean {
-  const message = errorMessageChain(error).join(" ").toLowerCase();
-  return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
+  return isLogSpanRefusalMessage(errorMessageChain(error).join(" "));
 }
 
 // One event's logs over a block range, in ascending block order. Providers cap
@@ -2986,7 +2969,16 @@ async function auditV1Controllers(
     }
     return candidates;
   };
-  const keepAddresses = new Set<Address>();
+  // Keyed by v1 surface: a handoff contract is authorized on the surfaces its entry
+  // in the map names and no others, so an address kept on the ReverseRegistrar must
+  // not also be kept on the BaseRegistrar, where a grant it never needed would be
+  // left standing.
+  const keepAddressesBySurface = new Map<string, Set<Address>>();
+  const keepOn = (surface: string, address: Address) => {
+    const existing = keepAddressesBySurface.get(surface);
+    if (existing) existing.add(getAddress(address));
+    else keepAddressesBySurface.set(surface, new Set([getAddress(address)]));
+  };
   const addCandidate = (
     map: Map<Address, string>,
     address: Address,
@@ -3013,11 +3005,11 @@ async function auditV1Controllers(
       const controller = maybeLoadV2Deployment(deploymentsDir, namespace, name);
       if (!controller) continue;
       found += 1;
-      if (isActiveNamespace) keepAddresses.add(getAddress(controller.address));
       const label = `${name} (${namespace})`;
       for (const [surface, handoffNames] of V1_HANDOFF_CONTROLLER_ENTRIES) {
         if (handoffNames.includes(name)) {
           addCandidate(candidatesFor(surface), controller.address, label);
+          if (isActiveNamespace) keepOn(surface, controller.address);
         }
       }
     }
@@ -3048,6 +3040,9 @@ async function auditV1Controllers(
     registrarSecurityController,
   });
   const surfaces: Array<{
+    /// Deployment name of the surface, which is how its candidates and its keep set
+    /// are keyed. Distinct from `surface`, which is the label shown to an operator.
+    key: string;
     surface: string;
     authority: JsonDeployment;
     target: JsonDeployment;
@@ -3061,6 +3056,7 @@ async function auditV1Controllers(
     backReferenceGetter?: string;
   }> = [
     {
+      key: V1_BASE_REGISTRAR_NAME,
       surface: "v1 BaseRegistrar",
       authority: baseRegistrar,
       target: registrarRoute.target,
@@ -3074,6 +3070,7 @@ async function auditV1Controllers(
   for (const name of V1_REVERSE_REGISTRAR_NAMES) {
     const reverseRegistrar = requireV1Deployment(opts.network, name, opts);
     surfaces.push({
+      key: name,
       surface: `v1 ${name}`,
       authority: reverseRegistrar,
       target: reverseRegistrar,
@@ -3137,7 +3134,7 @@ async function auditV1Controllers(
         name,
         address,
         enabled: flags[index],
-        keep: keepAddresses.has(address),
+        keep: keepAddressesBySurface.get(surface.key)?.has(address) ?? false,
         foreign: foreignAddresses.has(address),
         target: surface.target,
         revokeFunctionName: surface.revokeFunctionName,
@@ -4985,7 +4982,14 @@ function resolveRegistry(opts: {
 }
 
 // Read whether an account holds the registrar/renew root roles on the registry.
-async function readHasRegistrarRoles(
+/// Whether the account holds *every* registrar role, which is what a completed grant
+/// looks like.
+///
+/// `hasRootRoles` is all-or-nothing (`roles & bitmap == bitmap`), so it answers "did
+/// the grant land in full" and not "can this account still write". The two questions
+/// differ for a partially-granted or partially-revoked account, and asking the wrong
+/// one reads a contract that still holds REGISTRAR as disabled.
+async function holdsAllRegistrarRoles(
   client: ReturnType<typeof publicClient>,
   registry: ContractRef,
   account: Address,
@@ -4996,6 +5000,29 @@ async function readHasRegistrarRoles(
     functionName: "hasRootRoles",
     args: [REGISTRAR_ROLES, account],
   })) as boolean;
+}
+
+/// Whether the account holds *any* registrar role, which is what still being able to
+/// write looks like. A revocation is only complete when this is false.
+///
+/// Asked one role at a time because `hasRootRoles` answers all-or-nothing, and the
+/// registry's own `roles(anyId, …)` resolves its argument through `getResource`, so it
+/// cannot be handed the root resource directly.
+async function holdsAnyRegistrarRole(
+  client: ReturnType<typeof publicClient>,
+  registry: ContractRef,
+  account: Address,
+): Promise<boolean> {
+  for (const role of [ROLES.REGISTRY.REGISTRAR, ROLES.REGISTRY.RENEW]) {
+    const held = (await client.readContract({
+      address: registry.address,
+      abi: registry.abi,
+      functionName: "hasRootRoles",
+      args: [role, account],
+    })) as boolean;
+    if (held) return true;
+  }
+  return false;
 }
 
 async function enableV2Registrar(opts: {
@@ -5024,7 +5051,7 @@ async function enableV2Registrar(opts: {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const beforeEnabled = await readHasRegistrarRoles(
+  const beforeEnabled = await holdsAllRegistrarRoles(
     client,
     registry,
     ethRegistrar,
@@ -5043,12 +5070,17 @@ async function enableV2Registrar(opts: {
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(
+  const afterEnabled = await holdsAllRegistrarRoles(
     client,
     registry,
     ethRegistrar,
   );
   console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
+  if (!afterEnabled) {
+    throw new Error(
+      `v2 registrar ${ethRegistrar} does not hold registrar/renew roles after the grant`,
+    );
+  }
 }
 
 async function disableBatchRegistrar(opts: {
@@ -5077,7 +5109,7 @@ async function disableBatchRegistrar(opts: {
     deploymentNetwork,
     "BatchRegistrar",
   );
-  const beforeEnabled = await readHasRegistrarRoles(
+  const beforeEnabled = await holdsAnyRegistrarRole(
     client,
     registry,
     batchRegistrar,
@@ -5096,7 +5128,7 @@ async function disableBatchRegistrar(opts: {
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(
+  const afterEnabled = await holdsAnyRegistrarRole(
     client,
     registry,
     batchRegistrar,
@@ -5130,7 +5162,7 @@ async function verifyBatchRegistrarDisabled(opts: {
     deploymentNetwork,
     "BatchRegistrar",
   );
-  const enabled = await readHasRegistrarRoles(client, registry, batchRegistrar);
+  const enabled = await holdsAnyRegistrarRole(client, registry, batchRegistrar);
   console.log(`batch registrar enabled: ${enabled}`);
   if (enabled)
     throw new Error("batch registrar still has registrar/renew roles");
@@ -5230,7 +5262,7 @@ async function verifyV2Registrar(opts: {
     deploymentNetwork,
     "ETHRegistrar",
   );
-  const enabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
+  const enabled = await holdsAllRegistrarRoles(client, registry, ethRegistrar);
   console.log(`v2 registrar enabled: ${enabled}`);
   if (!enabled) throw new Error("v2 registrar is not enabled");
 }
