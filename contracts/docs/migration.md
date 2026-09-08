@@ -350,9 +350,9 @@ prerequisites, and result:
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
    Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
-   `fixture seed-v1` → `fixture verify-v1`, passing `--fixture-owner-key` if the names should belong
-   to a tester. **This must sit after phase 1**, which deploys the `MigrationHelper` the corpus
-   approves, **and before phase 3**, which freezes v1 registration.
+   `fixture seed-v1` → `fixture verify-v1`, passing `--fixture-owner-key` to `seed-v1` if the names
+   should belong to a tester. **This must sit after phase 1**, which deploys the `MigrationHelper`
+   the corpus approves, **and before phase 3**, which freezes v1 registration.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
    Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
@@ -558,6 +558,10 @@ corpus does not restate those, and the check allows for them.
 It exits non-zero listing every mismatch, and writes the full set to
 `<work-dir>/fixture-v1-verification.json`. Run it before pre-migration, while a name whose state did
 not take can still be reshaped.
+
+It takes no owner option of its own. Each actor alias is resolved against the addresses the seeding
+run recorded in `<work-dir>/fixture-run.json`, so a cohort registered to a [nominated
+wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
 > **Known-bad vectors — exclude them from the cohort.** Some scenarios declare `CAN_EXTEND_EXPIRY` on
 > a `.eth` 2LD, which cannot be satisfied on-chain: the fuse is parent-controlled, and `wrapETH2LD`

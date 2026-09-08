@@ -131,12 +131,22 @@ function v1Addresses(opts: CommonOptions) {
   };
 }
 
-function refContext(
+/// Resolves the symbolic names the corpus is written in.
+///
+/// Actor identities are taken from `actorAddresses` when the caller holds the
+/// record a seeded run leaves behind. Nominating an owner wallet collapses the
+/// owner aliases onto that one account, so deriving them from the mnemonic
+/// again afterwards would resolve every owner reference to an address the run
+/// never used.
+export function refContext(
   opts: CommonOptions,
   fixtureContracts: Record<string, Address>,
+  actorAddresses?: Record<string, Address>,
 ): RefContext {
   return {
-    actors: new Map(accounts(opts).map((a) => [a.alias, a.account.address])),
+    actors: actorAddresses
+      ? new Map(Object.entries(actorAddresses))
+      : new Map(accounts(opts).map((a) => [a.alias, a.account.address])),
     fixtureContracts,
     v1Address: (name) => v1Deployment(opts, name).address,
     v2Address: (name) => v2Deployment(opts, name).address,
@@ -703,11 +713,13 @@ export async function seedV1(
     existing?.fixtureContracts ?? {},
   );
 
-  // Record the deployed batcher and counterparty contracts before registering
-  // anything. Seeding registers each name to the batcher first, so a run that
-  // fails partway leaves names owned by it; without this the next run would
-  // deploy a second batcher, fail to recognise the first as its own, and refuse
-  // to continue against names it had itself created.
+  // Record the deployed batcher, counterparty contracts and actor identities
+  // before registering anything. Seeding registers each name to the batcher
+  // first, so a run that fails partway leaves names owned by it; without this
+  // the next run would deploy a second batcher, fail to recognise the first as
+  // its own, and refuse to continue against names it had itself created. The
+  // identities are what a resumed run is held to, and what a later read-back
+  // resolves the corpus's actor aliases against.
   const startedAt = new Date().toISOString();
   const seeded: FixtureRunState = existing ?? {
     version: 2,
@@ -723,6 +735,9 @@ export async function seedV1(
   };
   seeded.batcher = batcher;
   seeded.fixtureContracts = fixtureContracts;
+  seeded.actorAddresses = Object.fromEntries(
+    actors.map((a) => [a.alias, a.account.address]),
+  );
   saveRunState(opts, seeded);
 
   const v1 = v1Addresses(opts);
@@ -950,9 +965,6 @@ export async function seedV1(
 
   const state = seeded;
   state.fixtureDigest = fixtureDigest(rows);
-  state.actorAddresses = Object.fromEntries(
-    actors.map((a) => [a.alias, a.account.address]),
-  );
   saveRunState(opts, state);
   const csv = writePremigrationCsv(opts, rows, state);
 
@@ -997,12 +1009,21 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       "no seeded names in this selection; widen the selection or seed it first",
     );
   }
+  // Aliases resolve to the accounts the seeding run put the names on, read back
+  // from its record. Deriving them here instead would report every name of an
+  // owner-key run as owned by the wrong address, since that key is nominated on
+  // `seed-v1` alone.
+  if (!Object.keys(state.actorAddresses).length) {
+    throw new Error(
+      `${runStatePath(opts)} records no actor addresses; re-run "fixture seed-v1", which resumes and records them`,
+    );
+  }
 
   const v1 = v1Addresses(opts);
   const result = await verifySeededV1State(
     client,
     rows,
-    refContext(opts, state.fixtureContracts),
+    refContext(opts, state.fixtureContracts, state.actorAddresses),
     {
       registry: v1.registry.address,
       baseRegistrar: v1.base.address,

@@ -9,7 +9,7 @@ import {
   type PlanContext,
 } from "../../script/migrationFixture/plan.js";
 import { accounts } from "../../script/migrationFixture/config.js";
-import { assertSeedable } from "../../script/migrationFixture.js";
+import { assertSeedable, refContext } from "../../script/migrationFixture.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
 import type {
   FixtureEnvelope,
@@ -253,6 +253,25 @@ describe("the wallet that owns the seeded names", () => {
         fixtureOwnerKey: "0xnope",
       } as never),
     ).toThrow(/fixture-owner-key/);
+  });
+});
+
+describe("the actors a run is checked against", () => {
+  it("resolves aliases from the addresses the run recorded", () => {
+    const recorded = { owner_a: KEY_ADDRESS, operator: OWNER };
+    // No mnemonic and no owner key: reading the state back must not depend on
+    // either, since the key is nominated on seed-v1 alone.
+    const ctx = refContext({} as never, {}, recorded);
+    expect(ctx.actors.get("owner_a")).toBe(KEY_ADDRESS);
+    expect(ctx.actors.get("operator")).toBe(OWNER);
+  });
+
+  it("derives them when nothing was recorded", () => {
+    const ctx = refContext({ fixtureActorMnemonic: MNEMONIC } as never, {});
+    const derived = accounts({ fixtureActorMnemonic: MNEMONIC } as never);
+    for (const actor of derived) {
+      expect(ctx.actors.get(actor.alias)).toBe(actor.account.address);
+    }
   });
 });
 
