@@ -518,7 +518,11 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         );
         assertEq(subregistry.getWrappedNode(), node, "getWrappedNode");
         assertEq(subregistry.getWrappedName(), name, "getWrappedName");
-        assertEq(LibResolution.findCanonicalName(rootRegistry, subregistry), name, "findCanonicalName");
+        assertEq(
+            LibResolution.findCanonicalName(rootRegistry, subregistry),
+            name,
+            "findCanonicalName"
+        );
     }
 
     function test_migrateBatch(uint8 count) external {

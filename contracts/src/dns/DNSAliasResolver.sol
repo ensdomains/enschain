@@ -105,7 +105,8 @@ contract DNSAliasResolver is
         returns (bytes memory)
     {
         bytes memory newName = rewriteNameWithContext(name, context);
-        (, address resolver, bytes32 node, ) = LibResolution.findResolver(ROOT_REGISTRY, newName, 0);
+        (, address resolver, bytes32 node, ) =
+            LibResolution.findResolver(ROOT_REGISTRY, newName, 0);
         callResolver(
             resolver,
             newName,

@@ -243,7 +243,11 @@ contract LibResolutionTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
         _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "eth"); // wrong
-        assertEq(LibResolution.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
+        assertEq(
+            LibResolution.findCanonicalName(rootRegistry, testRegistry),
+            "",
+            "findCanonicalName"
+        );
         assertEq(
             address(LibResolution.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -257,7 +261,11 @@ contract LibResolutionTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
         _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setParent(IRegistry(address(0)), "xyz"); // wrong
-        assertEq(LibResolution.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
+        assertEq(
+            LibResolution.findCanonicalName(rootRegistry, testRegistry),
+            "",
+            "findCanonicalName"
+        );
         assertEq(
             address(LibResolution.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -271,7 +279,11 @@ contract LibResolutionTest is Test, ERC1155Holder {
         _register(rootRegistry, "eth", address(this), ethRegistry, address(0));
         uint256 tokenId = _register(ethRegistry, "test", address(this), testRegistry, address(0));
         ethRegistry.setSubregistry(tokenId, IRegistry(address(0))); // wrong
-        assertEq(LibResolution.findCanonicalName(rootRegistry, testRegistry), "", "findCanonicalName");
+        assertEq(
+            LibResolution.findCanonicalName(rootRegistry, testRegistry),
+            "",
+            "findCanonicalName"
+        );
         assertEq(
             address(LibResolution.findCanonicalRegistry(rootRegistry, NameCoder.encode("test.eth"))),
             address(0),
@@ -384,7 +396,11 @@ contract LibResolutionTest is Test, ERC1155Holder {
         }
         {
             (IRegistry registry, uint256 offset) =
-                LibResolution.findNearestRegistry(rootRegistry, NameCoder.encode("dne.sub.sub.eth"), 0);
+                LibResolution.findNearestRegistry(
+                    rootRegistry,
+                    NameCoder.encode("dne.sub.sub.eth"),
+                    0
+                );
             assertEq(address(registry), address(subRegistry3), "registry@3");
             assertEq(offset, 4, "offset@3"); // 3dne
         }
