@@ -3296,7 +3296,7 @@ async function activateV1Graveyard(opts: {
   });
 }
 
-async function activateV1HandoffControllers(opts: {
+export async function activateV1HandoffControllers(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -3452,7 +3452,7 @@ async function reclaimV1RegistrarOwnership(opts: {
   }
 }
 
-async function authorizeV1Renewer(opts: {
+export async function authorizeV1Renewer(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -3485,7 +3485,7 @@ async function authorizeV1Renewer(opts: {
   return ethRenewerV1;
 }
 
-async function activateV1RenewerAndTransferOwnership(opts: {
+export async function activateV1RenewerAndTransferOwnership(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -3562,9 +3562,9 @@ async function activateV1RenewerAndTransferOwnership(opts: {
 export async function verifyV1RegistrarsDisabled(
   opts: V1ControllerAuditOptions & {
     // Also assert the active deployment's own grants are present. Off by default
-    // because the handoff contracts are authorized across several phases: the
-    // reverse adapters in phase 1, ETHRenewerV1 in phase 4, and the Graveyard in
-    // phase 6. Turn it on once the last of them has run.
+    // because the handoff contracts are authorized across two phases: the reverse
+    // adapters in phase 1, and ETHRenewerV1 with the Graveyard in phase 4. Turn it
+    // on once the last of them has run.
     requireActiveGrants?: boolean;
   },
 ) {
@@ -4021,7 +4021,7 @@ export async function verifyV2Roles(opts: {
   owner?: Address;
   fromBlock?: string;
   reportOnly?: boolean;
-  // Audit the state before phase 6 hands the registrar over, where BatchRegistrar
+  // Audit the state before phase 6 revokes the seeding roles, where BatchRegistrar
   // still holds the roles it seeds reservations with.
   preHandoff?: boolean;
 }) {
@@ -5045,6 +5045,63 @@ async function verifyV2Registrar(opts: {
   const enabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
   console.log(`v2 registrar enabled: ${enabled}`);
   if (!enabled) throw new Error("v2 registrar is not enabled");
+}
+
+// Asserts the state a renewal through `ETHRenewerV1` actually needs, which is more
+// than the controller grant: `renew()` syncs the `NameWrapper` expiry through the
+// owner-gated `addController`, so the renewer has to own the v1 `BaseRegistrar` as
+// well. Checking only the controller bit reports a phase that cannot renew as done.
+export async function verifyV1Renewer(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  ethRenewerV1?: Address;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const ethRenewerV1 = resolveDeploymentAddress(
+    opts.ethRenewerV1,
+    deploymentsDir,
+    deploymentNetwork,
+    "ETHRenewerV1",
+  );
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+
+  const authorized = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "controllers",
+    args: [ethRenewerV1],
+  })) as boolean;
+  console.log(`ETHRenewerV1 v1 registrar controller: ${authorized}`);
+  if (!authorized) {
+    throw new Error(
+      `ETHRenewerV1 ${ethRenewerV1} is not an authorized v1 BaseRegistrar controller`,
+    );
+  }
+
+  const registrarOwner = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "owner",
+  })) as Address;
+  console.log(`v1 BaseRegistrar owner: ${registrarOwner}`);
+  if (getAddress(registrarOwner) !== getAddress(ethRenewerV1)) {
+    throw new Error(
+      `v1 BaseRegistrar is owned by ${registrarOwner}, not ETHRenewerV1 ${ethRenewerV1}; renewals would revert in syncWrapper`,
+    );
+  }
 }
 
 async function verifyUrp(opts: {
@@ -6813,7 +6870,7 @@ const SMOKE_CHECKS = {
   freezeAndHandoff:
     "the phase 3 freeze of the v1 registrars, and the v1 authorization handoff",
   renewerAuthorization:
-    "phase 4 authorizing ETHRenewerV1 as a v1 renewal controller",
+    "phase 4 authorizing ETHRenewerV1 and handing it the v1 BaseRegistrar, the state a renewal needs",
   freshV2Registration:
     "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
 } as const;
@@ -7601,7 +7658,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
 
     console.log(
-      "phase 4: authorize ETHRenewerV1 so unmigrated names stay renewable",
+      "phase 4: authorize ETHRenewerV1 and hand the v1 registrar over so unmigrated names stay renewable",
     );
     if (!ethRenewerV1) {
       throw new Error("missing ETHRenewerV1 deployment for phase 4");
@@ -7617,20 +7674,111 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ethRenewerV1: ethRenewerV1.address,
       ...v1OwnerSigner,
     });
-    {
-      const renewerAuthorized = (await client.readContract({
-        address: v1BaseRegistrar.address,
-        abi: v1BaseRegistrar.abi,
-        functionName: "controllers",
-        args: [ethRenewerV1.address],
-      })) as boolean;
-      if (!renewerAuthorized) {
-        throw new Error(
-          "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
-        );
-      }
-      console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
-      coveredChecks.push(SMOKE_CHECKS.renewerAuthorization);
+
+    // Every remaining v1 authorization is granted here, while the v1 owner still
+    // holds the registrar. The ownership transfer below is what makes renewals
+    // work, and it is also the point after which the v1 owner can no longer manage
+    // controllers — so nothing that needs a grant may come after it.
+    if (testnetV1PremigrationRegistrar) {
+      console.log(
+        `testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`,
+      );
+    }
+    await activateV1HandoffControllers({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+      graveyard: graveyard.address,
+      testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
+      ...v1OwnerSigner,
+    });
+
+    // Lock down the v1 BaseRegistrar by handing its ownership to ETHRenewerV1.
+    // A renewal calls `syncWrapper()`, which calls the owner-gated `addController`
+    // on the registrar, so the controller grant above does not make a name
+    // renewable on its own — this does.
+    await activateV1RenewerAndTransferOwnership({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+      ethRenewerV1: ethRenewerV1.address,
+      ...v1OwnerSigner,
+    });
+    await verifyV1Renewer({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+      ethRenewerV1: ethRenewerV1.address,
+    });
+    coveredChecks.push(SMOKE_CHECKS.renewerAuthorization);
+
+    // These are the last writes to touch v1 authorizations, so assert the resulting
+    // set here, in both directions: only the active deployment's contracts may hold
+    // a v1 grant, and every grant it depends on must be in place. The first catches
+    // a superseded deployment's controller surviving the freeze, which the phase 3
+    // registration smoke cannot see; the second catches an adapter or handoff
+    // contract that was never granted or was revoked, which otherwise reads as
+    // "disabled" and passes.
+    await verifyV1RegistrarsDisabled({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+      requireActiveGrants: true,
+    });
+    coveredChecks.push(SMOKE_CHECKS.freezeAndHandoff);
+    await verifyReverseAdapters({
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      ...v1Deployments,
+      deploymentsDir,
+      deploymentNetwork,
+    });
+
+    // Being authorized does not prove a renewal works. Renewal is the only action a
+    // name owner has while a name is still unmigrated, and it must extend the v1
+    // registration, the v2 reservation, and the NameWrapper's copy of the expiry
+    // together — so actually perform one, here, where the phase claims it works.
+    if (!postMigration && mockUsdc) {
+      await renewViaEthRenewerV1({
+        rpcUrl,
+        chain,
+        label: smokeLabels.reservedOnly,
+        privateKey: smokeSignerPrivateKey,
+        ethRenewerV1,
+        ethRegistry,
+        v1BaseRegistrar,
+        nameWrapper: loadV1Deployment(
+          opts.network,
+          "NameWrapper",
+          v1Deployments,
+        ),
+        mockUsdc,
+        preFunded: paymentTokenPreFunded,
+      });
+      coveredChecks.push(SMOKE_CHECKS.renewal);
+    } else if (!postMigration) {
+      // Post-migration mode already accounts for this skip: the renewal needs the
+      // v1 name that mode could not register. Recording it again would name the
+      // same loss under a cause that is not the one that stopped it.
+      recordSkipped(noPaymentTokenGap([SMOKE_CHECKS.renewal]));
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -7734,7 +7882,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     }
 
     console.log(
-      "phase 6: enable the v2 controller (disable batch registrar, hand off v1, enable v2 ETHRegistrar)",
+      "phase 6: enable the v2 controller (disable batch registrar, enable v2 ETHRegistrar)",
     );
     await disableAndVerifyBatchRegistrar({
       network: opts.network,
@@ -7745,101 +7893,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentsDir,
       deploymentNetwork,
       ...deploymentAdminSigner,
-    });
-    if (testnetV1PremigrationRegistrar) {
-      console.log(
-        `testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`,
-      );
-    }
-
-    await activateV1HandoffControllers({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
-      graveyard: graveyard.address,
-      testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
-      ...v1OwnerSigner,
-    });
-
-    // Final lock-down of the v1 BaseRegistrar: hand its ownership to
-    // ETHRenewerV1. This must follow the owner-signed handoff-controller grants
-    // above, since the EOA can no longer manage controllers once ownership moves.
-    await activateV1RenewerAndTransferOwnership({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
-      ethRenewerV1: ethRenewerV1.address,
-      ...v1OwnerSigner,
-    });
-
-    // Being an authorized controller does not prove a renewal works. Renewal is the
-    // only action a name owner has while a name is still unmigrated, and it must
-    // extend the v1 registration, the v2 reservation, and the NameWrapper's copy of
-    // the expiry together — so actually perform one.
-    //
-    // This runs after the ownership transfer above, not after phase 4's controller
-    // grant: `renew()` calls `syncWrapper()`, which calls `addController` on the v1
-    // BaseRegistrar, and that is owner-gated. Until ownership moves here, a renewal
-    // through ETHRenewerV1 reverts.
-    if (!postMigration && mockUsdc) {
-      await renewViaEthRenewerV1({
-        rpcUrl,
-        chain,
-        label: smokeLabels.reservedOnly,
-        privateKey: smokeSignerPrivateKey,
-        ethRenewerV1,
-        ethRegistry,
-        v1BaseRegistrar,
-        nameWrapper: loadV1Deployment(
-          opts.network,
-          "NameWrapper",
-          v1Deployments,
-        ),
-        mockUsdc,
-        preFunded: paymentTokenPreFunded,
-      });
-      coveredChecks.push(SMOKE_CHECKS.renewal);
-    } else if (!postMigration) {
-      // Post-migration mode already accounts for this skip: the renewal needs the
-      // v1 name that mode could not register. Recording it again would name the
-      // same loss under a cause that is not the one that stopped it.
-      recordSkipped(noPaymentTokenGap([SMOKE_CHECKS.renewal]));
-    }
-
-    // The handoff grants above are the last thing to touch v1 authorizations, so
-    // assert the resulting set here, in both directions: only the active
-    // deployment's contracts may hold a v1 grant, and every grant it depends on must
-    // be in place. The first catches a superseded deployment's controller surviving
-    // the freeze, which the phase 3 registration smoke cannot see; the second catches
-    // an adapter or handoff contract that was never granted or was revoked, which
-    // otherwise reads as "disabled" and passes.
-    await verifyV1RegistrarsDisabled({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
-      requireActiveGrants: true,
-    });
-    coveredChecks.push(SMOKE_CHECKS.freezeAndHandoff);
-    await verifyReverseAdapters({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
     });
 
     const beforeEnabled = await client.readContract({
@@ -9316,7 +9369,7 @@ export async function main(argv = process.argv): Promise<void> {
             )
             .option(
               "--require-active-grants",
-              "Also assert the active deployment's own v1 grants are in place (run after phase 6, once every handoff contract has been authorized)",
+              "Also assert the active deployment's own v1 grants are in place (run after phase 4, once every handoff contract has been authorized)",
               false,
             ),
         ),
@@ -9647,7 +9700,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-graveyard")
               .description(
-                "Phase 6: authorize Graveyard as a v1 BaseRegistrar controller",
+                "Phase 4: authorize Graveyard as a v1 BaseRegistrar controller",
               )
               .option("--graveyard <address>", "Graveyard address"),
           ),
@@ -9675,7 +9728,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-handoff-controllers")
               .description(
-                "Phase 6: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+                "Phase 4: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
               )
               .option("--graveyard <address>", "Graveyard address")
               .option(
@@ -9710,7 +9763,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("authorize-v1-renewer")
               .description(
-                "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller so unmigrated names stay renewable during the migration",
+                "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller (renewals also need activate-v1-renewer, which hands it the registrar)",
               )
               .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
           ),
@@ -9738,7 +9791,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-renewer")
               .description(
-                "Phase 6: transfer v1 BaseRegistrar ownership to ETHRenewerV1 (re-authorizes it as a controller if needed)",
+                "Phase 4: transfer v1 BaseRegistrar ownership to ETHRenewerV1, which is what makes renewals work (re-authorizes it as a controller if needed)",
               )
               .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
           ),
@@ -9985,6 +10038,30 @@ export async function main(argv = process.argv): Promise<void> {
           ...networkOpts,
           privateKey:
             opts.privateKey ?? envPrivateKey("OWNER_KEY", "DEPLOYER_KEY"),
+        });
+      },
+    ),
+  );
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify-v1-renewer")
+            .description(
+              "Phase 4: verify ETHRenewerV1 is a v1 BaseRegistrar controller and owns the registrar, which is what a renewal needs",
+            )
+            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentCliOptions & { ethRenewerV1?: Address },
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await verifyV1Renewer({
+          ...networkOpts,
         });
       },
     ),

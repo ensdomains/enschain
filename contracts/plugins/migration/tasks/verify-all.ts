@@ -40,6 +40,15 @@ const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 const addrAbi = parseAbi([
   "function addr(bytes32 node) view returns (address)",
 ]);
+// The renewer names the v1 registrar it drives, so the pair can be checked without
+// the v1 deployment artifacts this task does not otherwise read.
+const renewerAbi = parseAbi([
+  "function BASE_REGISTRAR() view returns (address)",
+]);
+const v1RegistrarAbi = parseAbi([
+  "function owner() view returns (address)",
+  "function controllers(address) view returns (bool)",
+]);
 
 function dnsEncodeName(name: string): Hex {
   const bytes: number[] = [];
@@ -216,6 +225,41 @@ const action: NewTaskActionFunction<VerifyAllTaskArgs> = async (args, hre) => {
       args: [REGISTRAR_ROLES, ethRegistrar.address],
     })) as boolean;
     expectBoolean("ETHRegistrar registrar roles", ethRegistrarEnabled, true);
+
+    // A renewal through ETHRenewerV1 syncs the NameWrapper expiry through the
+    // owner-gated addController, so the controller grant alone does not make an
+    // unmigrated name renewable — the renewer has to own the registrar too.
+    const ethRenewerV1 = await loadDeployment(
+      args.deploymentsDir,
+      deploymentNetwork,
+      "ETHRenewerV1",
+    );
+    const v1BaseRegistrar = (await client.readContract({
+      address: ethRenewerV1.address,
+      abi: renewerAbi,
+      functionName: "BASE_REGISTRAR",
+    })) as Address;
+    const renewerIsController = (await client.readContract({
+      address: v1BaseRegistrar,
+      abi: v1RegistrarAbi,
+      functionName: "controllers",
+      args: [ethRenewerV1.address],
+    })) as boolean;
+    expectBoolean(
+      "ETHRenewerV1 v1 registrar controller",
+      renewerIsController,
+      true,
+    );
+    const v1RegistrarOwner = (await client.readContract({
+      address: v1BaseRegistrar,
+      abi: v1RegistrarAbi,
+      functionName: "owner",
+    })) as Address;
+    expectAddress(
+      "v1 BaseRegistrar owner",
+      v1RegistrarOwner,
+      ethRenewerV1.address,
+    );
 
     const names = args.names
       .split(",")

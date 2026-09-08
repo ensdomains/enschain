@@ -1,7 +1,7 @@
-import { describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 setDefaultTimeout(120_000);
 
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,7 +15,13 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { renewViaEthRenewerV1 } from "../../script/migration.js";
+import {
+  activateV1HandoffControllers,
+  activateV1RenewerAndTransferOwnership,
+  authorizeV1Renewer,
+  renewViaEthRenewerV1,
+  verifyV1Renewer,
+} from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
@@ -25,6 +31,7 @@ import {
 } from "../utils/mockPreMigration.js";
 
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
+const NETWORK = "mainnet";
 const TEST_MNEMONIC =
   "test test test test test test test test test test test junk";
 
@@ -40,6 +47,9 @@ function testPrivateKeyFor(address: Address): `0x${string}` {
 
 describe("ETHRenewerV1 renewal smoke", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
+  const workDir = mkdtempSync(join(tmpdir(), "renewer-phase4-"));
+  const v1DeploymentsDir = join(workDir, "v1");
+  const deploymentsDir = join(workDir, "v2");
 
   setupEnv({
     resetOnEach: true,
@@ -48,12 +58,65 @@ describe("ETHRenewerV1 renewal smoke", () => {
     },
   });
 
+  afterAll(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // The phase commands read addresses from deployment artifacts rather than from a
+  // live environment, so the devnet's contracts are written out in the layout they
+  // expect. These tests drive the shipped commands rather than the writes they
+  // make, so that what phase 4 grants is checked against what it promises.
+  function writeDeploymentArtifacts() {
+    for (const [root, entries] of [
+      [
+        v1DeploymentsDir,
+        [
+          ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+          ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
+        ],
+      ],
+      [
+        deploymentsDir,
+        [
+          ["ETHRenewerV1", env.v2.ETHRenewerV1],
+          ["Graveyard", env.v2.Graveyard],
+        ],
+      ],
+    ] as const) {
+      const dir = join(root, NETWORK);
+      mkdirSync(dir, { recursive: true });
+      for (const [name, contract] of entries) {
+        writeFileSync(
+          join(dir, `${name}.json`),
+          JSON.stringify({ address: contract.address, abi: contract.abi }),
+        );
+      }
+      writeFileSync(
+        join(dir, ".chain"),
+        JSON.stringify({ environment: NETWORK, chainId: "1" }),
+      );
+    }
+  }
+
+  function phaseOptions() {
+    return {
+      network: NETWORK,
+      rpcUrl: `http://${env.hostPort}`,
+      chainId: "1",
+      deploymentsDir,
+      deploymentNetwork: NETWORK,
+      v1DeploymentsDir,
+      v1DeploymentNetwork: NETWORK,
+      impersonateOwner: true,
+    } as const;
+  }
+
   // Registers a name on v1 and reserves it on v2 through the real pre-migration
   // path, which is the state an unmigrated name is in during the migration window.
   async function reservedName(label: string) {
     const { user } = env.namedAccounts;
-    const workDir = mkdtempSync(join(tmpdir(), "renewer-"));
-    const csvFile = join(workDir, "registrations.csv");
+    const csvDir = mkdtempSync(join(tmpdir(), "renewer-"));
+    const csvFile = join(csvDir, "registrations.csv");
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
     createCSVFile(csvFile, [label]);
     await preMigrationMain(buildMainArgs(env, csvFile));
@@ -81,40 +144,24 @@ describe("ETHRenewerV1 renewal smoke", () => {
     });
   }
 
-  // Authorizes ETHRenewerV1 as a v1 controller — the state phase 4 leaves behind.
-  async function authorizeRenewerAsController() {
-    await env.v1.RegistrarSecurityController.write.addRegistrarController(
-      [env.rocketh.get("ETHRenewerV1").address],
-      { account: env.namedAccounts.owner },
-    );
+  // Runs phase 4 as the runbook does: authorize the renewer, grant the remaining
+  // handoff controllers while the v1 owner still holds the registrar, then hand the
+  // registrar over.
+  async function runPhase4() {
+    writeDeploymentArtifacts();
+    await authorizeV1Renewer(phaseOptions());
+    await activateV1HandoffControllers(phaseOptions());
+    await activateV1RenewerAndTransferOwnership(phaseOptions());
   }
 
-  // Hands the v1 BaseRegistrar to ETHRenewerV1 — the state phase 6 leaves behind.
-  async function transferRegistrarToRenewer() {
-    await env.v1.RegistrarSecurityController.write.transferRegistrarOwnership(
-      [env.rocketh.get("ETHRenewerV1").address],
-      { account: env.namedAccounts.owner },
-    );
-  }
-
-  it("cannot renew while ETHRenewerV1 is only a controller, as it is between phases 4 and 6", async () => {
-    const label = "renewlater";
-    await reservedName(label);
-    await authorizeRenewerAsController();
-
-    // Phase 4 authorizes ETHRenewerV1 as a controller and the docs describe that
-    // as keeping unmigrated names renewable. It is not sufficient on its own:
-    // `renew()` calls `syncWrapper()`, which calls the owner-gated `addController`
-    // on the v1 BaseRegistrar. Until phase 6 transfers ownership, a renewal
-    // through ETHRenewerV1 reverts.
-    await expect(renew(label)).rejects.toThrow();
-  }, 120_000);
-
-  it("extends v1 and v2 together once ETHRenewerV1 owns the registrar", async () => {
+  it("leaves unmigrated names renewable once phase 4 completes", async () => {
     const label = "renewme";
     await reservedName(label);
-    await authorizeRenewerAsController();
-    await transferRegistrarToRenewer();
+    await runPhase4();
+
+    // The phase's own verification, run the way an operator would: a renewal needs
+    // the controller grant and registrar ownership, and it passes only with both.
+    await verifyV1Renewer(phaseOptions());
 
     // Asserts the whole invariant internally: reaching here means the v1
     // registration and the v2 reservation both advanced by the same duration and
@@ -122,11 +169,27 @@ describe("ETHRenewerV1 renewal smoke", () => {
     await renew(label);
   }, 120_000);
 
+  it("cannot renew on the controller grant alone, which is why phase 4 also hands over the registrar", async () => {
+    const label = "renewlater";
+    await reservedName(label);
+    writeDeploymentArtifacts();
+    await authorizeV1Renewer(phaseOptions());
+
+    // `renew()` calls `syncWrapper()`, which calls the owner-gated `addController`
+    // on the v1 BaseRegistrar. Authorizing the renewer as a controller and deferring
+    // the ownership transfer to a later phase leaves every renewal reverting for as
+    // long as the gap lasts.
+    await expect(verifyV1Renewer(phaseOptions())).rejects.toThrow(
+      /not ETHRenewerV1/,
+    );
+    await expect(renew(label)).rejects.toThrow();
+  }, 120_000);
+
   it("syncs the NameWrapper expiry when the name is wrapped", async () => {
     const label = "wrappedrenew";
     const { user } = env.namedAccounts;
-    const workDir = mkdtempSync(join(tmpdir(), "renewer-wrapped-"));
-    const csvFile = join(workDir, "registrations.csv");
+    const csvDir = mkdtempSync(join(tmpdir(), "renewer-wrapped-"));
+    const csvFile = join(csvDir, "registrations.csv");
     // The registrar keys tokens by labelhash; NameWrapper keys them by namehash.
     const registrarTokenId = BigInt(keccak256(toHex(label)));
     const wrapperTokenId = BigInt(namehash(`${label}.eth`));
@@ -156,8 +219,7 @@ describe("ETHRenewerV1 renewal smoke", () => {
 
     createCSVFile(csvFile, [label]);
     await preMigrationMain(buildMainArgs(env, csvFile));
-    await authorizeRenewerAsController();
-    await transferRegistrarToRenewer();
+    await runPhase4();
 
     const wrapperExpiryBefore = (
       await env.v1.NameWrapper.read.getData([wrapperTokenId])

@@ -52,9 +52,9 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | F1 | *(optional)* Seed the ENSv1 test fixture corpus, then check the shaped v1 state | `fixture seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
-| 4 | Authorize `ETHRenewerV1` (renewals resume in phase 6, not here — see [phase 4](#phase-4-authorize-ethrenewerv1)) | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
+| 4 | Keep unmigrated names renewable, and lock down v1 | `authorize-v1-renewer` → `activate-v1-handoff-controllers` → `activate-v1-renewer` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 5 | Final pre-migration sync | `premigration run` → `build-index` → `reconcile` | live + clean-testnet | BatchRegistrar owner |
-| 6 | Enable the v2 controller | `disable-batch-registrar` → `activate-v1-handoff-controllers` → `activate-v1-renewer` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin + v1 owner |
+| 6 | Enable the v2 controller | `disable-batch-registrar` → `enable-v2-registrar` (+ `verify-*`) | live + clean-testnet | registry root-role admin |
 | 7 | Switch Universal Resolver to v2 (cutover) | `phase upgrade-managed-urp` (+ `switch-urp-to-managed` on bootstrap) (+ `verify-urp`) | live + clean-testnet (bootstrap step mainnet/fresh only) | `urManager` (+ top URP owner on bootstrap) |
 
 ### Phase 0: deploy fresh v1 (clean-testnet only)
@@ -241,61 +241,70 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
 > persists at the smallest span, or a fork whose history predates its fork block, **fails** both
 > commands rather than falling back to a partial audit.
 
-### Phase 4: authorize ETHRenewerV1
+### Phase 4: keep unmigrated names renewable
 
 - **Applies to:** live + clean-testnet.
-- **Command:**
+- **Command:** three v1-owner steps, **in order**, then verify:
   ```bash
-  bun run migration -- phase authorize-v1-renewer --network sepolia
+  bun run migration -- phase authorize-v1-renewer            --network sepolia
+  bun run migration -- phase activate-v1-handoff-controllers --network sepolia
+  bun run migration -- phase activate-v1-renewer             --network sepolia
+  bun run migration -- phase verify-v1-renewer               --network sepolia
+  bun run migration -- phase verify-v1-registrars-disabled   --network sepolia --require-active-grants
+  bun run migration -- phase verify-reverse-adapters         --network sepolia
   ```
 - **Prerequisites:** phase 2 complete — `ETHRenewerV1` can only renew names already `RESERVED` on v2.
-  Run it right after the phase 3 freeze.
+  Runs right after the phase 3 freeze. Order matters within the phase: every controller grant must be
+  made **before** `activate-v1-renewer` transfers registrar ownership away from the v1 owner.
 - **Env / args:** v1 owner key (`SEPOLIA_V1_OWNER_KEY` / `V1_OWNER_KEY`, read from env).
-  `--calldata-only` for a multisig.
-- **Expected outcome:** `ETHRenewerV1` authorized as a v1 `BaseRegistrar` controller. This does
-  **not** reopen the phase 3 registration freeze. The lock-down that transfers v1 `BaseRegistrar`
-  ownership to `ETHRenewerV1` is deferred to [phase 6](#phase-6-enable-the-v2-controller).
+  `--calldata-only` for a multisig — with a DAO the three writes combine into one Safe/multisend
+  transaction. On testnets `TestnetV1PremigrationRegistrar` is re-authorized alongside the
+  `Graveyard` (the individual steps are also available as `activate-v1-graveyard` and
+  `authorize-testnet-v1-premigration-registrar`).
+- **Expected outcome:** `ETHRenewerV1` authorized as a v1 `BaseRegistrar` controller; `Graveyard` (+
+  testnet helper) authorized; v1 `BaseRegistrar` ownership transferred to `ETHRenewerV1`. Unmigrated
+  names are renewable from here, each renewal extending the v1 registration, the v2 reservation, and —
+  for a wrapped name — the `NameWrapper`'s own copy of the expiry, all in one transaction, leaving the
+  v2 entry `RESERVED`. This does **not** reopen the phase 3 registration freeze. `verify-v1-renewer`
+  confirms both halves of the state a renewal needs.
 
-> ### ⚠️ Renewals are unavailable from phase 3 until phase 6 — this is expected
+> **The controller grant alone does not make a name renewable.** `ETHRenewerV1.renew` calls
+> `syncWrapper`, which calls `addController` on the v1 `BaseRegistrar` so `NameWrapper` can update a
+> wrapped name's expiry. `addController` is **owner-gated**, so a renewal reverts until the registrar
+> is owned by `ETHRenewerV1`. That is why the ownership transfer belongs to this phase and not a later
+> one: authorizing the controller and deferring the handoff leaves renewals broken for the whole of
+> phase 5, which can run for days. `verify-v1-renewer` asserts the pair, and
+> `test/e2e/renewerV1Smoke.test.ts` checks that the phase-4 end state renews and that the controller
+> grant on its own does not.
 >
-> **This phase does not restore renewals on its own.** It grants `ETHRenewerV1` the controller role,
-> which is necessary but not sufficient.
->
-> `ETHRenewerV1.renew` calls `syncWrapper`, which calls `addController` on the v1 `BaseRegistrar` so
-> `NameWrapper` can update a wrapped name's expiry. `addController` is **owner-gated**, and the v1
-> `BaseRegistrar` is not owned by `ETHRenewerV1` until
-> [phase 6](#phase-6-enable-the-v2-controller)'s `activate-v1-renewer` transfers it. Until then every
-> renewal through `ETHRenewerV1` **reverts**.
->
-> **The renewal outage therefore spans phase 3 → phase 6**, not phase 3 → phase 4:
->
-> | From | To | Renewals |
-> | --- | --- | --- |
-> | before phase 3 | — | work through the v1 registrar controllers as normal |
-> | **phase 3 (freeze)** | **phase 6 (`activate-v1-renewer`)** | **unavailable — v1 controllers revoked, `ETHRenewerV1` not yet registrar owner** |
-> | after phase 6 | — | work through `ETHRenewerV1` |
->
-> The phase 5 sync sits inside that window and can run for days, so **plan for a renewal outage of
-> that length** and communicate it before starting phase 3. A name whose v1 registration lapses during
-> the window is not lost: v1's 90-day grace still applies and the owner can renew once phase 6
-> completes, provided the window is comfortably shorter than their remaining grace.
->
-> This is accepted behaviour, not a defect to work around. It is asserted by
-> `test/e2e/renewerV1Smoke.test.ts`, which checks that a renewal reverts while `ETHRenewerV1` is only
-> a controller and succeeds once it owns the registrar — so the boundary cannot move without a test
-> failing.
->
-> **To shorten the window** if you need to: `activate-v1-renewer` is an independent v1-owner write and
-> can be executed earlier than the rest of phase 6, immediately after phase 4. Phases 3 and 4 both
-> support `--calldata-only`, so with a DAO/multisig their calldata and the ownership transfer combine
-> into a single Safe/multisend transaction. Note this brings the v1 lock-down forward too — the v1
-> owner can no longer manage controllers afterwards — so do it only with phase 6's ordering
-> requirements in mind.
+> **The renewal outage therefore spans phase 3 → phase 4 only.** Run the two back-to-back, or combine
+> their `--calldata-only` output into a single Safe transaction, and no renewal window is lost.
 
-Once a renewal is possible, each one extends the v1 registration, the v2 reservation, and — for a
-wrapped name — the `NameWrapper`'s own copy of the expiry, all in one transaction, leaving the v2
-entry `RESERVED`. `fork full` performs a real renewal after phase 6 and asserts all of that, rather
-than only checking that the renewer is an authorized controller.
+> **This is where the v1 owner stops being able to manage v1 controllers.** After
+> `activate-v1-renewer` the registrar answers only to `ETHRenewerV1`, so every v1 authorization the
+> migration needs has to be granted earlier in this phase. It is recoverable rather than final —
+> `ETHRenewerV1.transferRegistrarOwnership` is owner-gated, and
+> [`phase reclaim-v1-registrar-ownership`](#cli-commands) uses it to hand the registrar back — but
+> renewals stop working for as long as the registrar is elsewhere.
+>
+> These grants are the last writes to touch v1 authorizations, so
+> `verify-v1-registrars-disabled --require-active-grants` is run here to assert the final set in both
+> directions: only the active deployment's contracts may hold a v1 grant, and every grant it depends
+> on must be present. `fork full` runs this assertion automatically. It is the check that catches a
+> superseded deployment's controller surviving the freeze — the phase 3 registration smoke test cannot
+> see one, because it only exercises the official registrar controller's path.
+>
+> **Assert both directions, not just one.** By default that audit only looks for grants that should be
+> *gone*: it tests whether a controller is enabled before anything else, so a grant the active
+> deployment *needs* but does not have reads as "disabled" and passes. A revoked reverse adapter
+> silently stops reverse records being written and nothing else reports it. `--require-active-grants`
+> adds the missing direction, and `verify-reverse-adapters` checks the adapters specifically —
+> including that each one points back at the registrar holding its grant, so an adapter authorized on
+> the wrong registrar is caught too.
+
+`fork full` performs a real renewal in this phase, asserting that the v1 registration, the v2
+reservation and the `NameWrapper` expiry all move together, rather than only checking that the
+renewer is an authorized controller.
 
 ### Phase 5: final pre-migration sync
 
@@ -325,53 +334,31 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 ### Phase 6: enable the v2 controller
 
 - **Applies to:** live + clean-testnet.
-- **Command:** four owner-gated steps, **in order**, then verify:
+- **Command:** two owner-gated steps, **in order**, then verify:
   ```bash
   bun run migration -- phase disable-batch-registrar          --network sepolia
-  bun run migration -- phase activate-v1-handoff-controllers  --network sepolia
-  bun run migration -- phase activate-v1-renewer              --network sepolia
   bun run migration -- phase enable-v2-registrar              --network sepolia
   bun run migration -- phase verify-v2-registrar              --network sepolia
-  bun run migration -- phase verify-v1-registrars-disabled    --network sepolia --require-active-grants
-  bun run migration -- phase verify-reverse-adapters          --network sepolia
   bun run migration -- phase verify-roles                     --network sepolia
   ```
-- **Prerequisites:** phase 5 complete. Order matters — the handoff controllers must be authorized
-  **before** `activate-v1-renewer` transfers v1 `BaseRegistrar` ownership away from the v1 owner
-  (after which the v1 owner can no longer manage controllers).
-- **Env / args:** registry root-role admin key (`OWNER_KEY`, falls back to `DEPLOYER_KEY`) for
-  `disable-batch-registrar` and `enable-v2-registrar`; v1 owner key for the `activate-v1-*` steps. The
-  owner-gated and v1-owner steps accept `--calldata-only` for a multisig. On testnets
-  `TestnetV1PremigrationRegistrar` keeps its roles, re-authorized by `activate-v1-handoff-controllers`
-  (the individual steps are also available as `activate-v1-graveyard` and
-  `authorize-testnet-v1-premigration-registrar`).
-- **Expected outcome:** `BatchRegistrar` roles revoked (pre-migration seeding ends); `Graveyard` (+ testnet
-  helper) authorized as v1 controllers; v1 `BaseRegistrar` ownership transferred to `ETHRenewerV1`
-  (final lock-down); `ETHRegistrar` granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2
-  registrations open. `verify-v2-registrar` confirms the grant.
+- **Prerequisites:** phase 5 complete. Every v1-side write already happened in
+  [phase 4](#phase-4-keep-unmigrated-names-renewable), so this phase touches only the v2 registry and
+  needs only one signer.
+- **Env / args:** registry root-role admin key (`OWNER_KEY`, falls back to `DEPLOYER_KEY`), and
+  `--calldata-only` for a multisig.
+- **Expected outcome:** `BatchRegistrar` roles revoked (pre-migration seeding ends); `ETHRegistrar`
+  granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2 registrations open.
+  `verify-v2-registrar` confirms the grant.
 
-  These handoff grants are the last step to touch v1 authorizations, so
-  `verify-v1-registrars-disabled` is re-run here to assert the final set: only the active deployment's
-  contracts may hold a v1 grant. `fork full` runs this assertion automatically. It is the check that
-  catches a superseded deployment's controller surviving the freeze — the phase 3 registration smoke
-  test cannot see one, because it only exercises the official registrar controller's path.
-
-  > **Assert both directions, not just one.** By default that audit only looks for grants that should
-  > be *gone*: it tests whether a controller is enabled before anything else, so a grant the active
-  > deployment *needs* but does not have reads as "disabled" and passes. A revoked reverse adapter
-  > silently stops reverse records being written and nothing else reports it. `--require-active-grants`
-  > adds the missing direction, and `verify-reverse-adapters` checks the adapters specifically —
-  > including that each one points back at the registrar holding its grant, so an adapter authorized
-  > on the wrong registrar is caught too.
-  >
-  > `verify-roles` does the same for the v2 side, which has had no equivalent audit at all. It reads
-  > every role holder live at its current resource rather than replaying `EACRolesChanged`, because
-  > the event log cannot reconstruct the matrix: a name expiring bumps the resource id and orphans
-  > every grant against the old one with no transaction and no event, and an ERC-1155 operator
-  > inherits the owner's roles through a different event entirely. Logs are used only to decide which
-  > addresses to ask about. It catches a role nobody granted, a grant that was never made, and admin
-  > bits left behind when only the regular roles were revoked — none of which a single
-  > `hasRootRoles` spot check can see.
+  > `verify-roles` audits the v2 side the way
+  > [phase 4](#phase-4-keep-unmigrated-names-renewable)'s `verify-v1-registrars-disabled` audits the
+  > v1 side, and this is the last step to change v2 authority. It reads every role holder live at its
+  > current resource rather than replaying `EACRolesChanged`, because the event log cannot reconstruct
+  > the matrix: a name expiring bumps the resource id and orphans every grant against the old one with
+  > no transaction and no event, and an ERC-1155 operator inherits the owner's roles through a
+  > different event entirely. Logs are used only to decide which addresses to ask about. It catches a
+  > role nobody granted, a grant that was never made, and admin bits left behind when only the regular
+  > roles were revoked — none of which a single `hasRootRoles` spot check can see.
 
 ### Phase 7: switch the Universal Resolver to v2
 
@@ -450,9 +437,9 @@ adjusts automatically.
 | 1 | Archives the existing `deployments/<network>/` namespace and deploys a brand-new v2 set with new addresses. `--resume` is for continuing an *interrupted* deploy into the same namespace, **not** for a fresh redeploy. Needs the `reclaim-v1-registrar-ownership` step above first. |
 | 2 | The new v2 registry is empty, so this seeds from scratch exactly like a first run — reservations from the prior deployment lived on the now-archived registry. Use a fresh `--work-dir` so no stale `preMigration-checkpoint.json` is picked up. |
 | 3 | **Must be run — not a no-op.** The v1 registration controllers stay frozen from the prior deployment, but *its* handoff contracts are still authorized. `TestnetV1PremigrationRegistrar` among them is a permissionless free registrar: leaving it enabled silently reopens `.eth` registration on v1, and the names it mints reserve into the **archived** v2 registry (they are also invisible to the TheGraph-based CSV export, so a later pre-migration will not pick them up). Follow with `verify-v1-registrars-disabled`. |
-| 4 | Authorizes the **newly-deployed** `ETHRenewerV1` (a new address). The prior one is removed by phase 3, so run the phases in order rather than skipping ahead. |
+| 4 | Re-points v1 at the new set: authorizes the **newly-deployed** `ETHRenewerV1` and `Graveyard` (new addresses), then transfers v1 `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership reclaimed above). The prior deployment's `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are removed by phase 3 in the same run, so run the phases in order rather than skipping ahead. |
 | 5 | Same as phase 2 — re-seeds the new registry against a fresh post-freeze CSV and a fresh `--work-dir`. |
-| 6 | Re-points v1 at the new set: `activate-v1-handoff-controllers` authorizes the new `Graveyard`, `activate-v1-renewer` transfers v1 `BaseRegistrar` ownership to the new `ETHRenewerV1` (the ownership reclaimed above), and `enable-v2-registrar` grants the new `ETHRegistrar`. The prior deployment's `Graveyard`/`ETHRenewerV1`/`TestnetV1PremigrationRegistrar` are revoked by phase 3 in the same run. |
+| 6 | `enable-v2-registrar` grants the new `ETHRegistrar` its roles on the new registry. |
 | 7 | On a reuse network (sepolia) the top **and** intermediate URPs are adopted by address and never redeployed — phase 1 deploys a fresh `UniversalResolverV2` implementation and `upgrade-managed-urp` re-points the reused intermediate URP at it, orphaning the prior implementation. Bootstrap networks deploy a fresh intermediate URP instead. |
 
 ## Live deployment (Sepolia)
@@ -469,7 +456,7 @@ the top URP already fronts the intermediate URP, so the cutover never touches it
 | Key | Role |
 | --- | --- |
 | `DEPLOYER_KEY` | Deployer EOA; on sepolia also resolves as `owner` (registry root-role admin) and is the `BatchRegistrar` owner. Must be freshly funded — phase 1 sends many transactions. |
-| `SEPOLIA_V1_OWNER_KEY` | v1 owner (`0x0f32b753afc8abad9ca6fe589f707755f4df2353`); signs the deferred phase-1 v1-owner txs, phase 3, phase 4, and the phase-6 `activate-v1-*` steps. |
+| `SEPOLIA_V1_OWNER_KEY` | v1 owner (`0x0f32b753afc8abad9ca6fe589f707755f4df2353`); signs the deferred phase-1 v1-owner txs, phase 3, and every phase-4 step. Phase 6 needs no v1-owner signature. |
 | `UR_MANAGER_KEY` | Intermediate `ManagedUniversalResolverProxy` admin (`0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1`, admin `0xffFffFFfFF52D316B7Bd028358089bc8066b8f80`); signs the phase-7 cutover. |
 
 ### Setup
@@ -510,10 +497,9 @@ prerequisites, and result:
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
    Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
-4. [Phase 4 — authorize `ETHRenewerV1`](#phase-4-authorize-ethrenewerv1). **Renewals stay unavailable
-   until phase 6**, not from here — see the window table in that section. With an EOA v1 owner on
-   Sepolia you can run phases 3, 4, and the phase 6 `activate-v1-renewer` back-to-back to keep the
-   outage short.
+4. [Phase 4 — keep unmigrated names renewable](#phase-4-keep-unmigrated-names-renewable). Renewals
+   are unavailable between the phase 3 freeze and this phase, so run the two back-to-back — with a
+   DAO/multisig, as one Safe transaction — to keep the outage short.
 5. [Phase 5 — final sync](#phase-5-final-pre-migration-sync) from a fresh post-freeze CSV
    (`--work-dir .dev/sepolia-live/premig-2`).
 6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
@@ -814,7 +800,8 @@ the deployer, owner, v1 owner, URP admins, and BatchRegistrar owner, and runs ph
 smoke checks interleaved:
 
 - v1 registration succeeds before phase 3 and is rejected after;
-- `ETHRenewerV1` is confirmed as an authorized v1 renewal controller after phase 4;
+- `ETHRenewerV1` owns the v1 `BaseRegistrar` after phase 4, and a real renewal there extends the v1
+  registration, the v2 reservation, and a wrapped name's `NameWrapper` expiry together;
 - a pre-migrated name is migrated to v2 via `UnlockedMigrationController` after phase 5;
 - the v2 registrar rejects registrations before phase 6's grant, rejects pre-migrated reserved names
   after it, and accepts a fresh name after enablement.
@@ -1000,21 +987,22 @@ and idempotency rules.
 | `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the phase-1 deferred-tx replay on an already-migrated chain) |
 | `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
-| `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 6) |
+| `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled (`--require-active-grants` also asserts the active deployment's own grants are present — run it after phase 4) |
 | `phase verify-reverse-adapters` | Verify the active reverse-registrar adapters hold their v1 controller grants and point back at the right registrar |
 | `phase verify-roles` | Audit who holds which roles on the v2 registries against the deployment's intent, in both directions |
 | `phase verify-deployment` | Verify the code at every address in the namespace matches its artifact |
 | `phase verify-registrar-economics` | Verify the registrar can price and take payment: oracle, beneficiary, accepted tokens |
-| `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
+| `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller |
+| `phase verify-v1-renewer` | Verify `ETHRenewerV1` is a v1 controller **and** owns the v1 `BaseRegistrar`, which is what a renewal needs |
 | `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`); each success is journalled so a re-run does not re-send it |
 | `phase verify-owner-tx` | Check a transaction about to be signed in a Safe against the prepared owner transactions |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
 | `phase batch-registrar-owner` | Print and optionally verify the `BatchRegistrar` owner |
-| `phase activate-v1-handoff-controllers` | Phase 6: authorize `Graveyard` + testnet helper as v1 controllers |
-| `phase activate-v1-graveyard` | Phase 6 (individual): authorize `Graveyard` only |
-| `phase authorize-testnet-v1-premigration-registrar` | Phase 6 (individual, testnet): authorize the testnet premigration helper |
-| `phase activate-v1-renewer` | Phase 6: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` (final lock-down) |
+| `phase activate-v1-handoff-controllers` | Phase 4: authorize `Graveyard` + testnet helper as v1 controllers |
+| `phase activate-v1-graveyard` | Phase 4 (individual): authorize `Graveyard` only |
+| `phase authorize-testnet-v1-premigration-registrar` | Phase 4 (individual, testnet): authorize the testnet premigration helper |
+| `phase activate-v1-renewer` | Phase 4: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1`, which is what makes renewals work (final v1 lock-down) |
 | `phase enable-v2-registrar` | Phase 6: grant registrar/renew roles to `ETHRegistrar` |
 | `phase verify-v2-registrar` | Verify `ETHRegistrar` has registrar/renew roles |
 | `phase switch-urp-to-managed` | Phase 7 (bootstrap only): point the top URP at the managed URP |
