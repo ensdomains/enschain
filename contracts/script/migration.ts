@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   AbiDecodingZeroDataError,
   BaseError,
@@ -37,6 +38,8 @@ import {
   type Chain,
 } from "viem";
 import {
+  english as englishWordlist,
+  generateMnemonic,
   generatePrivateKey,
   mnemonicToAccount,
   privateKeyToAccount,
@@ -53,11 +56,18 @@ import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environ
 import { generateAddressMarkdown } from "./addressDocs.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  LOCAL_BATCH_GATEWAY_URL,
   ROLES,
   SEC_PER_DAY,
   STATUS,
 } from "./deploy-constants.js";
 import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
+import {
+  addFixtureSubcommands,
+  runFixtureSeedStage,
+} from "./migrationFixture.js";
+import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
+import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -68,6 +78,10 @@ import {
   parseCSVLine,
   V1_GRACE_PERIOD_SECONDS,
 } from "./preMigration.js";
+import {
+  PREMIGRATION_CSV_HEADER,
+  premigrationCsvRow,
+} from "./preMigrationUtils.js";
 
 const DEFAULT_ANVIL_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
@@ -84,6 +98,10 @@ const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
 const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 const RPC_RETRY_COUNT = 3;
+/// Transport-level retries for a dropped connection, on top of viem's own
+/// JSON-RPC retries, which never see a request that failed to reach the node.
+const RPC_TRANSPORT_RETRIES = 5;
+const RPC_TRANSPORT_BACKOFF_MS = 250;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
 const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
@@ -402,12 +420,6 @@ function csvLabelColumnIndex(header: string[]): number {
   return normalized.indexOf("label");
 }
 
-// Quote a CSV field when it contains a delimiter, quote, or newline so labels
-// with such characters survive a round-trip through the premigration reader.
-function escapeCsvField(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
 function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
   if (lines.length === 0 || !lines[0]) return [];
@@ -440,13 +452,11 @@ function transformCsvForPreMigration(
     );
   }
 
-  const output = [
-    "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
-  ];
+  const output = [PREMIGRATION_CSV_HEADER];
   for (const line of lines.slice(1)) {
     const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
-    if (label) output.push(`,,,,,,${escapeCsvField(label)},,`);
+    if (label) output.push(premigrationCsvRow(label));
   }
   writeFileSync(targetPath, `${output.join("\n")}\n`);
   return output.length - 1;
@@ -455,24 +465,24 @@ function transformCsvForPreMigration(
 function prependCsvLabels(csvFile: string, labels: string[]): void {
   const lines = readFileSync(csvFile, "utf-8").trimEnd().split(/\r?\n/);
   const [header, ...rows] = lines;
-  const smokeRows = labels.map((label) => `,,,,,,${label},,`);
-  writeFileSync(csvFile, `${[header, ...smokeRows, ...rows].join("\n")}\n`);
+  const added = labels.map(premigrationCsvRow);
+  writeFileSync(csvFile, `${[header, ...added, ...rows].join("\n")}\n`);
 }
 
-function readPremigrationLabels(csvFile: string, count: number): string[] {
-  const lines = readFileSync(csvFile, "utf-8").trimEnd().split(/\r?\n/);
-  const [header, ...rows] = lines;
-  const labelIndex = parseCSVLine(header).indexOf("labelName");
-  if (labelIndex < 0) {
-    throw new Error(`CSV must contain a labelName column: ${csvFile}`);
+/// The smoke names phase 2 reserves, which later phases migrate and re-register.
+type ReservedSmokeLabels = { migrate: string; reservedOnly: string };
+
+/// Reads back the reserved smoke names an earlier run chose.
+///
+/// They cannot be recovered from the CSV: its leading rows belong to whatever
+/// was prepended last, which is the fixture corpus whenever one seeds.
+function readReservedSmokeLabels(path: string): ReservedSmokeLabels {
+  if (!existsSync(path)) {
+    throw new Error(
+      `cannot resume phase 2 without the smoke labels the earlier run recorded: ${path}`,
+    );
   }
-  const labels = rows
-    .map((row) => parseCSVLine(row)[labelIndex]?.trim())
-    .filter((label): label is string => Boolean(label));
-  if (labels.length < count) {
-    throw new Error(`CSV must contain at least ${count} labels: ${csvFile}`);
-  }
-  return labels.slice(0, count);
+  return JSON.parse(readFileSync(path, "utf-8")) as ReservedSmokeLabels;
 }
 
 function labelId(label: string): bigint {
@@ -788,6 +798,73 @@ export function saveRpcSnapshotFile(
   );
 }
 
+/// Reads outside the `eth_get*` family that a dropped connection can re-issue.
+const RETRYABLE_RPC_METHODS = new Set([
+  "eth_accounts",
+  "eth_blockNumber",
+  "eth_call",
+  "eth_chainId",
+  "eth_estimateGas",
+  "eth_feeHistory",
+  "eth_gasPrice",
+  "eth_maxPriorityFeePerGas",
+  "eth_protocolVersion",
+  "eth_syncing",
+  "net_listening",
+  "net_version",
+  "web3_clientVersion",
+]);
+
+/// Whether re-issuing a request cannot change the chain.
+///
+/// Reads are recognised explicitly so a method nobody has classified is left
+/// alone rather than replayed on a guess. Transaction submission is the case
+/// this exists to exclude: a node-signed send carries no client nonce, so a
+/// replay lands a second, distinct transaction rather than being rejected as a
+/// duplicate. The state controls are equally unsafe — replaying a clock
+/// increment advances it twice — and a batch is an array whose members cannot be
+/// judged from the envelope.
+export function isRetryableRpcRequest(request: any): boolean {
+  if (!request || Array.isArray(request)) return false;
+  const method = request.method;
+  return (
+    typeof method === "string" &&
+    (method.startsWith("eth_get") || RETRYABLE_RPC_METHODS.has(method))
+  );
+}
+
+/// Retries a fetch that never produced a response.
+///
+/// A long deploy issues thousands of RPC calls, and a single dropped connection
+/// would otherwise abort it partway through — leaving a half-deployed namespace
+/// that cannot be resumed. Only transport failures are retried: an HTTP response
+/// of any status is returned untouched, so JSON-RPC errors keep their existing
+/// handling.
+///
+/// Only idempotent requests are retried. Replaying a send would be unsafe, and
+/// would not help either: a node that accepted the first submission rejects the
+/// second as already known, so the run aborts whether or not it is retried.
+async function fetchWithTransportRetry(
+  originalFetch: typeof globalThis.fetch,
+  input: any,
+  init: any,
+  request: any,
+): Promise<Response> {
+  const attempts = isRetryableRpcRequest(request) ? RPC_TRANSPORT_RETRIES : 0;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= attempts; attempt++) {
+    try {
+      return await originalFetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      const backoff = RPC_TRANSPORT_BACKOFF_MS * 2 ** attempt;
+      await sleep(backoff + Math.floor(Math.random() * backoff));
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Permanently monkey-patches `globalThis.fetch` to add JSON-RPC compatibility
  * fallbacks for HTTP traffic issued by libraries we do not control (rocketh/viem
@@ -807,7 +884,12 @@ function installRpcCompatibility(debugRpc: boolean): void {
         return null;
       }
     })();
-    const response = await originalFetch(input, init);
+    const response = await fetchWithTransportRetry(
+      originalFetch,
+      input,
+      init,
+      request,
+    );
     try {
       const payload = await response.clone().json();
       if (
@@ -1889,52 +1971,6 @@ async function filterHandoffControllersByBackReference(
     }),
   );
   return addresses.filter((_, index) => matches[index]);
-}
-
-type RegistrarControlRoute = {
-  // Contract the owner-gated write targets, and whose owner() gates it.
-  target: JsonDeployment;
-  addFunctionName: string;
-  removeFunctionName: string;
-  transferFunctionName: string;
-};
-
-// The contract that currently drives the v1 BaseRegistrar's owner-gated entrypoints.
-// The security controller is a pass-through that forwards to the registrar as its
-// owner, so it only works while it still holds that ownership: once a migration has
-// handed the registrar to a renewer, or a reclaim has returned it to the v1 owner,
-// its calls revert. The route is therefore chosen from the registrar's live owner
-// rather than from the presence of a security controller artifact.
-async function resolveRegistrarControlRoute(opts: {
-  client: ReturnType<typeof publicClient>;
-  baseRegistrar: JsonDeployment;
-  registrarSecurityController: JsonDeployment | null;
-  owner?: Address;
-}): Promise<RegistrarControlRoute> {
-  const { baseRegistrar, registrarSecurityController } = opts;
-  if (registrarSecurityController) {
-    const owner =
-      opts.owner ??
-      ((await opts.client.readContract({
-        address: baseRegistrar.address,
-        abi: baseRegistrar.abi,
-        functionName: "owner",
-      })) as Address);
-    if (getAddress(owner) === getAddress(registrarSecurityController.address)) {
-      return {
-        target: registrarSecurityController,
-        addFunctionName: "addRegistrarController",
-        removeFunctionName: "removeRegistrarController",
-        transferFunctionName: "transferRegistrarOwnership",
-      };
-    }
-  }
-  return {
-    target: baseRegistrar,
-    addFunctionName: "addController",
-    removeFunctionName: "removeController",
-    transferFunctionName: "transferOwnership",
-  };
 }
 
 type V1ControllerAuditOptions = {
@@ -3701,6 +3737,10 @@ function logDeployedAddresses(
 async function deployV1(opts: DeployV1Options) {
   const network = NETWORKS[opts.network];
   const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  // The v1 deploy scripts refuse to deploy the batch gateway provider without a
+  // gateway list. A throwaway v1 stack resolves through the local batch gateway,
+  // the same one the devnet setup uses; an operator value still wins.
+  process.env.BATCH_GATEWAY_URLS ??= JSON.stringify([LOCAL_BATCH_GATEWAY_URL]);
   const { provider, chainId, chain } =
     await resolveDeployProviderAndChain(opts);
   const env = await loadAndExecuteDeploymentsFromFilesWithConfig(
@@ -3820,14 +3860,63 @@ export async function deployV2(opts: DeployV2Options) {
   ]);
 
   // Refresh the generated address table for a persisted deploy so the docs
-  // track the namespace just written. Fork/non-persisted rehearsals are skipped.
-  if (persist) {
+  // track the namespace just written. That table describes the network's
+  // canonical deployment, so it is only rewritten by a run that actually
+  // deployed it: a fork rehearsal points at another tree, and `clean-testnet`
+  // writes a `sepolia-clean-*` namespace into the canonical tree, so the
+  // namespace has to match the network as well as the directory. Without the
+  // second half of this check a throwaway testnet overwrites the real table.
+  if (
+    persist &&
+    deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
+    deploymentNetwork === opts.network
+  ) {
     const docPath = await generateAddressMarkdown({
       deploymentsDir,
       namespace: deploymentNetwork,
       docName: opts.network,
     });
     console.log(`address docs: ${docPath}`);
+  }
+
+  // Every persisted deploy also carries its address table next to its own
+  // artifacts. A throwaway namespace never reaches the canonical docs above, so
+  // without this its addresses would live only in the individual artifact JSON.
+  if (persist) {
+    // A clean testnet deploys its own v1 stack into a separate tree, and those
+    // addresses belong in the same table: given only the v2 half, a reader
+    // cannot reach the registry the migrated names actually live in. A run
+    // against an existing v1 has nothing extra to record.
+    const v1Namespace =
+      opts.v1DeploymentNetwork ??
+      (opts.deploymentNetwork ? network.environment : undefined);
+    const v1Root = opts.v1DeploymentsDir
+      ? resolve(opts.v1DeploymentsDir)
+      : join(deploymentsDir, "v1");
+    // Keyed on the run having deployed v1 itself, not on the two namespaces
+    // coinciding: a canonical deploy given an explicit `--deployment-network`
+    // also matches, and its v1 is the network's real one, not this run's.
+    const includesFreshV1 =
+      Boolean(opts.cleanTestnet) && v1Namespace !== undefined;
+
+    const namespacePath = await generateAddressMarkdown({
+      deploymentsDir,
+      namespace: deploymentNetwork,
+      docName: deploymentNetwork,
+      outDir: join(deploymentsDir, deploymentNetwork),
+      fileName: "addresses",
+      generatedBy: "the deploy that wrote this namespace",
+      extraSections: includesFreshV1
+        ? [
+            {
+              title: "ENSv1 contracts (deployed by this testnet)",
+              deploymentsDir: v1Root,
+              namespace: v1Namespace,
+            },
+          ]
+        : undefined,
+    });
+    console.log(`deployment address table: ${namespacePath}`);
   }
 
   return env;
@@ -3903,13 +3992,21 @@ async function registerViaV1Controller({
     functionName: "rentPrice",
     args: [label, V1_REGISTRATION_DURATION],
   })) as { base: bigint; premium: bigint };
-  hash = await wallet.writeContract({
+  const registerRequest = {
     address: controller.address,
     abi: controller.abi,
-    functionName: "register",
+    functionName: "register" as const,
     args: [registration],
     value: price.base + price.premium,
-  });
+    account: wallet.account,
+  };
+  // The estimate is the exact gas the call needs in isolation, which a nested
+  // call can exceed under EIP-150's 63/64 rule once it runs for real — the
+  // transaction then burns the whole limit and reverts. A buffer absorbs that.
+  hash = await wallet.writeContract({
+    ...registerRequest,
+    gas: await bufferedGas(client, registerRequest),
+  } as never);
   await waitForSuccessfulReceipt(client, hash, `v1 register ${label}.eth`);
 }
 
@@ -4424,6 +4521,111 @@ async function disableAndVerifyBatchRegistrar(opts: {
   await verifyBatchRegistrarDisabled(opts);
 }
 
+// Options selecting an optional ENSv1 fixture cohort for a rehearsal. Absent
+// `fixtureRoot`, the whole stage is skipped and the rehearsal is unchanged.
+export type FixtureRehearsalOptions = {
+  fixtureRoot?: string;
+  fixtureScenarios?: string;
+  fixtureTiers?: string;
+  fixtureIds?: string;
+  fixtureLimit?: string;
+  fixtureReplicasPerVector?: string;
+  fixtureActorMnemonic?: string;
+  fixturePrivateKey?: string;
+};
+
+// The corpus needs an operator account and a set of actor accounts. On a
+// state-controlled RPC both are generated per run and funded directly, which
+// keeps a rehearsal from depending on funded keys and from inheriting the
+// EIP-7702 delegations that the well-known test accounts carry on live chains.
+// The generated mnemonic is written beside the run state so a resumed rehearsal
+// addresses the same actors.
+async function fixtureRunOptions(
+  opts: RunForkFullOptions & FixtureRehearsalOptions,
+  base: {
+    rpcUrl: string;
+    chainId: number;
+    client: ReturnType<typeof publicClient>;
+    deploymentsDir: string;
+    deploymentNetwork: string;
+    v1DeploymentsDir?: string;
+    v1DeploymentNetwork?: string;
+    workDir: string;
+    useRpcStateControls: boolean;
+    v1Owner: Address;
+  },
+): Promise<any | null> {
+  if (!opts.fixtureRoot) return null;
+  const fixtureWorkDir = join(base.workDir, "fixture");
+  mkdirSync(fixtureWorkDir, { recursive: true });
+
+  const mnemonicFile = join(fixtureWorkDir, "actor-mnemonic.txt");
+  let actorMnemonic =
+    opts.fixtureActorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
+  if (!actorMnemonic && existsSync(mnemonicFile)) {
+    actorMnemonic = readFileSync(mnemonicFile, "utf8").trim();
+  }
+  if (!actorMnemonic) {
+    if (!base.useRpcStateControls) {
+      throw new Error(
+        "--fixture-root on a live RPC requires --fixture-actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC",
+      );
+    }
+    actorMnemonic = generateMnemonic(englishWordlist);
+    writeFileSync(mnemonicFile, `${actorMnemonic}\n`);
+  }
+
+  const keyFile = join(fixtureWorkDir, "operator-key.txt");
+  let privateKey =
+    opts.fixturePrivateKey ?? process.env.MIGRATION_FIXTURE_PRIVATE_KEY;
+  if (!privateKey && existsSync(keyFile)) {
+    privateKey = readFileSync(keyFile, "utf8").trim();
+  }
+  if (!privateKey) {
+    if (!base.useRpcStateControls) {
+      throw new Error(
+        "--fixture-root on a live RPC requires --fixture-private-key or MIGRATION_FIXTURE_PRIVATE_KEY",
+      );
+    }
+    privateKey = generatePrivateKey();
+    writeFileSync(keyFile, `${privateKey}\n`);
+  }
+
+  if (base.useRpcStateControls) {
+    const operator = privateKeyToAccount(privateKey as `0x${string}`);
+    await setBalance(base.client, operator.address);
+    for (let index = 0; index < ACTOR_ALIASES.length; index += 1) {
+      const actor = mnemonicToAccount(actorMnemonic, { accountIndex: index });
+      await setBalance(base.client, actor.address);
+    }
+  }
+
+  return {
+    network: opts.network,
+    rpcUrl: base.rpcUrl,
+    chainId: String(base.chainId),
+    fixtureRoot: resolve(opts.fixtureRoot),
+    workDir: fixtureWorkDir,
+    deploymentsDir: base.deploymentsDir,
+    deploymentNetwork: base.deploymentNetwork,
+    v1DeploymentsDir: base.v1DeploymentsDir,
+    v1DeploymentNetwork: base.v1DeploymentNetwork,
+    privateKey,
+    actorMnemonic,
+    // Seeding registers through the v1 controller. On a chain a previous
+    // migration already froze, the corpus cannot be created until that
+    // controller is re-authorised, which only the v1 owner can do.
+    v1Owner: base.v1Owner,
+    v1OwnerKey: opts.v1OwnerPrivateKey,
+    limit: opts.fixtureLimit,
+    tiers: opts.fixtureTiers,
+    scenarios: opts.fixtureScenarios,
+    fixtureIds: opts.fixtureIds,
+    replicasPerVector: opts.fixtureReplicasPerVector,
+    rpcStateControls: base.useRpcStateControls,
+  };
+}
+
 export async function runForkFull(opts: RunForkFullOptions) {
   if (opts.direct || opts.debugRpc)
     installRpcCompatibility(Boolean(opts.debugRpc));
@@ -4744,33 +4946,31 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
-    const smokeLabels =
+    // Only the two reserved names have to survive a resume. The rest are chosen
+    // fresh each run because their assertions need names the chain has never
+    // seen, which a replayed run would no longer offer.
+    const reservedSmokeFile = join(workDir, "smoke-labels.json");
+    const reservedSmoke =
       resumeFromPhase === 2
-        ? (() => {
-            const [migrate, reservedOnly] = readPremigrationLabels(
-              transformedCsv,
-              2,
-            );
-            console.log(
-              `resumed smoke labels: ${migrate}.eth, ${reservedOnly}.eth`,
-            );
-            return {
-              v1BeforeDisable: `${smokePrefix}pre`,
-              migrate,
-              reservedOnly,
-              v1AfterDisable: `${smokePrefix}block`,
-              v2BeforeEnable: `${smokePrefix}v2block`,
-              v2AfterEnable: `${smokePrefix}v2ok`,
-            };
-          })()
-        : {
-            v1BeforeDisable: `${smokePrefix}pre`,
-            migrate: `${smokePrefix}mig`,
-            reservedOnly: `${smokePrefix}res`,
-            v1AfterDisable: `${smokePrefix}block`,
-            v2BeforeEnable: `${smokePrefix}v2block`,
-            v2AfterEnable: `${smokePrefix}v2ok`,
-          };
+        ? readReservedSmokeLabels(reservedSmokeFile)
+        : { migrate: `${smokePrefix}mig`, reservedOnly: `${smokePrefix}res` };
+    if (resumeFromPhase === 2) {
+      console.log(
+        `resumed smoke labels: ${reservedSmoke.migrate}.eth, ${reservedSmoke.reservedOnly}.eth`,
+      );
+    } else {
+      writeFileSync(
+        reservedSmokeFile,
+        `${JSON.stringify(reservedSmoke, null, 2)}\n`,
+      );
+    }
+    const smokeLabels = {
+      v1BeforeDisable: `${smokePrefix}pre`,
+      v1AfterDisable: `${smokePrefix}block`,
+      v2BeforeEnable: `${smokePrefix}v2block`,
+      v2AfterEnable: `${smokePrefix}v2ok`,
+      ...reservedSmoke,
+    };
 
     let smokeMigrationOwner = smokeAccount.address;
     let smokeMigrationPrivateKey: `0x${string}` | undefined = smokePrivateKey;
@@ -4824,6 +5024,30 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
 
+    // The corpus is seeded here rather than before phase 1: a third of it
+    // approves MigrationHelper while shaping its V1 state, which needs the V2
+    // deployment phase 1 produces. It still lands before phase 3 closes V1
+    // registration, and before pre-migration, which reserves the subset of its
+    // labels that model a name already reserved on V2.
+    const fixtureOptions = await fixtureRunOptions(opts, {
+      rpcUrl,
+      chainId,
+      client,
+      deploymentsDir,
+      deploymentNetwork,
+      ...v1Deployments,
+      workDir,
+      useRpcStateControls,
+      v1Owner,
+    });
+    if (fixtureOptions && resumeFromPhase !== 2) {
+      const { labels } = await runFixtureSeedStage(fixtureOptions);
+      prependCsvLabels(transformedCsv, labels);
+      console.log(
+        `fixture: added ${labels.length} labels to the pre-migration CSV`,
+      );
+    }
+
     console.log("phase 2: initial pre-migration");
     await runPreMigrationCommand(
       {
@@ -4831,6 +5055,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
         ...v1Deployments,
+        deploymentsDir,
         deploymentNetwork,
         registry: ethRegistry.address,
         batchRegistrar: batchRegistrar.address,
@@ -4935,6 +5160,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         rpcUrl,
         mainnetRpcUrl: rpcUrl,
         ...v1Deployments,
+        deploymentsDir,
         deploymentNetwork,
         registry: ethRegistry.address,
         batchRegistrar: batchRegistrar.address,
@@ -5899,6 +6125,17 @@ export async function main(argv = process.argv): Promise<void> {
   );
   program.addCommand(premigration);
 
+  // Test-only ENSv1 fixture corpus. Seeded between phases 1 and 3; the subset of
+  // it that models a name already reserved on v2 is then reserved by the
+  // pre-migration phases from the CSV it emits. See docs/migration.md.
+  program.addCommand(
+    addFixtureSubcommands(
+      new Command("fixture").description(
+        "Seed the weighted ENSv1 migration fixture corpus and carry it through pre-migration.",
+      ),
+    ),
+  );
+
   const phase = new Command("phase").description(
     "Run or verify individual live/fork migration phases.",
   );
@@ -6584,6 +6821,35 @@ export async function main(argv = process.argv): Promise<void> {
               false,
             )
             .option(
+              "--fixture-root <path>",
+              "Seed the ENSv1 fixture corpus from this bundle as part of the rehearsal",
+            )
+            .option(
+              "--fixture-scenarios <list>",
+              "Fixture execution scenarios to include, e.g. live_now",
+            )
+            .option(
+              "--fixture-tiers <list>",
+              "Fixture popularity tiers to include",
+            )
+            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
+            .option(
+              "--fixture-limit <count>",
+              "Cap the number of fixture names",
+            )
+            .option(
+              "--fixture-replicas-per-vector <count>",
+              "Keep at most N replicas of each fixture scenario",
+            )
+            .option(
+              "--fixture-actor-mnemonic <mnemonic>",
+              "Dedicated fixture actor mnemonic (generated per run on a fork)",
+            )
+            .option(
+              "--fixture-private-key <key>",
+              "Fixture operator key (generated per run on a fork)",
+            )
+            .option(
               "--snapshot-file <path>",
               "Optional file to write a pre-rehearsal snapshot id",
             )
@@ -6654,6 +6920,35 @@ export async function main(argv = process.argv): Promise<void> {
             .option(
               "--work-dir <path>",
               "Directory for clean deploy logs, checkpoints, and generated CSV",
+            )
+            .option(
+              "--fixture-root <path>",
+              "Seed the ENSv1 fixture corpus from this bundle as part of the run",
+            )
+            .option(
+              "--fixture-scenarios <list>",
+              "Fixture execution scenarios to include, e.g. live_now",
+            )
+            .option(
+              "--fixture-tiers <list>",
+              "Fixture popularity tiers to include",
+            )
+            .option("--fixture-ids <list>", "Explicit fixture IDs to include")
+            .option(
+              "--fixture-limit <count>",
+              "Cap the number of fixture names",
+            )
+            .option(
+              "--fixture-replicas-per-vector <count>",
+              "Keep at most N replicas of each fixture scenario",
+            )
+            .option(
+              "--fixture-actor-mnemonic <mnemonic>",
+              "Dedicated fixture actor mnemonic (generated per run when impersonating)",
+            )
+            .option(
+              "--fixture-private-key <key>",
+              "Fixture operator key (generated per run when impersonating)",
             )
             .option(
               "--snapshot-file <path>",

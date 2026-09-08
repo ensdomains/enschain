@@ -637,6 +637,30 @@ async function createMigrationClients(
   };
 }
 
+const MAX_UINT64 = (1n << 64n) - 1n;
+
+// The reservation expiry stored on v2, widened by the bonus period and held inside
+// the uint64 the registry stores it in. A v1 name renewed to the ceiling would
+// otherwise wrap around and reserve a name that reads as long expired.
+export function bonusAdjustedExpiry(
+  v1Expiry: bigint,
+  bonusPeriodSeconds: bigint,
+): bigint {
+  const raw = v1Expiry + bonusPeriodSeconds;
+  return raw > MAX_UINT64 ? MAX_UINT64 : raw;
+}
+
+// Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
+// outside the range `Date` can represent, and letting one of those throw would abort
+// the whole run over a log line, so they are described rather than formatted.
+export function formatExpiry(expiry: bigint): string {
+  const milliseconds = Number(expiry) * 1000;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15) {
+    return `${expiry} (beyond representable dates)`;
+  }
+  return new Date(milliseconds).toISOString().split("T")[0];
+}
+
 async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
@@ -1032,12 +1056,12 @@ async function processBatch(
       continue;
     }
 
-    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
+    const effectiveExpiry = bonusAdjustedExpiry(
+      result.v1Expiry,
+      bonusPeriodSeconds,
+    );
 
-    const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
-      .toISOString()
-      .split("T")[0];
-    logger.v1Verified(registration.labelName, expiryDateFormatted);
+    logger.v1Verified(registration.labelName, formatExpiry(effectiveExpiry));
 
     batchLabels.push(registration.labelName);
     batchExpires.push(effectiveExpiry);

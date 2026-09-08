@@ -10,7 +10,9 @@
   ],
   "scripts": {
     "format:biome": "biome format .",
-    "format:biome:fix": "biome format --write ."
+    "format:biome:fix": "biome format --write .",
+    "fixtures:extract": "bun ./contracts/script/extractMigrationFixture.ts",
+    "postinstall": "bun run fixtures:extract"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",
