@@ -1,6 +1,6 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   type KnownProfile,
@@ -8,7 +8,12 @@ import {
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName, idFromLabel, COIN_TYPE_ETH } from "../utils/utils.js";
+import {
+  dnsEncodeName,
+  idFromLabel,
+  COIN_TYPE_ETH,
+  getParentName,
+} from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -18,6 +23,9 @@ const network = await hre.network.connect();
 async function fixture() {
   const v1 = await deployV1Fixture(network, true, false);
   const v2 = await deployV2Fixture(network, true);
+  const ssResolver = await network.viem.deployContract(
+    "DummyShapeshiftResolver",
+  );
   const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [
     v2.batchGatewayProvider.address,
@@ -30,7 +38,7 @@ async function fixture() {
     name: "eth",
     resolverAddress: ensV2Resolver.address,
   });
-  return { v1, v2, ensV2Resolver, ethResolver };
+  return { v1, v2, ssResolver, ensV2Resolver, ethResolver };
 }
 
 describe("ENSV2Resolver", () => {
@@ -132,4 +140,24 @@ describe("ENSV2Resolver", () => {
       }
     });
   }
+
+  it("not a contract", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const name = "test.eth";
+    await expect(F.ensV2Resolver.read.getResolver([dnsEncodeName(name)]))
+      .toBeRevertedWithCustomError("UnreachableName")
+      .withArgs([dnsEncodeName(name)]);
+  });
+
+  it("not extended", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const name = "sub.test.eth";
+    await F.v2.setupName({
+      name: getParentName(name),
+      resolverAddress: F.ssResolver.address,
+    });
+    await expect(F.ensV2Resolver.read.getResolver([dnsEncodeName(name)]))
+      .toBeRevertedWithCustomError("UnreachableName")
+      .withArgs([dnsEncodeName(name)]);
+  });
 });

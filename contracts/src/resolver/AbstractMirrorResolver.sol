@@ -8,6 +8,7 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
@@ -65,18 +66,45 @@ abstract contract AbstractMirrorResolver is
 
     /// @inheritdoc IExtendedResolver
     function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory) {
-        callResolver(_findResolver(name), name, data, false, "", BATCH_GATEWAY_PROVIDER.gateways());
+        callResolver(
+            _requireResolver(name),
+            name,
+            data,
+            false,
+            "",
+            BATCH_GATEWAY_PROVIDER.gateways()
+        );
     }
 
     /// @inheritdoc ICompositeResolver
     function getResolver(bytes calldata name) external view returns (address, bool) {
-        return (_findResolver(name), false);
+        return (_requireResolver(name), false);
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Determine the resolver for `name`.
-    function _findResolver(bytes calldata name) internal view virtual returns (address);
+    /// @dev Find the resolver for `name`.
+    function _findResolver(bytes calldata name)
+        internal
+        view
+        virtual
+        returns (address resolver, uint256 offset);
+
+    /// @dev Determine the valid resolver for `name`.
+    function _requireResolver(bytes calldata name) internal view returns (address) {
+        (address resolver, uint256 offset) = _findResolver(name);
+        if (
+            resolver.code.length == 0 ||
+            (offset > 0 &&
+                !ERC165Checker.supportsERC165InterfaceUnchecked(
+                    resolver,
+                    type(IExtendedResolver).interfaceId
+                ))
+        ) {
+            revert UnreachableName(name);
+        }
+        return resolver;
+    }
 }

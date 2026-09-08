@@ -47,9 +47,14 @@ contract ENSV2Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
+    function _findResolver(bytes calldata name)
+        internal
+        view
+        override
+        returns (address resolver, uint256 offset)
+    {
         bytes32 node;
-        (, resolver, node, ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
         if (node == NameCoder.ETH_NODE && address(ETH_RESOLVER) != address(0)) {
             resolver = ETH_RESOLVER;
         }

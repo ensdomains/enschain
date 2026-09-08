@@ -36,7 +36,12 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
-        (resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+    function _findResolver(bytes calldata name)
+        internal
+        view
+        override
+        returns (address resolver, uint256 offset)
+    {
+        (resolver, , offset) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
     }
 }
