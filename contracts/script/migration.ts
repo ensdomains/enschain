@@ -7504,6 +7504,19 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ? { impersonateOwner: true }
       : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
+    // Every phase command takes the same description of where it is running and
+    // which artifacts describe it. Named once, so a call site below shows only what
+    // is particular to that phase.
+    const phaseCtx = {
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      deploymentsDir,
+      deploymentNetwork,
+    };
+    const phaseV1Ctx = { ...phaseCtx, ...v1Deployments };
+
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
     // it and the intermediate URP serves its own implementation (about to be
@@ -7682,12 +7695,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       // The rehearsal drives the phases itself and, on an already-migrated chain,
       // cannot run the reconciliation that gates the live command.
       skipPreconditions: true,
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseCtx,
       ...v1Deployments,
       ...v1OwnerSigner,
     });
@@ -7709,13 +7717,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       throw new Error("missing ETHRenewerV1 deployment for phase 4");
     }
     await authorizeV1Renewer({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       ethRenewerV1: ethRenewerV1.address,
       ...v1OwnerSigner,
     });
@@ -7730,13 +7732,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       );
     }
     await activateV1HandoffControllers({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       graveyard: graveyard.address,
       testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
       ...v1OwnerSigner,
@@ -7747,24 +7743,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // on the registrar, so the controller grant above does not make a name
     // renewable on its own — this does.
     await activateV1RenewerAndTransferOwnership({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       ethRenewerV1: ethRenewerV1.address,
       ...v1OwnerSigner,
     });
     await verifyV1Renewer({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       ethRenewerV1: ethRenewerV1.address,
     });
     coveredChecks.push(SMOKE_CHECKS.renewerAuthorization);
@@ -7777,24 +7761,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // contract that was never granted or was revoked, which otherwise reads as
     // "disabled" and passes.
     await verifyV1RegistrarsDisabled({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       requireActiveGrants: true,
     });
     coveredChecks.push(SMOKE_CHECKS.freezeAndHandoff);
     await verifyReverseAdapters({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
     });
 
     // Being authorized does not prove a renewal works. Renewal is the only action a
@@ -8056,24 +8028,14 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // than enforced here: a rehearsal may run against a network whose real payment
     // tokens are not funded on the fork.
     await verifyRegistrarEconomics({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseCtx,
       reportOnly: true,
     });
 
     // Every later check trusts these records to name the right contracts, so confirm
     // the code at each address is what the namespace claims before relying on them.
     await verifyDeployment({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseCtx,
       reportOnly: true,
     });
 
@@ -8083,12 +8045,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // failing on those would make the check something operators route around.
     console.log("phase 6: v2 role matrix");
     await verifyV2Roles({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseCtx,
       deployer,
       owner,
       reportOnly: true,
@@ -8745,11 +8702,6 @@ type DeploymentCliOptions = {
   deploymentsDir?: string;
 };
 
-type V1DeploymentCliOptions = {
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-};
-
 // Phase commands that broadcast (or print calldata) as the v1 owner.
 type V1OwnerWriteCliOptions = {
   privateKey?: `0x${string}`;
@@ -8765,7 +8717,7 @@ type AdminSignerCliOptions = {
 
 type PremigrationRunCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     privateKey?: `0x${string}`;
     csvFile: string;
     mainnetRpcUrl?: string;
@@ -8782,7 +8734,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
 
 type PremigrationVerifyCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     csvFile: string;
     mainnetRpcUrl?: string;
     registry?: Address;
@@ -8795,7 +8747,7 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
 
 type DeployV2CliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     resume?: boolean;
     includeTestnetPremigrationRegistrar?: boolean;
     deferV1OwnerTransactions?: boolean;
@@ -9047,7 +8999,7 @@ export async function main(argv = process.argv): Promise<void> {
         ),
     ).action(
       async (
-        opts: V1DeploymentCliOptions & {
+        opts: V1DeploymentOptions & {
           workDir: string;
           network?: string;
           source?: string;
@@ -9374,7 +9326,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & {
             skipPreconditions?: boolean;
             maxReconcileAgeBlocks?: string;
@@ -9398,9 +9350,7 @@ export async function main(argv = process.argv): Promise<void> {
       ),
     ).action(
       async (
-        opts: NetworkCliOptions &
-          V1DeploymentCliOptions &
-          V1OwnerWriteCliOptions,
+        opts: NetworkCliOptions & V1DeploymentOptions & V1OwnerWriteCliOptions,
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
@@ -9429,7 +9379,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions & { requireActiveGrants?: boolean },
+          V1DeploymentOptions & { requireActiveGrants?: boolean },
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await verifyV1RegistrarsDisabled({
@@ -9600,7 +9550,7 @@ export async function main(argv = process.argv): Promise<void> {
       ),
     ).action(
       async (
-        opts: NetworkCliOptions & DeploymentCliOptions & V1DeploymentCliOptions,
+        opts: NetworkCliOptions & DeploymentCliOptions & V1DeploymentOptions,
       ) => {
         await verifyReverseAdapters({ ...withNetworkRpc(opts) });
       },
@@ -9733,7 +9683,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { registrar?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -9761,7 +9711,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { graveyard?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -9793,7 +9743,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & {
             graveyard?: Address;
             testnetV1PremigrationRegistrar?: Address;
@@ -9824,7 +9774,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -9852,7 +9802,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -9884,7 +9834,7 @@ export async function main(argv = process.argv): Promise<void> {
     ).action(
       async (
         opts: NetworkCliOptions &
-          V1DeploymentCliOptions & {
+          V1DeploymentOptions & {
             v1Owner?: Address;
             privateKey?: `0x${string}`;
             impersonateOwner?: boolean;
@@ -10108,7 +10058,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions & { ethRenewerV1?: Address },
+          V1DeploymentOptions & { ethRenewerV1?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await verifyV1Renewer({
