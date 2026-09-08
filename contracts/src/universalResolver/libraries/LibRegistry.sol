@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.24;
 
-import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
