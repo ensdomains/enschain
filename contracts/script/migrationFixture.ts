@@ -1318,7 +1318,11 @@ async function readHandoverState(
         registrationExpiry.set(read.fixtureId, BigInt(results[index]));
         continue;
       }
-      const [owner, fuses, expiry] = results[index] as [Address, number, bigint];
+      const [owner, fuses, expiry] = results[index] as [
+        Address,
+        number,
+        bigint,
+      ];
       if (read.slot === "name") {
         state.wrapperOwner = getAddress(owner);
         state.wrapperFuses = Number(fuses);

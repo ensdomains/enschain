@@ -46,7 +46,6 @@ import {
 } from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
-import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
@@ -1317,6 +1316,53 @@ async function printPreMigrationStatus(opts: { workDir?: string }) {
   }
 }
 
+/// Single-function ABIs for the three reads this verification batches.
+///
+/// The generated artifact ABIs carry every entry the contract declares, and
+/// inferring a multicall's return tuple across a whole batch of them exhausts
+/// the type instantiation budget — the checker gives up on the call and every
+/// result downstream degrades to `unknown`. Naming only the function being
+/// called keeps the inference shallow, and keeps the decoded shape honest
+/// rather than cast into place afterwards.
+const NAME_EXPIRES_ABI = [
+  {
+    type: "function",
+    name: "nameExpires",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const REGISTRY_STATE_ABI = [
+  {
+    type: "function",
+    name: "getState",
+    stateMutability: "view",
+    inputs: [{ name: "anyId", type: "uint256" }],
+    outputs: [
+      {
+        name: "state",
+        type: "tuple",
+        components: [
+          { name: "status", type: "uint8" },
+          { name: "expiry", type: "uint64" },
+          { name: "latestOwner", type: "address" },
+          { name: "tokenId", type: "uint256" },
+          { name: "resource", type: "uint256" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "getResolver",
+    stateMutability: "view",
+    inputs: [{ name: "label", type: "string" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
 async function verifyPreMigration(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -1392,7 +1438,7 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: baseRegistrar,
-        abi: Artifact_BaseRegistrarImplementation.abi,
+        abi: NAME_EXPIRES_ABI,
         functionName: "nameExpires",
         args: [labelId(label)],
       })),
@@ -1401,7 +1447,7 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: registry.address,
-        abi: Artifact_PermissionedRegistry.abi,
+        abi: REGISTRY_STATE_ABI,
         functionName: "getState",
         args: [labelId(label)],
       })),
@@ -1481,7 +1527,7 @@ async function verifyPreMigration(opts: {
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
-          abi: Artifact_PermissionedRegistry.abi,
+          abi: REGISTRY_STATE_ABI,
           functionName: "getResolver",
           args: [label],
         })),
