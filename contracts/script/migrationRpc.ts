@@ -16,11 +16,12 @@ import {
   type Address,
   type Chain,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { setTimeout as sleep } from "node:timers/promises";
 import { createWalletClient, getAddress, parseEther } from "viem";
 
+import { bufferedGas } from "./migrationFixture/config.js";
 import {
   errorMessageChain,
   NETWORKS,
@@ -29,8 +30,20 @@ import {
   type RpcProvider,
 } from "./migrationPlumbing.js";
 
+type WalletAccount =
+  | ReturnType<typeof privateKeyToAccount>
+  | ReturnType<typeof mnemonicToAccount>;
+
 /// Retries viem applies to a JSON-RPC call it did reach the node with.
 export const RPC_RETRY_COUNT = 3;
+
+// A gas estimate is made against the latest block, but the transaction runs in
+// the next one. A call whose cost depends on state the estimate warmed — a price
+// oracle read, a balance that changes from zero — can then need more gas than it
+// was given and run out part-way. The receipt reports that as a plain failure, so
+// a rehearsal aborts with a revert that names no reason. Unused gas is refunded,
+// so padding every estimate costs nothing and removes the whole failure class.
+const GAS_ESTIMATE_PERCENT = 130n;
 
 /// Transport-level retries for a dropped connection, on top of viem's own JSON-RPC
 /// retries, which never see a request that failed to reach the node.
@@ -468,4 +481,64 @@ export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function walletClient({
+  rpcUrl,
+  chain,
+  privateKey,
+  account,
+  provider,
+}: {
+  rpcUrl: string;
+  chain: Chain;
+  privateKey?: `0x${string}`;
+  account?: Address | WalletAccount;
+  provider?: RpcProvider;
+}) {
+  const walletAccount = privateKey ? privateKeyToAccount(privateKey) : account;
+  if (!walletAccount) {
+    throw new Error("A private key or impersonated account is required");
+  }
+  const base = provider
+    ? custom(provider as any)
+    : http(rpcUrl, { retryCount: RPC_RETRY_COUNT });
+  return createWalletClient({
+    account: walletAccount,
+    chain,
+    // The wrapped transport keeps its own retry policy, so the wrapper adds none
+    // of its own — nesting them would multiply the attempts behind every call.
+    transport: (config) =>
+      custom(
+        { request: withGasBuffer(base(config).request) },
+        { retryCount: 0 },
+      )(config),
+  });
+}
+
+export async function increaseTime(
+  client: ReturnType<typeof publicClient>,
+  seconds: bigint,
+) {
+  await requestAny(client, [
+    { method: "anvil_increaseTime", params: [Number(seconds)] },
+    { method: "evm_increaseTime", params: [Number(seconds)] },
+  ]);
+  await requestAny(client, [
+    { method: "anvil_mine", params: [1] },
+    { method: "evm_mine", params: [] },
+  ]);
+}
+
+export function withGasBuffer<T extends (...args: never[]) => Promise<unknown>>(
+  request: T,
+): T {
+  return (async (...args: Parameters<T>) => {
+    const result = await request(...args);
+    const { method } = args[0] as { method: string };
+    if (method !== "eth_estimateGas" || typeof result !== "string") {
+      return result;
+    }
+    return `0x${((BigInt(result) * GAS_ESTIMATE_PERCENT) / 100n).toString(16)}`;
+  }) as T;
 }

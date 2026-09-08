@@ -20,7 +20,11 @@ import {
   type Chain,
   type Hex,
 } from "viem";
+import { keccak256, stringToHex } from "viem";
 import { mainnet, sepolia } from "viem/chains";
+
+import { SEC_PER_DAY } from "./deploy-constants.js";
+import { increaseTime } from "./migrationRpc.js";
 
 import { config as rockethConfig } from "../rocketh/config.js";
 
@@ -283,4 +287,65 @@ export function parseMigrationNetwork(
 ): MigrationNetwork {
   if (value === "mainnet" || value === "sepolia") return value;
   throw new Error(`Unsupported network: ${value ?? "<missing>"}`);
+}
+
+////////////////////////////////////////////////////////////////////////
+// Shared vocabulary
+////////////////////////////////////////////////////////////////////////
+
+export const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
+export const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
+export const V1_BASE_REGISTRAR_NAME = "BaseRegistrarImplementation";
+
+export function labelId(label: string): bigint {
+  return BigInt(keccak256(stringToHex(label)));
+}
+
+export function requireRpcUrl(
+  opts: { rpcUrl?: string },
+  network: MigrationNetwork,
+): string {
+  const config = NETWORKS[network];
+  const rpcUrl = opts.rpcUrl ?? process.env[config.rpcEnv];
+  if (!rpcUrl) {
+    throw new Error(`Missing --rpc-url or ${config.rpcEnv}`);
+  }
+  return rpcUrl;
+}
+
+export async function waitForCommitmentAge(
+  client: ReturnType<typeof publicClient>,
+  seconds: bigint,
+  useRpcStateControls: boolean,
+) {
+  if (useRpcStateControls) {
+    await increaseTime(client, seconds);
+    return;
+  }
+  const startTimestamp = (await client.getBlock()).timestamp;
+  const targetTimestamp = startTimestamp + seconds + 15n;
+  console.log(
+    `waiting for commitment age until block timestamp ${targetTimestamp}`,
+  );
+  for (;;) {
+    const currentTimestamp = (await client.getBlock()).timestamp;
+    if (currentTimestamp >= targetTimestamp) return;
+    const remainingSeconds = targetTimestamp - currentTimestamp;
+    const delaySeconds = remainingSeconds < 12n ? remainingSeconds : 12n;
+    await new Promise((resolvePromise) =>
+      setTimeout(resolvePromise, Number(delaySeconds) * 1000),
+    );
+  }
+}
+
+export async function waitForSuccessfulReceipt(
+  client: ReturnType<typeof publicClient>,
+  hash: `0x${string}`,
+  label: string,
+) {
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status === "reverted") {
+    throw new Error(`${label} reverted: ${hash}`);
+  }
+  return receipt;
 }
