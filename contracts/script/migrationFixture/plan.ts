@@ -28,245 +28,46 @@ import {
   type SetupStep,
 } from "./types.js";
 
-/// Minimal explicit ABIs. The deployed PublicResolver exposes overloaded
-/// `setAddr`, which viem cannot disambiguate from a full artifact ABI, so the
-/// two arities are declared separately.
+import {
+  BaseRegistrar,
+  EnsRegistry,
+  EthRegistrarController,
+  NameWrapper,
+  PublicResolver,
+  ReverseRegistrar,
+} from "../abis.js";
+
+/// The v1 surfaces this planner writes through, each as narrow as the calls it
+/// makes. `setAddr` is overloaded, so the two arities stay apart: viem cannot
+/// pick between them from a single ABI.
 const RESOLVER_ABI = [
-  {
-    type: "function",
-    name: "setAddr",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "a", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setText",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "key", type: "string" },
-      { name: "value", type: "string" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setContenthash",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "hash", type: "bytes" },
-    ],
-    outputs: [],
-  },
+  ...PublicResolver.setAddr,
+  ...PublicResolver.setText,
+  ...PublicResolver.setContenthash,
 ] as const;
-
-const RESOLVER_MULTICOIN_ABI = [
-  {
-    type: "function",
-    name: "setAddr",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "coinType", type: "uint256" },
-      { name: "a", type: "bytes" },
-    ],
-    outputs: [],
-  },
-] as const;
-
+const RESOLVER_MULTICOIN_ABI = PublicResolver.setAddrMulticoin;
 const REGISTRY_ABI = [
-  {
-    type: "function",
-    name: "setResolver",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setTTL",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ttl", type: "uint64" },
-    ],
-    outputs: [],
-  },
+  ...EnsRegistry.setResolver,
+  ...EnsRegistry.setTTL,
 ] as const;
-
 const WRAPPER_ABI = [
-  {
-    type: "function",
-    name: "wrapETH2LD",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "label", type: "string" },
-      { name: "wrappedOwner", type: "address" },
-      { name: "ownerControlledFuses", type: "uint16" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "unwrapETH2LD",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "labelhash", type: "bytes32" },
-      { name: "registrant", type: "address" },
-      { name: "controller", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setSubnodeRecord",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "parentNode", type: "bytes32" },
-      { name: "label", type: "string" },
-      { name: "owner", type: "address" },
-      { name: "resolver", type: "address" },
-      { name: "ttl", type: "uint64" },
-      { name: "fuses", type: "uint32" },
-      { name: "expiry", type: "uint64" },
-    ],
-    outputs: [{ name: "node", type: "bytes32" }],
-  },
-  {
-    type: "function",
-    name: "setFuses",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ownerControlledFuses", type: "uint16" },
-    ],
-    outputs: [{ name: "", type: "uint32" }],
-  },
-  {
-    type: "function",
-    name: "setResolver",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setTTL",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ttl", type: "uint64" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
+  ...NameWrapper.wrapETH2LD,
+  ...NameWrapper.unwrapETH2LD,
+  ...NameWrapper.setSubnodeRecord,
+  ...NameWrapper.setFuses,
+  ...NameWrapper.setResolver,
+  ...NameWrapper.setTTL,
+  ...NameWrapper.approve,
 ] as const;
-
 const ERC721_ABI = [
-  {
-    type: "function",
-    name: "safeTransferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "transferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "reclaim",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "id", type: "uint256" },
-      { name: "owner", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setApprovalForAll",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "operator", type: "address" },
-      { name: "approved", type: "bool" },
-    ],
-    outputs: [],
-  },
+  ...BaseRegistrar.safeTransferFrom,
+  ...BaseRegistrar.transferFrom,
+  ...BaseRegistrar.reclaim,
+  ...BaseRegistrar.setApprovalForAll,
 ] as const;
-
-const ERC1155_ABI = [
-  {
-    type: "function",
-    name: "safeTransferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "id", type: "uint256" },
-      { name: "amount", type: "uint256" },
-      { name: "data", type: "bytes" },
-    ],
-    outputs: [],
-  },
-] as const;
-
-const REVERSE_REGISTRAR_ABI = [
-  {
-    type: "function",
-    name: "setName",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "name", type: "string" }],
-    outputs: [{ name: "", type: "bytes32" }],
-  },
-] as const;
-
-const CONTROLLER_RENEW_ABI = [
-  {
-    type: "function",
-    name: "renew",
-    stateMutability: "payable",
-    inputs: [
-      { name: "name", type: "string" },
-      { name: "duration", type: "uint256" },
-      { name: "referrer", type: "bytes32" },
-    ],
-    outputs: [],
-  },
-] as const;
+const ERC1155_ABI = NameWrapper.safeTransferFrom;
+const REVERSE_REGISTRAR_ABI = ReverseRegistrar.setName;
+const CONTROLLER_RENEW_ABI = EthRegistrarController.renew;
 
 /// Who must sign a planned call. `batcher` means the MigrationFixtureBatcher,
 /// which can be aggregated; an actor alias means a direct wallet transaction

@@ -65,6 +65,21 @@ import {
   addFixtureSubcommands,
   runFixtureSeedStage,
 } from "./migrationFixture.js";
+import {
+  BaseRegistrar as BaseRegistrarFragments,
+  PermissionedRegistry as PermissionedRegistryFragments,
+  RegistrarOwnershipAbi,
+} from "./abis.js";
+
+/// v1 and v2 surfaces the phases read and write, each as narrow as its use.
+/// The pre-migration checks batch theirs through multicall, where a full
+/// artifact ABI costs the type checker its inference.
+const NAME_EXPIRES_ABI = BaseRegistrarFragments.nameExpires;
+const REGISTRY_STATE_ABI = [
+  ...PermissionedRegistryFragments.getState,
+  ...PermissionedRegistryFragments.getResolver,
+] as const;
+const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
@@ -1316,53 +1331,6 @@ async function printPreMigrationStatus(opts: { workDir?: string }) {
   }
 }
 
-/// Single-function ABIs for the three reads this verification batches.
-///
-/// The generated artifact ABIs carry every entry the contract declares, and
-/// inferring a multicall's return tuple across a whole batch of them exhausts
-/// the type instantiation budget — the checker gives up on the call and every
-/// result downstream degrades to `unknown`. Naming only the function being
-/// called keeps the inference shallow, and keeps the decoded shape honest
-/// rather than cast into place afterwards.
-const NAME_EXPIRES_ABI = [
-  {
-    type: "function",
-    name: "nameExpires",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
-
-const REGISTRY_STATE_ABI = [
-  {
-    type: "function",
-    name: "getState",
-    stateMutability: "view",
-    inputs: [{ name: "anyId", type: "uint256" }],
-    outputs: [
-      {
-        name: "state",
-        type: "tuple",
-        components: [
-          { name: "status", type: "uint8" },
-          { name: "expiry", type: "uint64" },
-          { name: "latestOwner", type: "address" },
-          { name: "tokenId", type: "uint256" },
-          { name: "resource", type: "uint256" },
-        ],
-      },
-    ],
-  },
-  {
-    type: "function",
-    name: "getResolver",
-    stateMutability: "view",
-    inputs: [{ name: "label", type: "string" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
 async function verifyPreMigration(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
@@ -2493,25 +2461,6 @@ async function activateV1HandoffControllers(opts: {
 
   await activateV1Graveyard(opts);
 }
-
-// Minimal interface of a prior migration's ETHRenewerV1, which holds v1
-// BaseRegistrar ownership once a migration has completed.
-const PRIOR_RENEWER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    inputs: [],
-    outputs: [{ type: "address" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "transferRegistrarOwnership",
-    inputs: [{ name: "newOwner", type: "address" }],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-] as const;
 
 // On a chain that has already completed a migration, the v1 BaseRegistrar is
 // owned by the previous deployment's ETHRenewerV1 contract, so the EOA-signed

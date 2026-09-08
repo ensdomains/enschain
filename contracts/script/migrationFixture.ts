@@ -85,6 +85,22 @@ import {
   impersonateAccount,
   type Executor,
 } from "./migrationFixture/execute.js";
+
+import { BaseRegistrar, NameWrapper, RegistrarOwnershipAbi } from "./abis.js";
+
+/// Reads and writes the handover makes, and the registrar-ownership surface the
+/// v1 controller check walks.
+/// The approval pair is declared once but sent to both v1 registrars: ERC-721
+/// and ERC-1155 spell it identically, so one fragment addresses either.
+const HANDOVER_ABI = [
+  ...NameWrapper.supportsInterface,
+  ...NameWrapper.getData,
+  ...BaseRegistrar.ownerOf,
+  ...BaseRegistrar.nameExpires,
+  ...BaseRegistrar.isApprovedForAll,
+  ...BaseRegistrar.setApprovalForAll,
+] as const;
+const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 import {
   type CommonOptions,
   type FixtureEnvelope,
@@ -165,23 +181,6 @@ function planContext(
     },
   };
 }
-
-const PRIOR_RENEWER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }],
-  },
-  {
-    type: "function",
-    name: "transferRegistrarOwnership",
-    stateMutability: "nonpayable",
-    inputs: [{ type: "address", name: "newOwner" }],
-    outputs: [],
-  },
-] as const;
 
 async function ownerWallet(opts: CommonOptions, owner: Address) {
   const chain = networkChain(opts.network, opts.rpcUrl, opts.chainId);
@@ -1100,61 +1099,6 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
 }
 
 const ERC1155_RECEIVER_INTERFACE_ID = "0x4e2312e0" as Hex;
-
-const HANDOVER_ABI = [
-  {
-    type: "function",
-    name: "supportsInterface",
-    stateMutability: "view",
-    inputs: [{ name: "interfaceId", type: "bytes4" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "getData",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [
-      { name: "owner", type: "address" },
-      { name: "fuses", type: "uint32" },
-      { name: "expiry", type: "uint64" },
-    ],
-  },
-  {
-    type: "function",
-    name: "ownerOf",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "nameExpires",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "isApprovedForAll",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "operator", type: "address" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "setApprovalForAll",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "operator", type: "address" },
-      { name: "approved", type: "bool" },
-    ],
-    outputs: [],
-  },
-] as const;
 
 /// Refuses a recipient that cannot hold a wrapped name.
 ///

@@ -35,17 +35,9 @@ import {
 } from "./logger.js";
 
 import { loadArtifact, resolveChain } from "./scriptUtils.js";
+import { BaseRegistrar } from "./abis.js";
 
-// ABI fragments for v1 BaseRegistrar
-const BASE_REGISTRAR_ABI = [
-  {
-    inputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
-    name: "nameExpires",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-] as const;
+const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
 // Custom Errors
 export class UnexpectedOwnerError extends Error {

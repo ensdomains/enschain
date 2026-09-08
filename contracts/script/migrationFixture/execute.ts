@@ -17,6 +17,7 @@ import {
   v1Deployment,
   withPriceBuffer,
 } from "./config.js";
+import { EthRegistrarController } from "../abis.js";
 import type { PlannedCall, Signer } from "./plan.js";
 import type { CommonOptions, FixtureActor } from "./types.js";
 
@@ -133,26 +134,7 @@ export async function executePlannedCalls(
   }
 }
 
-const RENT_PRICE_ABI = [
-  {
-    type: "function",
-    name: "rentPrice",
-    stateMutability: "view",
-    inputs: [
-      { name: "name", type: "string" },
-      { name: "duration", type: "uint256" },
-    ],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "base", type: "uint256" },
-          { name: "premium", type: "uint256" },
-        ],
-      },
-    ],
-  },
-] as const;
+const RENT_PRICE_ABI = EthRegistrarController.rentPrice;
 
 /// Resolves any quoted price into the value the call must carry.
 async function resolveCallValue(
