@@ -1,9 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import {
-  parseMigrationNetwork,
-  setV1ReverseDefaultResolver,
-} from "../../../script/migration.js";
+import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+
+import { setV1ReverseDefaultResolver } from "../../../script/migration.js";
 import {
   defaultHardhatPrivateKey,
   nonEmptyString,

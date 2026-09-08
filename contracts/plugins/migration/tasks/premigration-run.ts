@@ -1,9 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import {
-  parseMigrationNetwork,
-  runPreMigrationCommand,
-} from "../../../script/migration.js";
+import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+
+import { runPreMigrationCommand } from "../../../script/migration.js";
 import {
   defaultHardhatSigner,
   nonEmptyString,

@@ -80,7 +80,28 @@ import {
 } from "./migrationFixture.js";
 import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
 import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
-import { dnsEncodeName, errorMessageChain } from "./migrationPlumbing.js";
+import {
+  BUNDLED_V1_DEPLOYMENTS_DIR,
+  DEFAULT_DEPLOYMENTS_DIR,
+  dnsEncodeName,
+  errorMessageChain,
+  forkChain,
+  type JsonDeployment,
+  LOCAL_V1_DEPLOYMENTS_DIR,
+  loadV1Deployment,
+  loadV2Deployment,
+  maybeLoadV2Deployment,
+  type MigrationNetwork,
+  migrationChain,
+  NETWORKS,
+  parseMigrationNetwork,
+  parseNumber,
+  publicClient,
+  requireV1Deployment,
+  resolveDeploymentAddress,
+  type RpcProvider,
+  type V1DeploymentOptions,
+} from "./migrationPlumbing.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   CHECKPOINT_FILE,
@@ -178,16 +199,6 @@ const RPC_TRANSPORT_RETRIES = 5;
 const RPC_TRANSPORT_BACKOFF_MS = 250;
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
-const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
-const BUNDLED_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../lib/ens-contracts/deployments",
-);
-const LOCAL_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../deployments/v1",
-);
-
 const MIGRATION_DEPLOY_TAGS = ["migration:phase1:deploy-v2"] as const;
 
 export const migrationDataComponents = [
@@ -197,40 +208,11 @@ export const migrationDataComponents = [
   { name: "resolver", type: "address" },
 ] as const;
 
-export type MigrationNetwork = "sepolia" | "mainnet";
-
-type RpcProvider = {
-  request(args: {
-    method: string;
-    params?: readonly unknown[] | object;
-  }): Promise<unknown>;
-};
-
-type JsonDeployment = {
-  address: Address;
-  abi: readonly any[];
-};
-
-type V1DeploymentOptions = {
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-};
-
 type PrivateKeyOptions = {
   deployerPrivateKey?: `0x${string}`;
   ownerPrivateKey?: `0x${string}`;
   v1OwnerPrivateKey?: `0x${string}`;
   urManagerPrivateKey?: `0x${string}`;
-};
-
-type NetworkConfig = {
-  chain: Chain;
-  environment: MigrationNetwork;
-  rpcEnv: string;
-  defaultForkPort: number;
-  defaultOwner: Address;
-  defaultV1Owner: Address;
-  chainTags: string[];
 };
 
 type PreparedOwnerTransaction = {
@@ -245,34 +227,6 @@ type PreparedOwnerTransaction = {
   functionName?: string;
   deployment?: string;
 };
-
-const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
-  sepolia: {
-    chain: sepolia,
-    environment: "sepolia",
-    rpcEnv: "SEPOLIA_RPC_URL",
-    defaultForkPort: 8547,
-    defaultOwner: DEFAULT_ANVIL_OWNER,
-    defaultV1Owner: SEPOLIA_V1_OWNER,
-    chainTags: [],
-  },
-  mainnet: {
-    chain: mainnet,
-    environment: "mainnet",
-    rpcEnv: "MAINNET_RPC_URL",
-    defaultForkPort: 8548,
-    defaultOwner: MAINNET_DAO,
-    defaultV1Owner: MAINNET_DAO,
-    chainTags: ["hasDao"],
-  },
-};
-
-export function parseMigrationNetwork(
-  value: string | undefined,
-): MigrationNetwork {
-  if (value === "mainnet" || value === "sepolia") return value;
-  throw new Error(`Unsupported network: ${value ?? "<missing>"}`);
-}
 
 function loadDotEnv(filePath: string): void {
   if (!existsSync(filePath)) return;
@@ -306,41 +260,6 @@ function requireRpcUrl(
     throw new Error(`Missing --rpc-url or ${config.rpcEnv}`);
   }
   return rpcUrl;
-}
-
-function forkChain(
-  network: MigrationNetwork,
-  chainId: number,
-  rpcUrl: string,
-): Chain {
-  const base = NETWORKS[network].chain;
-  return defineChain({
-    ...base,
-    id: chainId,
-    name: chainId === base.id ? base.name : `${base.name} Fork ${chainId}`,
-    rpcUrls: { default: { http: [rpcUrl] } },
-  });
-}
-
-function migrationChain(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-}): Chain {
-  return forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
-}
-
-function publicClient(rpcUrl: string, chain: Chain, provider?: RpcProvider) {
-  return createPublicClient({
-    chain,
-    transport: provider
-      ? custom(provider as any)
-      : http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
-  });
 }
 
 async function getProviderChainId(provider: RpcProvider): Promise<number> {
@@ -417,80 +336,6 @@ function loadDeploymentFromRoot(
   const path = join(root, environment, `${name}.json`);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf-8")) as JsonDeployment;
-}
-
-function loadV1Deployment(
-  network: MigrationNetwork,
-  name: string,
-  opts: V1DeploymentOptions = {},
-): JsonDeployment | null {
-  const roots = opts.v1DeploymentsDir
-    ? [resolve(opts.v1DeploymentsDir)]
-    : [LOCAL_V1_DEPLOYMENTS_DIR, BUNDLED_V1_DEPLOYMENTS_DIR];
-  const environment = opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
-  for (const root of roots) {
-    const deployment = loadDeploymentFromRoot(root, environment, name);
-    if (deployment) return deployment;
-  }
-  return null;
-}
-
-function requireV1Deployment(
-  network: MigrationNetwork,
-  name: string,
-  opts: V1DeploymentOptions = {},
-): JsonDeployment {
-  const deployment = loadV1Deployment(network, name, opts);
-  if (!deployment) {
-    const environment =
-      opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
-    throw new Error(`Missing ${environment} v1 deployment: ${name}`);
-  }
-  return deployment;
-}
-
-function loadV2Deployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment {
-  const deployment = loadDeploymentFromRoot(resolve(root), environment, name);
-  if (!deployment) {
-    throw new Error(
-      `Missing v2 deployment: ${resolve(root)}/${environment}/${name}.json`,
-    );
-  }
-  return deployment;
-}
-
-function maybeLoadV2Deployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment | null {
-  return loadDeploymentFromRoot(resolve(root), environment, name);
-}
-
-function resolveDeploymentAddress(
-  explicitAddress: Address | undefined,
-  deploymentsDir: string,
-  environment: string,
-  name: string,
-): Address {
-  if (explicitAddress) return explicitAddress;
-  return loadV2Deployment(deploymentsDir, environment, name).address;
-}
-
-function parseNumber(
-  value: string | number | undefined,
-  fallback: number,
-): number {
-  if (value === undefined || value === "") return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Expected a numeric value, got: ${JSON.stringify(value)}`);
-  }
-  return parsed;
 }
 
 function envValue(...names: string[]): string | undefined {

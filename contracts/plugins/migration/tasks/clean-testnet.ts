@@ -1,9 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import {
-  parseMigrationNetwork,
-  runCleanTestnetFull,
-} from "../../../script/migration.js";
+import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+
+import { runCleanTestnetFull } from "../../../script/migration.js";
 import {
   isTenderlyVirtualRpc,
   logMigrationSigners,

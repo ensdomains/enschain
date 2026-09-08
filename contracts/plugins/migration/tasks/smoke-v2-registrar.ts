@@ -1,9 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import {
-  parseMigrationNetwork,
-  runV2RegistrarSmoke,
-} from "../../../script/migration.js";
+import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+
+import { runV2RegistrarSmoke } from "../../../script/migration.js";
 import {
   addressForPrivateKey,
   defaultHardhatPrivateKey,
