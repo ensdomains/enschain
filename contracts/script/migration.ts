@@ -4532,6 +4532,7 @@ export type FixtureRehearsalOptions = {
   fixtureReplicasPerVector?: string;
   fixtureActorMnemonic?: string;
   fixturePrivateKey?: string;
+  fixtureHandoverTo?: string;
 };
 
 // The corpus needs an operator account and a set of actor accounts. On a
@@ -4623,6 +4624,7 @@ async function fixtureRunOptions(
     fixtureIds: opts.fixtureIds,
     replicasPerVector: opts.fixtureReplicasPerVector,
     rpcStateControls: base.useRpcStateControls,
+    handoverTo: opts.fixtureHandoverTo,
   };
 }
 
@@ -6850,6 +6852,10 @@ export async function main(argv = process.argv): Promise<void> {
               "Fixture operator key (generated per run on a fork)",
             )
             .option(
+              "--fixture-handover-to <address>",
+              "Give the seeded fixture names to this wallet once they are checked",
+            )
+            .option(
               "--snapshot-file <path>",
               "Optional file to write a pre-rehearsal snapshot id",
             )
@@ -6949,6 +6955,10 @@ export async function main(argv = process.argv): Promise<void> {
             .option(
               "--fixture-private-key <key>",
               "Fixture operator key (generated per run when impersonating)",
+            )
+            .option(
+              "--fixture-handover-to <address>",
+              "Give the seeded fixture names to this wallet once they are checked",
             )
             .option(
               "--snapshot-file <path>",

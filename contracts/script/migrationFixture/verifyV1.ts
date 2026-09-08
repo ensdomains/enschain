@@ -10,9 +10,11 @@ import {
   isChild,
   isWrapped,
   isLocked,
+  preMigrationOwnerAlias,
   resolveFuses,
   resolveOptionalRef,
   resolveRef,
+  stripActorPrefix,
   v1Form,
   type RefContext,
 } from "./scenario.js";
@@ -281,6 +283,7 @@ export function buildV1Checks(
   row: FixtureEnvelope,
   ctx: RefContext,
   addresses: V1Addresses,
+  handedOverTo?: Address,
 ): Check[] {
   const scenario = row.scenario;
   const pre = scenario.v1.expected_pre_migration;
@@ -295,7 +298,18 @@ export function buildV1Checks(
   const base = { fixtureId: row.fixture_id, name: scenario.name, form };
   const checks: Check[] = [];
 
-  const registryOwner = resolveRef(pre.registry_owner_ref, ctx);
+  // A name given away after seeding is held by its recipient wherever the
+  // corpus names the actor it was shaped under. Only that alias moves: refs
+  // naming the wrapper, a counterparty contract or a different actor still
+  // resolve as written, and so do the record values spelled with the same
+  // alias, which describe content rather than ownership.
+  const terminalAlias = preMigrationOwnerAlias(scenario);
+  const ownerRef = (ref: string | null | undefined): Address =>
+    handedOverTo && ref && stripActorPrefix(ref) === terminalAlias
+      ? handedOverTo
+      : resolveRef(ref, ctx);
+
+  const registryOwner = ownerRef(pre.registry_owner_ref);
   checks.push({
     ...base,
     field: "registry.owner",
@@ -350,7 +364,7 @@ export function buildV1Checks(
   });
 
   // The registrar token tracks the 2LD, which for a child scenario is its parent.
-  const registrarOwner = resolveRef(pre.base_registrar_owner_ref, ctx);
+  const registrarOwner = ownerRef(pre.base_registrar_owner_ref);
   checks.push({
     ...base,
     field: child ? "baseRegistrar.ownerOf(parent)" : "baseRegistrar.ownerOf",
@@ -370,7 +384,7 @@ export function buildV1Checks(
   });
 
   const wrapperOwner = pre.wrapper_owner_ref
-    ? resolveRef(pre.wrapper_owner_ref, ctx)
+    ? ownerRef(pre.wrapper_owner_ref)
     : zeroAddress;
   checks.push({
     ...base,
@@ -467,9 +481,12 @@ export async function verifySeededV1State(
   rows: FixtureEnvelope[],
   ctx: RefContext,
   addresses: V1Addresses,
+  handedOverTo: Map<string, Address> = new Map(),
   batchSize = 400,
 ): Promise<V1VerifyResult> {
-  const checks = rows.flatMap((row) => buildV1Checks(row, ctx, addresses));
+  const checks = rows.flatMap((row) =>
+    buildV1Checks(row, ctx, addresses, handedOverTo.get(row.fixture_id)),
+  );
   const issues: V1Issue[] = [];
 
   for (let i = 0; i < checks.length; i += batchSize) {

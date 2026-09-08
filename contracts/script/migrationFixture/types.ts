@@ -140,6 +140,10 @@ export type FixtureRunName = {
   /// as it is registered, so an interrupted run can tell a finished name from
   /// one whose state is only part-shaped.
   setupComplete: boolean;
+  /// Address the name was given to after its state was shaped and checked.
+  /// Absent while the name is still held by the actor its scenario names, which
+  /// is what every other stage expects.
+  handedOverTo?: Address;
 };
 
 export type FixtureRunState = {
@@ -176,6 +180,8 @@ export type CommonOptions = {
   replicasPerVector?: string;
   scenarios?: string;
   rpcStateControls?: boolean;
+  /// Wallet the seeded names are given to once their state is checked.
+  handoverTo?: Address;
 };
 
 export type BatchCall = {

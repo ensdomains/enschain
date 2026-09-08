@@ -197,6 +197,17 @@ const ERC721_ABI = [
   },
   {
     type: "function",
+    name: "transferFrom",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "tokenId", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "reclaim",
     stateMutability: "nonpayable",
     inputs: [
@@ -212,6 +223,22 @@ const ERC721_ABI = [
     inputs: [
       { name: "operator", type: "address" },
       { name: "approved", type: "bool" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const ERC1155_ABI = [
+  {
+    type: "function",
+    name: "safeTransferFrom",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "id", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "data", type: "bytes" },
     ],
     outputs: [],
   },
@@ -284,6 +311,78 @@ export function labelhashOf(label: string): Hex {
 
 export function tokenIdOf(label: string): bigint {
   return BigInt(labelhashOf(label));
+}
+
+/// Calls that move a v1 name to a new holder.
+///
+/// An unwrapped name lives in two places: the ERC-721 registration and the
+/// registry record the registrar can rewrite. The reclaim runs first, while the
+/// sender is still authorised over the token, so it can point the registry at
+/// the recipient itself; reclaiming after the transfer would need a signature
+/// from the recipient, which a handover to an address we hold no key for cannot
+/// produce. A wrapped name carries both in its ERC-1155 balance, so one
+/// transfer is the whole move.
+///
+/// The ERC-721 move is the plain transfer rather than the safe one: the receipt
+/// hook adds nothing for the accounts the corpus hands names to, and refusing a
+/// recipient is the job of the one check made before any name moves.
+///
+/// `signer` and `from` are separate because an approved operator may send on
+/// the holder's behalf, which is how a whole cohort moves in batches instead of
+/// one transaction per name.
+export function transferNameCalls(args: {
+  wrapped: boolean;
+  signer: Signer;
+  from: Address;
+  to: Address;
+  tokenId: bigint;
+  node: Hex;
+  addresses: PlanContext["addresses"];
+  label: string;
+}): PlannedCall[] {
+  const { wrapped, signer, from, to, tokenId, node, addresses, label } = args;
+  const call = (target: Address, suffix: string, data: Hex): PlannedCall => ({
+    signer,
+    target,
+    value: 0n,
+    allowFailure: false,
+    label: `${label} ${suffix}`,
+    data,
+  });
+
+  if (wrapped) {
+    return [
+      call(
+        addresses.wrapper,
+        "wrapper transfer",
+        encodeFunctionData({
+          abi: ERC1155_ABI,
+          functionName: "safeTransferFrom",
+          args: [from, to, BigInt(node), 1n, "0x"],
+        }),
+      ),
+    ];
+  }
+  return [
+    call(
+      addresses.baseRegistrar,
+      "reclaim",
+      encodeFunctionData({
+        abi: ERC721_ABI,
+        functionName: "reclaim",
+        args: [tokenId, to],
+      }),
+    ),
+    call(
+      addresses.baseRegistrar,
+      "transfer",
+      encodeFunctionData({
+        abi: ERC721_ABI,
+        functionName: "transferFrom",
+        args: [from, to, tokenId],
+      }),
+    ),
+  ];
 }
 
 /// Ownership of a fixture name over the course of its setup. Names are
@@ -1016,32 +1115,167 @@ export function planSetupSteps(
   // Hand the name to its terminal pre-migration owner if setup never moved it.
   const terminalOwner = preMigrationOwnerAlias(scenario);
   if (heldByBatcher && !child) {
-    const terminalAddress = resolveRef(terminalOwner, ctx);
-    calls.push({
-      signer: BATCHER,
-      target: ctx.addresses.baseRegistrar,
-      value: 0n,
-      allowFailure: false,
-      label: `${row.fixture_id} handover transfer`,
-      data: encodeFunctionData({
-        abi: ERC721_ABI,
-        functionName: "safeTransferFrom",
-        args: [ctx.batcher, terminalAddress, tokenId],
+    calls.push(
+      ...transferNameCalls({
+        wrapped: false,
+        signer: BATCHER,
+        from: ctx.batcher,
+        to: resolveRef(terminalOwner, ctx),
+        tokenId,
+        node,
+        addresses: ctx.addresses,
+        label: `${row.fixture_id} handover`,
       }),
-    });
-    calls.push({
-      signer: actorSigner(terminalOwner),
-      target: ctx.addresses.baseRegistrar,
-      value: 0n,
-      allowFailure: false,
-      label: `${row.fixture_id} handover reclaim`,
-      data: encodeFunctionData({
-        abi: ERC721_ABI,
-        functionName: "reclaim",
-        args: [tokenId, terminalAddress],
-      }),
-    });
+    );
   }
 
   return calls;
+}
+
+/// The wrapper treats a `.eth` 2LD as expiring when its grace period opens,
+/// which is what decides whether a transfer is refused.
+const WRAPPER_GRACE_PERIOD = 90n * 86_400n;
+
+/// What a name looks like on chain when a handover is planned, read once per
+/// name rather than replayed from the seeding plan — a name may have moved
+/// between actors during setup, and a rerun must see where it actually is.
+export type HandoverState = {
+  /// NameWrapper owner, fuses and expiry for the name's own node.
+  wrapperOwner: Address;
+  wrapperFuses: number;
+  wrapperExpiry: bigint;
+  /// BaseRegistrar registrant of the 2LD. For a wrapped name this is the
+  /// NameWrapper itself.
+  registrant: Address;
+  /// The same wrapper reading for a child's parent 2LD.
+  parentWrapperOwner?: Address;
+  parentWrapperFuses?: number;
+  parentWrapperExpiry?: bigint;
+  /// Seconds since the epoch the plan is built against.
+  now: bigint;
+};
+
+/// A name, or a child's parent, the handover cannot move, and why.
+export type HandoverSkip = { subject: string; reason: string };
+
+export type HandoverPlan = {
+  calls: PlannedCall[];
+  skips: HandoverSkip[];
+  /// Addresses the plan moves a token away from. Each has to approve the
+  /// batcher before the batch runs.
+  holders: Address[];
+};
+
+const sameAddress = (a: Address, b: Address): boolean =>
+  a.toLowerCase() === b.toLowerCase();
+
+/// Mirrors `NameWrapper._beforeTransfer`: an emancipated name is frozen once it
+/// expires, and a live one is frozen by `CANNOT_TRANSFER`. Reproducing the rule
+/// here turns a whole batch that would revert on one member into a name that is
+/// reported as left behind.
+function wrapperTransferBlock(
+  fuses: number,
+  expiry: bigint,
+  now: bigint,
+): string | null {
+  const effective =
+    fuses & FUSES.IS_DOT_ETH ? expiry - WRAPPER_GRACE_PERIOD : expiry;
+  if (effective < now) {
+    return fuses & FUSES.PARENT_CANNOT_CONTROL ? "expired" : null;
+  }
+  return fuses & FUSES.CANNOT_TRANSFER ? "CANNOT_TRANSFER burned" : null;
+}
+
+/// Calls that give one seeded name to `to`, planned against what the chain
+/// currently says rather than against the plan that shaped it.
+///
+/// Every call is sent by the batcher, which the holders approve as an operator
+/// beforehand, so a cohort moves in batches rather than one transaction per
+/// name. A name already at the target plans nothing, which makes a rerun a
+/// no-op and lets an interrupted run resume.
+///
+/// A child's parent moves too: it stays wrapped to the batcher throughout
+/// setup, and the helper refuses a subname whose parent has not migrated, so a
+/// recipient holding only the child could never migrate it.
+export function planHandover(
+  row: FixtureEnvelope,
+  ctx: PlanContext,
+  to: Address,
+  state: HandoverState,
+): HandoverPlan {
+  const scenario = row.scenario;
+  const form = v1Form(scenario);
+  const calls: PlannedCall[] = [];
+  const skips: HandoverSkip[] = [];
+  const holders: Address[] = [];
+
+  const move = (args: {
+    subject: string;
+    wrapped: boolean;
+    holder: Address;
+    fuses: number;
+    expiry: bigint;
+    tokenId: bigint;
+    node: Hex;
+  }): void => {
+    const { subject, wrapped, holder, fuses, expiry, tokenId, node } = args;
+    if (sameAddress(holder, to)) return;
+    if (holder === zeroAddress) {
+      skips.push({ subject, reason: "no v1 holder" });
+      return;
+    }
+    if (!wrapped && sameAddress(holder, ctx.addresses.wrapper)) {
+      skips.push({ subject, reason: "held by the NameWrapper" });
+      return;
+    }
+    const blocked = wrapped
+      ? wrapperTransferBlock(fuses, expiry, state.now)
+      : null;
+    if (blocked) {
+      skips.push({ subject, reason: blocked });
+      return;
+    }
+    holders.push(holder);
+    calls.push(
+      ...transferNameCalls({
+        wrapped,
+        signer: BATCHER,
+        from: holder,
+        to,
+        tokenId,
+        node,
+        addresses: ctx.addresses,
+        label:
+          subject === scenario.name
+            ? `${row.fixture_id} handover`
+            : `${row.fixture_id} handover (${subject})`,
+      }),
+    );
+  };
+
+  const topLabel = scenario.top_level_label;
+  const wrapped = isWrapped(form);
+  move({
+    subject: scenario.name,
+    wrapped,
+    holder: wrapped ? state.wrapperOwner : state.registrant,
+    fuses: state.wrapperFuses,
+    expiry: state.wrapperExpiry,
+    tokenId: tokenIdOf(topLabel),
+    node: namehash(scenario.name) as Hex,
+  });
+
+  if (isChild(form)) {
+    move({
+      subject: `${topLabel}.eth`,
+      wrapped: true,
+      holder: state.parentWrapperOwner ?? zeroAddress,
+      fuses: state.parentWrapperFuses ?? 0,
+      expiry: state.parentWrapperExpiry ?? 0n,
+      tokenId: tokenIdOf(topLabel),
+      node: namehash(`${topLabel}.eth`) as Hex,
+    });
+  }
+
+  return { calls, skips, holders };
 }

@@ -44,6 +44,7 @@ import {
   parseNumber,
   readJson,
   receipt,
+  requireHandoverTarget,
   rpc,
   runStatePath,
   v1Deployment,
@@ -55,14 +56,18 @@ import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   executionScenario,
   expectedResult,
+  isChild,
   migrationRoute,
   preMigrationOwnerAlias,
+  v1Form,
   wrapperState,
   type RefContext,
 } from "./migrationFixture/scenario.js";
 import {
+  planHandover,
   planSetupSteps,
   tokenIdOf,
+  type HandoverState,
   type PlanContext,
   type PlannedCall,
 } from "./migrationFixture/plan.js";
@@ -815,6 +820,10 @@ export async function seedV1(
           batcher,
           v1.wrapper.address,
           ...actors.map((a) => a.account.address),
+          // A name already given to a tester is still one of ours; without
+          // this a reseed against a handed-over work directory would report
+          // the recipient as a stranger.
+          ...seeded.names.flatMap((n) => n.handedOverTo ?? []),
         ].map((a) => getAddress(a)),
       );
       if (!ours.has(owner)) {
@@ -1011,6 +1020,13 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       baseRegistrar: v1.base.address,
       nameWrapper: v1.wrapper.address,
     },
+    // A name that has been given away is expected on its recipient rather than
+    // on the actor the corpus names, so a run stays checkable after handover.
+    new Map(
+      state.names
+        .filter((n) => n.handedOverTo)
+        .map((n) => [n.fixtureId, n.handedOverTo!]),
+    ),
   );
 
   const byForm: Record<string, { names: number; failing: number }> = {};
@@ -1073,6 +1089,387 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
   console.log("all seeded names match their declared pre-migration state");
 }
 
+const ERC1155_RECEIVER_INTERFACE_ID = "0x4e2312e0" as Hex;
+
+const HANDOVER_ABI = [
+  {
+    type: "function",
+    name: "supportsInterface",
+    stateMutability: "view",
+    inputs: [{ name: "interfaceId", type: "bytes4" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "getData",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [
+      { name: "owner", type: "address" },
+      { name: "fuses", type: "uint32" },
+      { name: "expiry", type: "uint64" },
+    ],
+  },
+  {
+    type: "function",
+    name: "ownerOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "isApprovedForAll",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "operator", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "setApprovalForAll",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "operator", type: "address" },
+      { name: "approved", type: "bool" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+/// Refuses a recipient that cannot hold a wrapped name.
+///
+/// The wrapper mints ERC-1155 tokens, so an account carrying code has to answer
+/// the receipt hook. That rules out ordinary contracts, and also the EIP-7702
+/// delegations the well-known test accounts carry on live chains, whose
+/// delegate reverts with no data. One check here turns what would otherwise be
+/// a cohort's worth of identical mid-run reverts into a single message.
+async function assertCanReceiveNames(
+  client: any,
+  target: Address,
+): Promise<void> {
+  const code = await client.getCode({ address: target });
+  if (!code || code === "0x") return;
+  try {
+    const accepted = (await client.readContract({
+      address: target,
+      abi: HANDOVER_ABI,
+      functionName: "supportsInterface",
+      args: [ERC1155_RECEIVER_INTERFACE_ID],
+    })) as boolean;
+    if (accepted) return;
+  } catch {
+    // An account that cannot answer the question is refused like one that says no.
+  }
+  throw new Error(
+    `${target} carries code but does not accept ERC-1155 tokens, so wrapped names cannot be ` +
+      "transferred to it; use a plain EOA, or clear an EIP-7702 delegation first",
+  );
+}
+
+/// Lets the batcher move names on the holders' behalf.
+///
+/// Without this every transfer would be its own transaction from the account
+/// holding the name — thousands for a full cohort. One approval per holder per
+/// registry instead lets the whole cohort travel in the batcher's batches. An
+/// approval is scoped to the account that gave it, so it confers nothing over a
+/// name once that name has reached its recipient.
+async function approveBatcherAsOperator(
+  ex: Executor,
+  holders: Set<Address>,
+  registrars: Address[],
+): Promise<void> {
+  const byAddress = new Map(
+    [...ex.actors.values()].map((a) => [getAddress(a.account.address), a]),
+  );
+  for (const holder of holders) {
+    // The batcher signs for itself, and nothing else should be holding a name.
+    if (getAddress(holder) === getAddress(ex.batcher)) continue;
+    const actor = byAddress.get(getAddress(holder));
+    if (!actor) {
+      throw new Error(
+        `${holder} holds a seeded name but is not a fixture actor of this run`,
+      );
+    }
+    const wallet = createWalletClient({
+      chain: ex.chain,
+      account: actor.account,
+      transport: http(ex.opts.rpcUrl),
+    });
+    for (const registrar of registrars) {
+      const approved = (await ex.client.readContract({
+        address: registrar,
+        abi: HANDOVER_ABI,
+        functionName: "isApprovedForAll",
+        args: [actor.account.address, ex.batcher],
+      })) as boolean;
+      if (approved) continue;
+      const hash = await wallet.writeContract({
+        address: registrar,
+        abi: HANDOVER_ABI,
+        functionName: "setApprovalForAll",
+        args: [ex.batcher, true],
+      });
+      await receipt(ex.client, hash, `${actor.alias} approves the batcher`);
+    }
+  }
+}
+
+/// Reads what each selected name currently looks like on chain, which is what
+/// the handover plans against.
+async function readHandoverState(
+  client: any,
+  rows: FixtureEnvelope[],
+  addresses: { baseRegistrar: Address; wrapper: Address },
+  now: bigint,
+  batchSize = 400,
+): Promise<Map<string, HandoverState>> {
+  type Read = {
+    fixtureId: string;
+    slot: "name" | "parent" | "registrant";
+    call: Record<string, unknown>;
+  };
+  const wrapperCall = (node: Hex) => ({
+    address: addresses.wrapper,
+    abi: HANDOVER_ABI,
+    functionName: "getData",
+    args: [BigInt(node)],
+  });
+
+  const reads: Read[] = [];
+  for (const row of rows) {
+    const scenario = row.scenario;
+    const child = isChild(v1Form(scenario));
+    reads.push({
+      fixtureId: row.fixture_id,
+      slot: "name",
+      call: wrapperCall(namehash(scenario.name) as Hex),
+    });
+    if (child) {
+      reads.push({
+        fixtureId: row.fixture_id,
+        slot: "parent",
+        call: wrapperCall(namehash(`${scenario.top_level_label}.eth`) as Hex),
+      });
+    } else {
+      reads.push({
+        fixtureId: row.fixture_id,
+        slot: "registrant",
+        call: {
+          address: addresses.baseRegistrar,
+          abi: HANDOVER_ABI,
+          functionName: "ownerOf",
+          args: [tokenIdOf(scenario.top_level_label)],
+        },
+      });
+    }
+  }
+
+  const states = new Map<string, HandoverState>();
+  for (const row of rows) {
+    states.set(row.fixture_id, {
+      wrapperOwner: zeroAddress,
+      wrapperFuses: 0,
+      wrapperExpiry: 0n,
+      registrant: zeroAddress,
+      now,
+    });
+  }
+
+  for (let i = 0; i < reads.length; i += batchSize) {
+    const slice = reads.slice(i, i + batchSize);
+    const results = await client.multicall({
+      contracts: slice.map((r) => r.call),
+      allowFailure: true,
+    });
+    for (const [index, read] of slice.entries()) {
+      const outcome = results[index];
+      // A failed read means the name is not there — expired out of its
+      // registration, or never created. The zero left in place skips it.
+      if (outcome.status !== "success") continue;
+      const state = states.get(read.fixtureId)!;
+      if (read.slot === "registrant") {
+        state.registrant = getAddress(outcome.result as Address);
+        continue;
+      }
+      const [owner, fuses, expiry] = outcome.result as [
+        Address,
+        number,
+        bigint,
+      ];
+      if (read.slot === "name") {
+        state.wrapperOwner = getAddress(owner);
+        state.wrapperFuses = Number(fuses);
+        state.wrapperExpiry = BigInt(expiry);
+      } else {
+        state.parentWrapperOwner = getAddress(owner);
+        state.parentWrapperFuses = Number(fuses);
+        state.parentWrapperExpiry = BigInt(expiry);
+      }
+    }
+  }
+  return states;
+}
+
+/// Gives every seeded name in the selection to one wallet, so a tester holds
+/// them on V1 and can drive the migration from the app.
+///
+/// Run it after `verify-v1`. The corpus declares which actor holds each name,
+/// so the shaped state is proved as written first and only then given away;
+/// afterwards `verify-v1` expects the recipient instead, which it reads from
+/// the run state.
+///
+/// Names the wrapper refuses to move — `CANNOT_TRANSFER` burned, or an
+/// emancipated name past its expiry — stay with their actor and are reported
+/// rather than failing the run. Operator approvals a scenario granted while
+/// shaping do not survive either, because an approval is scoped to the owner
+/// that gave it; a recipient migrating through the helper grants their own,
+/// which is what the app asks for anyway.
+export async function handover(opts: CommonOptions): Promise<void> {
+  await requireWriteableChain(opts);
+  const target = requireHandoverTarget(opts);
+  const state = loadRunState(opts);
+  if (!state) {
+    throw new Error(
+      `no fixture run state at ${runStatePath(opts)}; run "fixture seed-v1" first`,
+    );
+  }
+
+  const actors = accounts(opts);
+  const { chain, client, wallet } = clients(opts);
+  assertRunStateCompatible(opts, state, chain.id, actors);
+
+  const prior = state.names.find((n) => n.handedOverTo)?.handedOverTo;
+  if (prior && getAddress(prior) !== target) {
+    throw new Error(
+      `${runStatePath(opts)} already handed names to ${prior}; a second recipient would split ` +
+        "the cohort across wallets, so use a fresh --work-dir",
+    );
+  }
+
+  const byId = new Map(state.names.map((n) => [n.fixtureId, n]));
+  const selected = loadFixture(opts).filter(
+    (r) => byId.get(r.fixture_id)?.setupComplete,
+  );
+  if (!selected.length) {
+    throw new Error(
+      "no fully seeded names in this selection; widen the selection or seed it first",
+    );
+  }
+
+  await assertCanReceiveNames(client, target);
+
+  const v1 = v1Addresses(opts);
+  const ctx = planContext(opts, state.fixtureContracts, state.batcher);
+  const executor: Executor = {
+    opts,
+    chain,
+    client,
+    wallet,
+    batcher: state.batcher,
+    actors: new Map(actors.map((a) => [a.alias, a])),
+  };
+
+  const { timestamp } = await client.getBlock();
+  const current = await readHandoverState(
+    client,
+    selected,
+    { baseRegistrar: v1.base.address, wrapper: v1.wrapper.address },
+    BigInt(timestamp),
+  );
+
+  const perName = new Map<string, PlannedCall[]>();
+  const skipped: { fixtureId: string; subject: string; reason: string }[] = [];
+  const holders = new Set<Address>();
+  // Names that stay where they are. A child whose parent cannot move is not one
+  // of them: the child itself still reaches the recipient, and the report says
+  // separately that its parent did not.
+  const stayed = new Set<string>();
+  for (const row of selected) {
+    const plan = planHandover(row, ctx, target, current.get(row.fixture_id)!);
+    for (const skip of plan.skips) {
+      skipped.push({ fixtureId: row.fixture_id, ...skip });
+      if (skip.subject === row.scenario.name) stayed.add(row.fixture_id);
+    }
+    for (const holder of plan.holders) holders.add(holder);
+    if (plan.calls.length) perName.set(row.fixture_id, plan.calls);
+  }
+
+  await approveBatcherAsOperator(executor, holders, [
+    v1.base.address,
+    v1.wrapper.address,
+  ]);
+
+  // A name the plan asks nothing of is already the recipient's. Recording that
+  // before the batches run keeps an interrupted handover resumable.
+  for (const row of selected) {
+    if (perName.has(row.fixture_id) || stayed.has(row.fixture_id)) continue;
+    byId.get(row.fixture_id)!.handedOverTo = target;
+  }
+  saveRunState(opts, state);
+
+  const transactions = new Map<string, Hex[]>();
+  await executePlannedCalls(
+    executor,
+    perName,
+    (fixtureId, hash) => {
+      transactions.set(fixtureId, [
+        ...(transactions.get(fixtureId) ?? []),
+        hash,
+      ]);
+    },
+    (fixtureId) => {
+      const run = byId.get(fixtureId);
+      if (run && !stayed.has(fixtureId)) run.handedOverTo = target;
+      saveRunState(opts, state);
+    },
+  );
+
+  const reportPath = join(resolve(opts.workDir), "fixture-handover.json");
+  writeFileSync(
+    reportPath,
+    `${JSON.stringify(
+      {
+        target,
+        selected: selected.length,
+        moved: [...perName.keys()].map((fixtureId) => ({
+          fixtureId,
+          transactions: transactions.get(fixtureId) ?? [],
+        })),
+        skipped,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  const reasons: Record<string, number> = {};
+  for (const skip of skipped) {
+    reasons[skip.reason] = (reasons[skip.reason] ?? 0) + 1;
+  }
+  console.log(
+    JSON.stringify(
+      {
+        target,
+        selected: selected.length,
+        moved: perName.size,
+        stayed: stayed.size,
+        alreadyHeld: selected.length - perName.size - stayed.size,
+        skipped: skipped.length,
+        skippedByReason: reasons,
+        report: reportPath,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `next: bun run migration -- fixture verify-v1 --work-dir ${opts.workDir}`,
+  );
+}
+
 async function fundActorAccounts(
   opts: CommonOptions,
   floor: string,
@@ -1117,6 +1514,12 @@ export async function runFixtureSeedStage(
   const { path: premigrationCsv, labels } = await seedV1(opts);
   console.log("fixture: verifying the shaped V1 state");
   await verifyV1(opts);
+  // Giving the names away comes last, so the state is proved as the corpus
+  // declares it before the owner it declares stops being the one holding it.
+  if (opts.handoverTo) {
+    console.log(`fixture: handing the corpus to ${opts.handoverTo}`);
+    await handover(opts);
+  }
 
   return { labels, premigrationCsv };
 }
@@ -1158,6 +1561,10 @@ function addCommon(command: Command): Command {
       "--rpc-state-controls",
       "Enable impersonation/time control RPC methods",
       false,
+    )
+    .option(
+      "--handover-to <address>",
+      "Give the seeded names to this wallet once their state is checked",
     );
 }
 
@@ -1228,7 +1635,12 @@ export function addFixtureSubcommands(program: Command): Command {
         "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
       ),
     ).action(async (raw) => {
-      await seedV1(normalizeOptions(raw));
+      const opts = normalizeOptions(raw);
+      // Asking for a handover asks for the checks that have to precede it: the
+      // corpus declares which actor holds each name, so the shaped state is
+      // proved as written before that owner stops being the one holding it.
+      if (opts.handoverTo) await runFixtureSeedStage(opts);
+      else await seedV1(opts);
     }),
   );
   program.addCommand(
@@ -1237,6 +1649,13 @@ export function addFixtureSubcommands(program: Command): Command {
         "After seed-v1: read the shaped V1 state back and check it against each scenario",
       ),
     ).action((raw) => verifyV1(normalizeOptions(raw))),
+  );
+  program.addCommand(
+    addCommon(
+      new Command("handover").description(
+        "After verify-v1: give every seeded name in the selection to one wallet",
+      ),
+    ).action((raw) => handover(normalizeOptions(raw))),
   );
   return program;
 }

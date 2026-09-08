@@ -5,9 +5,12 @@ import {
   createPublicClient,
   createWalletClient,
   defineChain,
+  getAddress,
   http,
+  isAddress,
   keccak256,
   stringToHex,
+  type Address,
   type Chain,
   type Hex,
 } from "viem";
@@ -231,6 +234,20 @@ export function requirePrivateKey(opts: CommonOptions): Hex {
   if (!key)
     throw new Error("missing --private-key or MIGRATION_FIXTURE_PRIVATE_KEY");
   return key;
+}
+
+/// The wallet a handover gives the cohort to.
+///
+/// Checksummed here so a typo in a hand-copied address is caught before any
+/// name moves. There is deliberately no environment fallback: giving the corpus
+/// away is irreversible, so the recipient is named on the command line every
+/// time rather than inherited from a shell.
+export function requireHandoverTarget(opts: CommonOptions): Address {
+  const value = opts.handoverTo ?? "";
+  if (!isAddress(value)) {
+    throw new Error(`missing or malformed handover recipient: "${value}"`);
+  }
+  return getAddress(value);
 }
 
 export function clients(opts: CommonOptions) {
