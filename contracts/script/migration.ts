@@ -1110,6 +1110,38 @@ function installRpcCompatibility(debugRpc: boolean): void {
   };
 }
 
+/// How far back from the head the phase gate records its fork-detecting block pair.
+/// Deep enough that an ordinary reorg does not invalidate a good pass, shallow enough
+/// that it still lands inside a fork's own history.
+const PHASE_GATE_HEAD_CONFIRMATIONS = 12n;
+
+/// Names the endpoint as simulated, or returns null for a chain that looks real.
+///
+/// A fork is indistinguishable from its parent on the evidence a verification would
+/// otherwise record: it reports the parent's chain id and serves the parent's history
+/// unchanged. State-control methods are the difference — only a simulated node offers
+/// them — so a gate that must not be satisfied by a rehearsal asks for those.
+async function describeSimulatedEndpoint(
+  client: ReturnType<typeof publicClient>,
+  rpcUrl: string,
+): Promise<string | null> {
+  if (isLocalRpcUrl(rpcUrl)) return `${rpcUrl} is a local endpoint`;
+  if (isTenderlyVirtualRpc(rpcUrl)) {
+    return `${rpcUrl} is a Tenderly virtual testnet`;
+  }
+  for (const method of ["anvil_nodeInfo", "hardhat_metadata"]) {
+    try {
+      // Cast to a no-argument method so the union-typed `request` accepts the
+      // probe; the string sent is the one in `method`.
+      await client.request({ method: method as "eth_chainId" });
+      return `${rpcUrl} answers ${method}, so it is a simulated node`;
+    } catch {
+      // A real endpoint rejects the method, which is the answer being looked for.
+    }
+  }
+  return null;
+}
+
 function isLocalRpcUrl(rpcUrl: string): boolean {
   return /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(rpcUrl);
 }
@@ -2273,23 +2305,49 @@ export async function reconcilePreMigration(opts: {
     // of the chain this pass actually covers. Recording the head instead would let a
     // week-old index be read as a brand-new pass, and the freshness bound the freeze
     // applies would have nothing to bite on.
-    const indexBlock = BigInt(index.meta.block);
-    const indexBlockHash = (
-      await v1Client.getBlock({ blockNumber: indexBlock })
-    ).hash;
-    recordVerification(resolve(deploymentsDir), deploymentNetwork, {
-      check: PRECONDITION_RECONCILE,
-      chainId,
-      blockNumber: indexBlock.toString(),
-      blockHash: indexBlockHash,
-      verifiedAt: new Date().toISOString(),
-      details: {
-        claimable: result.claimable,
-        reserved: result.reserved,
-        registered: result.registered,
-        rpcHead: (await client.getBlockNumber()).toString(),
-      },
-    });
+    //
+    // A rehearsal reconciles a fork, and a fork answers for its parent on everything
+    // the record would otherwise hold: the same chain id, the same history. A pass
+    // taken there would authorise the real freeze on evidence gathered somewhere
+    // else, so a simulated endpoint is refused the record rather than trusted to be
+    // told apart later.
+    const v1RpcUrl = opts.mainnetRpcUrl ?? opts.rpcUrl;
+    const simulated =
+      (await describeSimulatedEndpoint(v1Client, v1RpcUrl)) ??
+      (await describeSimulatedEndpoint(client, opts.rpcUrl));
+    if (simulated) {
+      console.log(
+        `reconciliation passed, but no pass recorded: ${simulated}. Phase 3 accepts only a reconciliation of the chain it freezes.`,
+      );
+    } else {
+      const indexBlock = BigInt(index.meta.block);
+      const indexBlockHash = (
+        await v1Client.getBlock({ blockNumber: indexBlock })
+      ).hash;
+      // Read from the chain rather than from `--chain-id`, so that the id recorded is
+      // the one that answered the reads.
+      const observedChainId = await v1Client.getChainId();
+      const headBlockNumber =
+        (await v1Client.getBlockNumber()) - PHASE_GATE_HEAD_CONFIRMATIONS;
+      const headBlockHash = (
+        await v1Client.getBlock({ blockNumber: headBlockNumber })
+      ).hash;
+      recordVerification(resolve(deploymentsDir), deploymentNetwork, {
+        check: PRECONDITION_RECONCILE,
+        chainId: observedChainId,
+        blockNumber: indexBlock.toString(),
+        blockHash: indexBlockHash,
+        headBlockNumber: headBlockNumber.toString(),
+        headBlockHash,
+        verifiedAt: new Date().toISOString(),
+        details: {
+          claimable: result.claimable,
+          reserved: result.reserved,
+          registered: result.registered,
+          rpcHead: (await client.getBlockNumber()).toString(),
+        },
+      });
+    }
   }
   if (problems.length > 0) {
     console.error(problems.slice(0, 20).join("\n"));
@@ -3092,9 +3150,14 @@ export async function disableV1Registrars(
       // A pass says the chain looked complete at the block it observed. Names keep
       // being registered on v1 until the freeze, so a pass from long ago says
       // nothing about now — re-run it rather than freezing on stale evidence.
-      maxAgeBlocks: parseNumber(opts.maxReconcileAgeBlocks, 7200)
-        ? BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200))
-        : undefined,
+      //
+      // A count of zero means zero tolerance, not "unbounded": an operator tightening
+      // the gate must not get the opposite of what they asked for. Lifting the bound
+      // takes the explicit word.
+      maxAgeBlocks:
+        opts.maxReconcileAgeBlocks === RECONCILE_AGE_UNBOUNDED
+          ? undefined
+          : BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200)),
     });
     if (failure) {
       throw new Error(
@@ -3883,6 +3946,10 @@ export async function verifyResolution(opts: {
 
 // Name of the reconciliation gate, shared by the check that records it and the
 // phase that requires it.
+/// Lifts the freshness bound on a recorded pass. Spelled as a word so that no
+/// numeric value can turn the bound off by accident.
+const RECONCILE_AGE_UNBOUNDED = "none";
+
 const PRECONDITION_RECONCILE = "premigration-reconcile";
 
 const EAC_ROLES_CHANGED_EVENT = parseAbiItem(
@@ -9325,7 +9392,7 @@ export async function main(argv = process.argv): Promise<void> {
               )
               .option(
                 "--max-reconcile-age-blocks <blocks>",
-                "How old the reconciliation pass may be before it must be re-run (default ~1 day)",
+                'How old the reconciliation pass may be before it must be re-run (default ~1 day; 0 requires it in the current block, "none" removes the bound)',
                 "7200",
               )
               .description(

@@ -38,8 +38,12 @@ function labelhash(index: number): string {
 
 // A subgraph that holds `rows` and answers cursor queries against them, recording
 // every request so the test can assert on how it was paged.
-function fakeSubgraph(rows: Registration[]) {
+function fakeSubgraph(
+  rows: Registration[],
+  short: { shortPageAt?: number; shortPageSize?: number } = {},
+) {
   const requests: Array<Record<string, unknown>> = [];
+  let pageIndex = 0;
   const fetchFn = (async (_url: string, init: { body: string }) => {
     const body = JSON.parse(init.body);
     requests.push(body);
@@ -52,10 +56,15 @@ function fakeSubgraph(rows: Registration[]) {
       first: number;
       afterId: string;
     };
+    // A real subgraph may answer with fewer rows than asked for and still have more
+    // behind it, so one page can be made short without ending the result set.
+    const take =
+      pageIndex === short.shortPageAt ? (short.shortPageSize ?? 1) : first;
+    pageIndex += 1;
     const page = rows
       .filter((row) => row.id > afterId)
       .sort((a, b) => (a.id < b.id ? -1 : 1))
-      .slice(0, first);
+      .slice(0, take);
     return Response.json({ data: { registrations: page } });
   }) as unknown as typeof fetch;
   return { fetchFn, requests };
@@ -70,11 +79,16 @@ function runExport(
     startId?: string;
     network?: "mainnet" | "sepolia";
     block?: number | null;
+    shortPageAt?: number;
+    shortPageSize?: number;
   } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "ens-export-"));
   const outputFile = overrides.outputFile ?? join(dir, "registrations.csv");
-  const { fetchFn, requests } = fakeSubgraph(rows);
+  const { fetchFn, requests } = fakeSubgraph(rows, {
+    shortPageAt: overrides.shortPageAt,
+    shortPageSize: overrides.shortPageSize,
+  });
   return {
     outputFile,
     requests,
@@ -327,6 +341,25 @@ describe("exportTheGraphRegistrations", () => {
 
     expect(dataRows(outputFile)).toHaveLength(3);
     expect(stampOf(outputFile).complete).toBe(true);
+  });
+
+  it("does not call a limit-truncated export complete after a short page", async () => {
+    // A short page is evidence that the result set ended, but only about that page.
+    // Latching it means a later --limit truncation is stamped complete, and
+    // `assertCompleteCsv` then accepts a prefix of the registrations as all of them.
+    const rows = Array.from({ length: 12 }, (_, index) =>
+      registration(labelhash(index + 1), `name${index + 1}`),
+    );
+    const { outputFile, run } = runExport(rows, {
+      batchSize: 4,
+      limit: 9,
+      shortPageAt: 0,
+      shortPageSize: 2,
+    });
+
+    await run();
+
+    expect(stampOf(outputFile).complete).toBe(false);
   });
 
   it("calls a limit that exactly consumes the result set complete", async () => {

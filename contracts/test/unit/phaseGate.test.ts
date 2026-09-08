@@ -29,6 +29,8 @@ function record(
     chainId: 1,
     blockNumber: "100",
     blockHash: CANONICAL_HASH,
+    headBlockNumber: "138",
+    headBlockHash: CANONICAL_HASH,
     verifiedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
@@ -112,7 +114,7 @@ describe("checkPrecondition", () => {
     ).toEqual({ kind: "wrong-chain", recordedChainId: 11155111 });
   });
 
-  it("fails a pass recorded on a fork of this same chain", async () => {
+  it("fails a pass whose observed block is on another branch", async () => {
     // The fork reports chain 1 and a plausible height, so chain id and block number
     // both agree. Only the block hash tells the two apart, and this gate authorises
     // an irreversible freeze.
@@ -130,6 +132,42 @@ describe("checkPrecondition", () => {
       recordedHash: forkHash,
       canonicalHash: CANONICAL_HASH,
     });
+  });
+
+  it("fails a pass recorded on a fork, whose observed block is canonical", async () => {
+    // The case the observed-block hash cannot catch, and the one a rehearsal
+    // actually produces: an index built from a source that lags the chain names a
+    // block below the fork point, and a fork serves its parent's history unchanged,
+    // so that hash is canonical on both chains. The fork's own blocks start at the
+    // fork point, so it is the head pair that has no counterpart here.
+    const forkHeadHash = `0x${"ef".repeat(32)}`;
+    expect(
+      await checkPrecondition({
+        record: record({ headBlockHash: forkHeadHash }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash: async (blockNumber) =>
+          blockNumber === 100n ? CANONICAL_HASH : `0x${"11".repeat(32)}`,
+      }),
+    ).toEqual({
+      kind: "foreign-head",
+      headBlock: 138n,
+      recordedHash: forkHeadHash,
+      canonicalHash: `0x${"11".repeat(32)}`,
+    });
+  });
+
+  it("fails a record written before the head pair was carried", async () => {
+    // An older record cannot be told apart from a fork's, so it is not accepted for
+    // an irreversible step.
+    expect(
+      await checkPrecondition({
+        record: record({ headBlockHash: "" }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+      }),
+    ).toEqual({ kind: "unbound" });
   });
 
   it("fails when the connected chain has no such block", async () => {

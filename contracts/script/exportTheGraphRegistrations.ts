@@ -311,6 +311,9 @@ export async function exportRegistrations(
   // of --limit proves the opposite, and a file cut off there must not be stamped as
   // the whole registration set.
   let exhausted = false;
+  // Stopping at --limit is a truncation whatever the last page's size said, so it is
+  // tracked separately rather than inferred from the page.
+  let limitTruncated = false;
 
   // A resume continues an existing file rather than starting one. Truncating here
   // would leave only the rows after the cursor, and the completed stamp written at
@@ -389,8 +392,9 @@ export async function exportRegistrations(
       );
 
       // Recorded before --limit trims the page, or a trimmed page would look like
-      // the end of the result set.
-      if (registrations.length < config.batchSize) exhausted = true;
+      // the end of the result set. Recomputed rather than latched: a short page is
+      // evidence about that page only, and a later full one withdraws it.
+      exhausted = registrations.length < config.batchSize;
 
       if (registrations.length === 0) {
         hasMore = false;
@@ -400,6 +404,7 @@ export async function exportRegistrations(
       if (config.limit && totalCount + registrations.length > config.limit) {
         registrations = registrations.slice(0, config.limit - totalCount);
         hasMore = false;
+        limitTruncated = true;
       }
 
       // Rows whose label the subgraph could not decode go to the sidecar keyed by
@@ -472,7 +477,7 @@ export async function exportRegistrations(
     cursor,
     totalCount,
     skippedNoLabel,
-    complete: exhausted,
+    complete: exhausted && !limitTruncated,
   });
 
   logger.info(
@@ -483,7 +488,7 @@ export async function exportRegistrations(
       `Recorded ${bold(skippedNoLabel.toString())} registration(s) with no decodable labelName in ${cyan(unlabelledFile)}`,
     );
   }
-  if (!exhausted) {
+  if (!exhausted || limitTruncated) {
     logger.warning(
       `Stopped at the --limit of ${config.limit}, so this is a prefix of the registration set, not all of it. ` +
         `It is stamped incomplete and pre-migration will refuse it; continue with --start-id ${cursor}.`,
