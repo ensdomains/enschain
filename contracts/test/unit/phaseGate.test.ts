@@ -9,7 +9,7 @@ import {
   readVerification,
   recordVerification,
   type VerificationRecord,
-} from "../../script/phaseGate.js";
+} from "../../script/migrations/phaseGate.js";
 
 const NAMESPACE = "mainnet";
 

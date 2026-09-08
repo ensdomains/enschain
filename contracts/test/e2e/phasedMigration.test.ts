@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { FUSES, ROLES, STATUS } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migration.js";
+import { migrationDataComponents } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
@@ -395,7 +395,7 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
       const proc = Bun.spawn(
         [
           "bun",
-          "script/migration.ts",
+          "script/migrate.ts",
           "fork",
           "full",
           "--network",

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The prepare-migration script (`contracts/script/prepareMigration.ts`) flips the `.eth` `PermissionedRegistry` from its **seeding** configuration (only `BatchRegistrar` can register) to its **live** configuration (`ETHRegistrar` handles new registrations and renewals; the two migration controllers promote reserved names to registered as ENSv1 owners migrate in). `BatchRegistrar` is fully decommissioned. Run it once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration to users. It is idempotent: re-running against an already-live registry simply re-issues the same grants/revokes.
+The prepare-migration script (`contracts/script/migrations/prepareMigration.ts`) flips the `.eth` `PermissionedRegistry` from its **seeding** configuration (only `BatchRegistrar` can register) to its **live** configuration (`ETHRegistrar` handles new registrations and renewals; the two migration controllers promote reserved names to registered as ENSv1 owners migrate in). `BatchRegistrar` is fully decommissioned. Run it once, after all pre-migration seeding via [`preMigration.ts`](./premigration.md) has completed and before opening registration to users. It is idempotent: re-running against an already-live registry simply re-issues the same grants/revokes.
 
 > **The phased flow supersedes this.** In the phased v1 → v2 migration ([migration.md](./migration.md)) the same hand-off happens in [phase 6](./migration.md#phase-6-enable-the-v2-controller) — `phase disable-batch-registrar` revokes the `BatchRegistrar` roles and `phase enable-v2-registrar` grants `REGISTRAR | RENEW` to `ETHRegistrar`, while the migration controllers receive `ROLE_REGISTER_RESERVED` already at deploy time. This script remains the path for non-phased, all-at-once deployments (e.g. devnets deployed outside the phased flow).
 
@@ -24,7 +24,7 @@ Four root-level role operations on the target registry. For the roles themselves
 Run from `contracts/`:
 
 ```bash
-bun run script/prepareMigration.ts [options]
+bun run script/migrations/prepareMigration.ts [options]
 ```
 
 | Option | Required | Description |
@@ -48,11 +48,11 @@ Dry run is the default: it previews each planned op next to the current on-chain
 
 ```bash
 # Dry run (add --private-key to also run the admin pre-flight)
-bun run script/prepareMigration.ts \
+bun run script/migrations/prepareMigration.ts \
   --rpc-url <url> --registry <addr> --batch-registrar <addr> \
   --eth-registrar <addr> --unlocked-migration-controller <addr> \
   --locked-migration-controller <addr>
 
 # Execute
-bun run script/prepareMigration.ts <same addresses> --private-key <hex> --execute
+bun run script/migrations/prepareMigration.ts <same addresses> --private-key <hex> --execute
 ```

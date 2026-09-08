@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encodeAbiParameters, keccak256, toHex, zeroAddress } from "viem";
 
-import { reconcilePreMigration } from "../../script/migration.js";
+import { reconcilePreMigration } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
 import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
-import { readVerification } from "../../script/phaseGate.js";
+import { readVerification } from "../../script/migrations/phaseGate.js";
 import { MAX_UINT64 } from "../../script/preMigration.js";
 import { FUSES } from "../../script/deploy-constants.js";
 import { idFromLabel } from "../utils/utils.js";

@@ -23,10 +23,10 @@ import {
 import { keccak256, stringToHex } from "viem";
 import { mainnet, sepolia } from "viem/chains";
 
-import { SEC_PER_DAY } from "./deploy-constants.js";
-import { increaseTime } from "./migrationRpc.js";
+import { SEC_PER_DAY } from "../deploy-constants.js";
+import { increaseTime } from "./rpc.js";
 
-import { config as rockethConfig } from "../rocketh/config.js";
+import { config as rockethConfig } from "../../rocketh/config.js";
 
 /// A name in the length-prefixed wire encoding the v1 and v2 resolvers read.
 export function dnsEncodeName(name: string): Hex {

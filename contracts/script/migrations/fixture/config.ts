@@ -21,7 +21,7 @@ import {
   maybeLoadV2Deployment,
   NETWORKS,
   requireV1Deployment,
-} from "../migrationPlumbing.js";
+} from "../plumbing.js";
 import type {
   CommonOptions,
   FixtureActor,

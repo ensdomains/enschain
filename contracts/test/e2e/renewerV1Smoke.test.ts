@@ -21,7 +21,7 @@ import {
   authorizeV1Renewer,
   renewViaEthRenewerV1,
   verifyV1Renewer,
-} from "../../script/migration.js";
+} from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import {

@@ -1,8 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+import { parseMigrationNetwork } from "../../../script/migrations/plumbing.js";
 
-import { deployV2 } from "../../../script/migration.js";
+import { deployV2 } from "../../../script/migrate.js";
 import { createSnapshot, saveSnapshotFile } from "./snapshot-utils.js";
 import {
   isTenderlyVirtualRpc,

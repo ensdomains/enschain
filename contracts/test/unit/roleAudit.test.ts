@@ -7,7 +7,7 @@ import {
   diffRoleMatrix,
   type RoleExpectation,
   type RoleHolder,
-} from "../../script/roleAudit.js";
+} from "../../script/migrations/roleAudit.js";
 
 const DEPLOYER = "0x0000000000000000000000000000000000000001";
 const REGISTRAR = "0x0000000000000000000000000000000000000002";

@@ -23,8 +23,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
-import { ROLES, STATUS } from "./deploy-constants.js";
-import { bufferedGas } from "./migrationFixture/config.js";
+import { ROLES, STATUS } from "../deploy-constants.js";
+import { bufferedGas } from "./fixture/config.js";
 import {
   DEFAULT_DEPLOYMENTS_DIR,
   errorMessageChain,
@@ -45,9 +45,9 @@ import {
   type JsonDeployment,
   type MigrationNetwork,
   type RpcProvider,
-} from "./migrationPlumbing.js";
-import { impersonate, walletClient } from "./migrationRpc.js";
-import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
+} from "./plumbing.js";
+import { impersonate, walletClient } from "./rpc.js";
+import { V1_GRACE_PERIOD_SECONDS } from "../preMigration.js";
 
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
 

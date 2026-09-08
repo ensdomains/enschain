@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 import {
   createRpcSnapshot,
   saveRpcSnapshotFile,
-} from "../../../script/migration.js";
+} from "../../../script/migrate.js";
 
 // The canonical snapshot create/save implementations (and the JSON payload shape of
-// the snapshot file) live in script/migration.ts; these are thin re-exports so the
+// the snapshot file) live in script/migrations/rpc.ts; these are thin re-exports so the
 // Hardhat tasks and the standalone CLI cannot drift apart.
 export const createSnapshot = createRpcSnapshot;
 

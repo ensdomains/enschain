@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { isLogSpanRefusalMessage } from "../../script/logSpanRefusal.js";
+import { isLogSpanRefusalMessage } from "../../script/migrations/logSpanRefusal.js";
 
 // The messages real providers answer an over-wide `eth_getLogs` with. Getting one
 // wrong in either direction is costly: a refusal read as fatal aborts an audit the

@@ -49,8 +49,8 @@ import {
   v1Deployment,
   v2Deployment,
   withPriceBuffer,
-} from "./migrationFixture/config.js";
-import { verifySeededV1State } from "./migrationFixture/verifyV1.js";
+} from "./fixture/config.js";
+import { verifySeededV1State } from "./fixture/verifyV1.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   executionScenario,
@@ -59,33 +59,33 @@ import {
   preMigrationOwnerAlias,
   wrapperState,
   type RefContext,
-} from "./migrationFixture/scenario.js";
+} from "./fixture/scenario.js";
 import {
   planSetupSteps,
   tokenIdOf,
   type PlanContext,
   type PlannedCall,
-} from "./migrationFixture/plan.js";
+} from "./fixture/plan.js";
 import {
   actorsNeedingHelperApproval,
   buildHelperArgs,
   migrationTarget,
   partitionMigration,
-} from "./migrationFixture/migrate.js";
+} from "./fixture/migrate.js";
 import {
   executePlannedCalls,
   fundActors,
   assertStateControls,
   impersonateAccount,
   type Executor,
-} from "./migrationFixture/execute.js";
+} from "./fixture/execute.js";
 import {
   type CommonOptions,
   type FixtureEnvelope,
   type FixtureRunName,
   type FixtureRunState,
   type FixtureActor,
-} from "./migrationFixture/types.js";
+} from "./fixture/types.js";
 
 /// The corpus's counterparty contracts. `v1Args` names the v1 deployments each
 /// constructor takes, in order.

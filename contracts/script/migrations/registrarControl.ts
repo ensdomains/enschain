@@ -1,6 +1,6 @@
 import { getAddress, type Address } from "viem";
 
-import type { JsonDeployment } from "./migrationFixture/types.js";
+import type { JsonDeployment } from "./fixture/types.js";
 
 export type RegistrarControlRoute = {
   // Contract the owner-gated write targets, and whose owner() gates it.

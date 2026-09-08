@@ -77,9 +77,9 @@ import {
 import {
   addFixtureSubcommands,
   runFixtureSeedStage,
-} from "./migrationFixture.js";
-import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
-import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
+} from "./migrations/fixture.js";
+import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
+import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
 import {
   assertRejected,
   assertV1Owner,
@@ -91,7 +91,7 @@ import {
   registerViaV2Registrar,
   renewViaEthRenewerV1,
   runV2RegistrarSmoke,
-} from "./migrationSmoke.js";
+} from "./migrations/smoke.js";
 import {
   createRpcSnapshot,
   increaseTime,
@@ -112,7 +112,7 @@ import {
   withRpcCompatibility,
   httpRpcProvider,
   clearAccountDelegations,
-} from "./migrationRpc.js";
+} from "./migrations/rpc.js";
 import {
   BUNDLED_V1_DEPLOYMENTS_DIR,
   labelId,
@@ -141,8 +141,8 @@ import {
   resolveDeploymentAddress,
   type RpcProvider,
   type V1DeploymentOptions,
-} from "./migrationPlumbing.js";
-import { resolveRegistrarControlRoute } from "./registrarControl.js";
+} from "./migrations/plumbing.js";
+import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -158,21 +158,21 @@ import {
   compareCalldata,
   describeVerdict,
   type CalldataVerdict,
-} from "./safeCalldata.js";
+} from "./migrations/safeCalldata.js";
 import {
   checkPrecondition,
   clearVerification,
   describePreconditionFailure,
   readVerification,
   recordVerification,
-} from "./phaseGate.js";
+} from "./migrations/phaseGate.js";
 import {
   compareDeployedBytecode,
   describeComparison,
   extractImmutableValues,
   immutableAsAddress,
   type ImmutableReferences,
-} from "./bytecodeCheck.js";
+} from "./migrations/bytecodeCheck.js";
 import {
   describeDifference,
   diffResolutionSnapshots,
@@ -181,14 +181,14 @@ import {
   snapshotCarriesRecords,
   type NameSnapshot,
   type ResolutionSnapshot,
-} from "./resolutionSnapshot.js";
+} from "./migrations/resolutionSnapshot.js";
 import {
   describeRoleBitmap,
   describeRoleFinding,
   diffRoleMatrix,
   type RoleExpectation,
   type RoleHolder,
-} from "./roleAudit.js";
+} from "./migrations/roleAudit.js";
 import {
   assertCompleteCsv,
   assertIndependentSource,
@@ -9056,11 +9056,11 @@ export {
   isRetryableRpcRequest,
   isTenderlyVirtualRpc,
   saveRpcSnapshotFile,
-} from "./migrationRpc.js";
+} from "./migrations/rpc.js";
 
 export {
   migrateUnwrappedV1Name,
   migrateWrappedV1Name,
   renewViaEthRenewerV1,
   runV2RegistrarSmoke,
-} from "./migrationSmoke.js";
+} from "./migrations/smoke.js";

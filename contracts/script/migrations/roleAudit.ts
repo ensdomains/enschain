@@ -14,7 +14,7 @@
 // Logs are therefore used only to discover *which addresses to ask about*. What they
 // hold is then read from the chain.
 
-import { ROLES } from "./deploy-constants.js";
+import { ROLES } from "../deploy-constants.js";
 
 // Every role bit with a readable name, derived from the same flag table the deploy
 // scripts grant from, so a new role cannot be silently omitted from an audit.

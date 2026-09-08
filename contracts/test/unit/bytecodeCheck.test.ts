@@ -6,7 +6,7 @@ import {
   extractImmutableValues,
   immutableAsAddress,
   maskImmutables,
-} from "../../script/bytecodeCheck.js";
+} from "../../script/migrations/bytecodeCheck.js";
 
 // A 32-byte word holding a left-padded address, as the compiler writes one.
 function addressWord(address: string): string {

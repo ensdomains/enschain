@@ -41,7 +41,7 @@ Two things cut across every path:
 ## Phases
 
 Phase numbering matches the console output of the `fork full` orchestrator in
-[`script/migration.ts`](../script/migration.ts). Every command below also takes the shared
+[`script/migrate.ts`](../script/migrate.ts). Every command below also takes the shared
 [common options](#common-options) (`--network`, `--rpc-url`, deployment dirs); run any command with
 `--help` for its authoritative option list.
 
@@ -917,7 +917,7 @@ Mainnet works the same way (`--network mainnet`; it is a bootstrap URP network).
 
 ### Entry points
 
-- **Operator CLI** — [`script/migration.ts`](../script/migration.ts), run as
+- **Operator CLI** — [`script/migrate.ts`](../script/migrate.ts), run as
   `bun run migration -- <command>` from `contracts/`. Each phase is an individual subcommand;
   `fork full` and `clean-testnet` run all phases end-to-end as rehearsals. The CLI auto-loads
   `contracts/.env` (already-set environment variables win).

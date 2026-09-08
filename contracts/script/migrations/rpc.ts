@@ -21,14 +21,14 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createWalletClient, getAddress, parseEther } from "viem";
 
-import { bufferedGas } from "./migrationFixture/config.js";
+import { bufferedGas } from "./fixture/config.js";
 import {
   errorMessageChain,
   NETWORKS,
   publicClient,
   type MigrationNetwork,
   type RpcProvider,
-} from "./migrationPlumbing.js";
+} from "./plumbing.js";
 
 type WalletAccount =
   | ReturnType<typeof privateKeyToAccount>

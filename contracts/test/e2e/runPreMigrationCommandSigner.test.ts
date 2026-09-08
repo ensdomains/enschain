@@ -16,7 +16,7 @@ import {
   type Checkpoint,
 } from "../../script/preMigration.js";
 
-import { runPreMigrationCommand } from "../../script/migration.js";
+import { runPreMigrationCommand } from "../../script/migrate.js";
 
 // The BatchRegistrar owner that fork/clean-testnet runs impersonate. The env
 // deployer key below does NOT control it.

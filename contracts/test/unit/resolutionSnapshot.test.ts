@@ -8,7 +8,7 @@ import {
   recordQueries,
   snapshotCarriesRecords,
   type ResolutionSnapshot,
-} from "../../script/resolutionSnapshot.js";
+} from "../../script/migrations/resolutionSnapshot.js";
 
 function snapshot(
   names: Array<{ name: string; records: Record<string, Hex | null> }>,

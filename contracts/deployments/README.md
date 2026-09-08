@@ -1,7 +1,7 @@
 # Deployments
 
 Deployment artifacts written and read by [rocketh](https://github.com/wighawag/rocketh)
-through the migration tooling ([`script/migration.ts`](../script/migration.ts),
+through the migration tooling ([`script/migrate.ts`](../script/migrate.ts),
 [`docs/migration.md`](../docs/migration.md)). Each contract a deploy script
 produces is recorded here as JSON so later runs and the phase commands can resolve
 on-chain addresses without re-deploying.

@@ -5,7 +5,7 @@ import {
   compareCalldata,
   decodeCalldata,
   describeVerdict,
-} from "../../script/safeCalldata.js";
+} from "../../script/migrations/safeCalldata.js";
 
 const ABI = parseAbi([
   "function setController(address controller, bool enabled)",

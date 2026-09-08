@@ -6,11 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zeroAddress } from "viem";
 
-import {
-  snapshotResolution,
-  verifyResolution,
-} from "../../script/migration.js";
-import type { ResolutionSnapshot } from "../../script/resolutionSnapshot.js";
+import { snapshotResolution, verifyResolution } from "../../script/migrate.js";
+import type { ResolutionSnapshot } from "../../script/migrations/resolutionSnapshot.js";
 import { idFromLabel } from "../utils/utils.js";
 
 // The devnet gives each named contract an address record under `ens.eth`, so this

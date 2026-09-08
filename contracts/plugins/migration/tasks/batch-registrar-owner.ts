@@ -1,8 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import { parseMigrationNetwork } from "../../../script/migrationPlumbing.js";
+import { parseMigrationNetwork } from "../../../script/migrations/plumbing.js";
 
-import { checkBatchRegistrarOwner } from "../../../script/migration.js";
+import { checkBatchRegistrarOwner } from "../../../script/migrate.js";
 import {
   optionalAddress,
   nonEmptyString,

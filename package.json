@@ -11,7 +11,7 @@
   "scripts": {
     "format:biome": "biome format .",
     "format:biome:fix": "biome format --write .",
-    "fixtures:extract": "bun ./contracts/script/extractMigrationFixture.ts",
+    "fixtures:extract": "bun ./contracts/script/migrations/extractFixture.ts",
     "postinstall": "bun run fixtures:extract"
   },
   "devDependencies": {

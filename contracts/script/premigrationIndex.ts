@@ -28,7 +28,7 @@ import {
   getGatewayEndpoint,
   type ENSRegistrationNetwork,
 } from "./exportTheGraphRegistrations.js";
-import { isLogSpanRefusalMessage } from "./logSpanRefusal.js";
+import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
 import { V1_GRACE_PERIOD_SECONDS } from "./preMigration.js";
 
 export const V1_INDEX_FILE = "v1-name-index.ndjson";

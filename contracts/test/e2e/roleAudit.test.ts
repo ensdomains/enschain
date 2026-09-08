@@ -6,7 +6,7 @@ import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import { getAddress, type Address } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
-import { verifyV2Roles } from "../../script/migration.js";
+import { verifyV2Roles } from "../../script/migrate.js";
 import { idFromLabel } from "../utils/utils.js";
 
 const TEST_TIMEOUT_MS = 120_000;

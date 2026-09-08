@@ -3,7 +3,7 @@ setDefaultTimeout(60_000);
 
 import { toHex, type Address } from "viem";
 import { ROLES } from "../../script/deploy-constants.js";
-import { main } from "../../script/prepareMigration.js";
+import { main } from "../../script/migrations/prepareMigration.js";
 import { revertPrePrepareMigrationRoles } from "../utils/mockPrepareMigration.js";
 
 const ROLE_REGISTRAR = ROLES.REGISTRY.REGISTRAR;

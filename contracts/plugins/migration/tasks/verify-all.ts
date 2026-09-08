@@ -23,7 +23,7 @@ import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   ROLES,
 } from "../../../script/deploy-constants.js";
-import { dnsEncodeName } from "../../../script/migrationPlumbing.js";
+import { dnsEncodeName } from "../../../script/migrations/plumbing.js";
 
 type VerifyAllTaskArgs = {
   migrationNetwork: string;

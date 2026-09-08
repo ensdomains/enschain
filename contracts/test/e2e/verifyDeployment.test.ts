@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { verifyDeployment } from "../../script/migration.js";
+import { verifyDeployment } from "../../script/migrate.js";
 
 const NAMESPACE = "mainnet";
 

@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, statSync, utimesSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 // The ENSv1 migration fixture corpus ships compressed because it expands to
 // ~54MB of scenario JSONL. It is extracted next to the other operator-supplied
 // CSV input, which is gitignored, so the working copy stays out of git while the
 // archive itself is tracked.
-const contractsDir = resolve(dirname(import.meta.dir));
+// Anchored by walking up to the directory that holds `fixtures/`, so the script can
+// be moved without silently resolving to the wrong root.
+const contractsDir = resolve(import.meta.dir, "..", "..");
 const archive = join(contractsDir, "fixtures", "migration-fixture.tgz");
 const destination = join(contractsDir, "csv-data");
 const extracted = join(destination, "migration-fixture");

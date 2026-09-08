@@ -23,7 +23,7 @@ import {
   executePreparedOwnerTransactions,
   verifyV1RegistrarsDisabled,
   verifyReverseAdapters,
-} from "../../script/migration.js";
+} from "../../script/migrate.js";
 import { deployArtifact } from "../integration/fixtures/deployArtifact.js";
 
 // Each revoke waits a full receipt poll, so the freeze needs more than the default

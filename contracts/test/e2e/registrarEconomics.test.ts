@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAddress, zeroAddress } from "viem";
 
-import { verifyRegistrarEconomics } from "../../script/migration.js";
+import { verifyRegistrarEconomics } from "../../script/migrate.js";
 
 const NAMESPACE = "mainnet";
 const CONTRACTS = ["ETHRegistrar", "MockUSDC", "MockDAI"] as const;

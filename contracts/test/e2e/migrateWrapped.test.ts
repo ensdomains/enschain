@@ -11,7 +11,7 @@ import { STATUS } from "../../script/deploy-constants.js";
 import {
   migrateUnwrappedV1Name,
   migrateWrappedV1Name,
-} from "../../script/migration.js";
+} from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
