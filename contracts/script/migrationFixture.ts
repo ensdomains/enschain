@@ -78,6 +78,7 @@ import {
   partitionMigration,
 } from "./migrationFixture/migrate.js";
 import {
+  actorWallet,
   executePlannedCalls,
   fundActors,
   assertStateControls,
@@ -820,10 +821,6 @@ export async function seedV1(
           batcher,
           v1.wrapper.address,
           ...actors.map((a) => a.account.address),
-          // A name already given to a tester is still one of ours; without
-          // this a reseed against a handed-over work directory would report
-          // the recipient as a stranger.
-          ...seeded.names.flatMap((n) => n.handedOverTo ?? []),
         ].map((a) => getAddress(a)),
       );
       if (!ours.has(owner)) {
@@ -1025,7 +1022,10 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
     new Map(
       state.names
         .filter((n) => n.handedOverTo)
-        .map((n) => [n.fixtureId, n.handedOverTo!]),
+        .map((n) => [
+          n.fixtureId,
+          { to: n.handedOverTo!, from: n.handedOverFrom },
+        ]),
     ),
   );
 
@@ -1049,6 +1049,7 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       {
         names: result.names,
         checks: result.checks,
+        relaxedOwnerChecks: result.relaxedOwnerChecks,
         byForm,
         issues: result.issues,
       },
@@ -1062,6 +1063,7 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       {
         names: result.names,
         checks: result.checks,
+        relaxedOwnerChecks: result.relaxedOwnerChecks,
         failingNames: failingIds.size,
         issues: result.issues.length,
         byField: result.byField,
@@ -1086,7 +1088,15 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       `${failingIds.size}/${result.names} seeded names do not match their declared pre-migration state`,
     );
   }
-  console.log("all seeded names match their declared pre-migration state");
+  // Saying only "matches its declared state" after a handover would hide that
+  // the ownership assertions were answered by the recipient instead.
+  console.log(
+    result.relaxedOwnerChecks
+      ? "all seeded names match their declared pre-migration state " +
+          `(${result.relaxedOwnerChecks} ownership checks satisfied against the ` +
+          "handover recipient rather than the declared actor)"
+      : "all seeded names match their declared pre-migration state",
+  );
 }
 
 const ERC1155_RECEIVER_INTERFACE_ID = "0x4e2312e0" as Hex;
@@ -1116,6 +1126,13 @@ const HANDOVER_ABI = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "nameExpires",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
@@ -1193,11 +1210,10 @@ async function approveBatcherAsOperator(
         `${holder} holds a seeded name but is not a fixture actor of this run`,
       );
     }
-    const wallet = createWalletClient({
-      chain: ex.chain,
-      account: actor.account,
-      transport: http(ex.opts.rpcUrl),
-    });
+    // `actorWallet` tops the actor up before handing back a signer. Building a
+    // client here instead would leave the approval unfunded on any run that
+    // never had to pay an actor during seeding.
+    const wallet = await actorWallet(ex, actor.alias);
     for (const registrar of registrars) {
       const approved = (await ex.client.readContract({
         address: registrar,
@@ -1219,6 +1235,14 @@ async function approveBatcherAsOperator(
 
 /// Reads what each selected name currently looks like on chain, which is what
 /// the handover plans against.
+///
+/// The reads are split by whether a failure carries meaning. `getData` and
+/// `nameExpires` are total — they answer for an id that was never registered —
+/// so a failure there is the endpoint faltering and must be loud. `ownerOf`
+/// genuinely reverts once a registration lapses, so it is allowed to fail, but
+/// only where the expiry already says the name is gone. Reading a transport
+/// error as "the name is not there" would turn one rate-limited chunk into a
+/// batch of names silently reported as left behind.
 async function readHandoverState(
   client: any,
   rows: FixtureEnvelope[],
@@ -1226,49 +1250,29 @@ async function readHandoverState(
   now: bigint,
   batchSize = 400,
 ): Promise<Map<string, HandoverState>> {
-  type Read = {
-    fixtureId: string;
-    slot: "name" | "parent" | "registrant";
-    call: Record<string, unknown>;
-  };
   const wrapperCall = (node: Hex) => ({
     address: addresses.wrapper,
     abi: HANDOVER_ABI,
     functionName: "getData",
     args: [BigInt(node)],
   });
-
-  const reads: Read[] = [];
-  for (const row of rows) {
-    const scenario = row.scenario;
-    const child = isChild(v1Form(scenario));
-    reads.push({
-      fixtureId: row.fixture_id,
-      slot: "name",
-      call: wrapperCall(namehash(scenario.name) as Hex),
-    });
-    if (child) {
-      reads.push({
-        fixtureId: row.fixture_id,
-        slot: "parent",
-        call: wrapperCall(namehash(`${scenario.top_level_label}.eth`) as Hex),
-      });
-    } else {
-      reads.push({
-        fixtureId: row.fixture_id,
-        slot: "registrant",
-        call: {
-          address: addresses.baseRegistrar,
-          abi: HANDOVER_ABI,
-          functionName: "ownerOf",
-          args: [tokenIdOf(scenario.top_level_label)],
-        },
-      });
-    }
-  }
+  const registrarCall = (functionName: string, tokenId: bigint) => ({
+    address: addresses.baseRegistrar,
+    abi: HANDOVER_ABI,
+    functionName,
+    args: [tokenId],
+  });
 
   const states = new Map<string, HandoverState>();
+  const total: {
+    fixtureId: string;
+    slot: "name" | "parent" | "expiry";
+    call: Record<string, unknown>;
+  }[] = [];
+  const owners: { fixtureId: string; call: Record<string, unknown> }[] = [];
+
   for (const row of rows) {
+    const scenario = row.scenario;
     states.set(row.fixture_id, {
       wrapperOwner: zeroAddress,
       wrapperFuses: 0,
@@ -1276,29 +1280,45 @@ async function readHandoverState(
       registrant: zeroAddress,
       now,
     });
+    total.push({
+      fixtureId: row.fixture_id,
+      slot: "name",
+      call: wrapperCall(namehash(scenario.name) as Hex),
+    });
+    if (isChild(v1Form(scenario))) {
+      total.push({
+        fixtureId: row.fixture_id,
+        slot: "parent",
+        call: wrapperCall(namehash(`${scenario.top_level_label}.eth`) as Hex),
+      });
+      continue;
+    }
+    const tokenId = tokenIdOf(scenario.top_level_label);
+    total.push({
+      fixtureId: row.fixture_id,
+      slot: "expiry",
+      call: registrarCall("nameExpires", tokenId),
+    });
+    owners.push({
+      fixtureId: row.fixture_id,
+      call: registrarCall("ownerOf", tokenId),
+    });
   }
 
-  for (let i = 0; i < reads.length; i += batchSize) {
-    const slice = reads.slice(i, i + batchSize);
+  const registrationExpiry = new Map<string, bigint>();
+  for (let i = 0; i < total.length; i += batchSize) {
+    const slice = total.slice(i, i + batchSize);
     const results = await client.multicall({
       contracts: slice.map((r) => r.call),
-      allowFailure: true,
+      allowFailure: false,
     });
     for (const [index, read] of slice.entries()) {
-      const outcome = results[index];
-      // A failed read means the name is not there — expired out of its
-      // registration, or never created. The zero left in place skips it.
-      if (outcome.status !== "success") continue;
       const state = states.get(read.fixtureId)!;
-      if (read.slot === "registrant") {
-        state.registrant = getAddress(outcome.result as Address);
+      if (read.slot === "expiry") {
+        registrationExpiry.set(read.fixtureId, BigInt(results[index]));
         continue;
       }
-      const [owner, fuses, expiry] = outcome.result as [
-        Address,
-        number,
-        bigint,
-      ];
+      const [owner, fuses, expiry] = results[index] as [Address, number, bigint];
       if (read.slot === "name") {
         state.wrapperOwner = getAddress(owner);
         state.wrapperFuses = Number(fuses);
@@ -1309,6 +1329,36 @@ async function readHandoverState(
         state.parentWrapperExpiry = BigInt(expiry);
       }
     }
+  }
+
+  const unreadable: string[] = [];
+  for (let i = 0; i < owners.length; i += batchSize) {
+    const slice = owners.slice(i, i + batchSize);
+    const results = await client.multicall({
+      contracts: slice.map((r) => r.call),
+      allowFailure: true,
+    });
+    for (const [index, read] of slice.entries()) {
+      const outcome = results[index];
+      if (outcome.status === "success") {
+        states.get(read.fixtureId)!.registrant = getAddress(
+          outcome.result as Address,
+        );
+        continue;
+      }
+      // A lapsed registration has no owner, which the expiry already told us.
+      // Anything else is a read that did not happen.
+      const expiry = registrationExpiry.get(read.fixtureId) ?? 0n;
+      if (expiry === 0n || expiry <= now) continue;
+      unreadable.push(read.fixtureId);
+    }
+  }
+  if (unreadable.length) {
+    throw new Error(
+      `could not read the current owner of ${unreadable.length} unexpired name(s) ` +
+        `(${unreadable.slice(0, 5).join(", ")}${unreadable.length > 5 ? ", ..." : ""}); ` +
+        "the endpoint failed rather than the names being gone, so nothing was moved",
+    );
   }
   return states;
 }
@@ -1383,9 +1433,8 @@ export async function handover(opts: CommonOptions): Promise<void> {
   const perName = new Map<string, PlannedCall[]>();
   const skipped: { fixtureId: string; subject: string; reason: string }[] = [];
   const holders = new Set<Address>();
-  // Names that stay where they are. A child whose parent cannot move is not one
-  // of them: the child itself still reaches the recipient, and the report says
-  // separately that its parent did not.
+  // Names the recipient does not end up holding, which is decided by the name's
+  // own transfer rather than by anything planned around it.
   const stayed = new Set<string>();
   for (const row of selected) {
     const plan = planHandover(row, ctx, target, current.get(row.fixture_id)!);
@@ -1397,53 +1446,101 @@ export async function handover(opts: CommonOptions): Promise<void> {
     if (plan.calls.length) perName.set(row.fixture_id, plan.calls);
   }
 
+  // Every selected name lands in exactly one of these, so the counts reported
+  // at the end add up to the selection.
+  const rowById = new Map(selected.map((r) => [r.fixture_id, r]));
+  const movedIds = [...perName.keys()].filter((id) => !stayed.has(id));
+  const alreadyHeld = selected.filter(
+    (r) => !perName.has(r.fixture_id) && !stayed.has(r.fixture_id),
+  ).length;
+
   await approveBatcherAsOperator(executor, holders, [
     v1.base.address,
     v1.wrapper.address,
   ]);
 
-  // A name the plan asks nothing of is already the recipient's. Recording that
-  // before the batches run keeps an interrupted handover resumable.
+  // A name the plan asks nothing of is already the recipient's, so it can be
+  // recorded before any batch runs. Everything else is recorded as its calls
+  // land: the batches are all batcher-signed, so a name is only finished once
+  // the whole run is, and an interrupt leaves the rest to a rerun — which
+  // replans from the chain and is a no-op for whatever did land.
   for (const row of selected) {
     if (perName.has(row.fixture_id) || stayed.has(row.fixture_id)) continue;
     byId.get(row.fixture_id)!.handedOverTo = target;
+    byId.get(row.fixture_id)!.handedOverFrom = preMigrationOwnerAlias(
+      row.scenario,
+    );
   }
   saveRunState(opts, state);
 
-  const transactions = new Map<string, Hex[]>();
-  await executePlannedCalls(
-    executor,
-    perName,
-    (fixtureId, hash) => {
-      transactions.set(fixtureId, [
-        ...(transactions.get(fixtureId) ?? []),
-        hash,
-      ]);
-    },
-    (fixtureId) => {
-      const run = byId.get(fixtureId);
-      if (run && !stayed.has(fixtureId)) run.handedOverTo = target;
-      saveRunState(opts, state);
-    },
-  );
-
   const reportPath = join(resolve(opts.workDir), "fixture-handover.json");
-  writeFileSync(
-    reportPath,
-    `${JSON.stringify(
-      {
-        target,
-        selected: selected.length,
-        moved: [...perName.keys()].map((fixtureId) => ({
-          fixtureId,
-          transactions: transactions.get(fixtureId) ?? [],
-        })),
-        skipped,
+  const transactions = new Map<string, Hex[]>();
+  let completed = false;
+
+  // The report is the only durable record of which transactions moved what, so
+  // it is written whether or not the batches finished, and merged with any
+  // earlier run's rather than replacing it.
+  const writeReport = () => {
+    const previous = existsSync(reportPath)
+      ? readJson<{ moved?: { fixtureId: string; transactions: Hex[] }[] }>(
+          reportPath,
+        )
+      : {};
+    const merged = new Map<string, Hex[]>(
+      (previous.moved ?? []).map((m) => [m.fixtureId, m.transactions ?? []]),
+    );
+    for (const fixtureId of movedIds) {
+      merged.set(fixtureId, [
+        ...new Set([
+          ...(merged.get(fixtureId) ?? []),
+          ...(transactions.get(fixtureId) ?? []),
+        ]),
+      ]);
+    }
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify(
+        {
+          target,
+          selected: selected.length,
+          completed,
+          moved: [...merged.entries()].map(([fixtureId, hashes]) => ({
+            fixtureId,
+            transactions: hashes,
+          })),
+          skipped,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  };
+
+  try {
+    await executePlannedCalls(
+      executor,
+      perName,
+      (fixtureId, hash) => {
+        transactions.set(fixtureId, [
+          ...(transactions.get(fixtureId) ?? []),
+          hash,
+        ]);
       },
-      null,
-      2,
-    )}\n`,
-  );
+      (fixtureId) => {
+        const run = byId.get(fixtureId);
+        if (run && !stayed.has(fixtureId)) {
+          run.handedOverTo = target;
+          run.handedOverFrom = preMigrationOwnerAlias(
+            rowById.get(fixtureId)!.scenario,
+          );
+        }
+        saveRunState(opts, state);
+      },
+    );
+    completed = true;
+  } finally {
+    writeReport();
+  }
 
   const reasons: Record<string, number> = {};
   for (const skip of skipped) {
@@ -1454,9 +1551,9 @@ export async function handover(opts: CommonOptions): Promise<void> {
       {
         target,
         selected: selected.length,
-        moved: perName.size,
+        moved: movedIds.length,
         stayed: stayed.size,
-        alreadyHeld: selected.length - perName.size - stayed.size,
+        alreadyHeld,
         skipped: skipped.length,
         skippedByReason: reasons,
         report: reportPath,
@@ -1510,6 +1607,13 @@ async function fundActorAccounts(
 export async function runFixtureSeedStage(
   opts: CommonOptions,
 ): Promise<{ labels: string[]; premigrationCsv: string }> {
+  // A bad recipient must fail now, not after hours of seeding: on a rehearsal
+  // the fork is torn down when the run ends, taking the corpus with it.
+  if (opts.handoverTo) {
+    const target = requireHandoverTarget(opts);
+    await assertCanReceiveNames(clients(opts).client, target);
+  }
+
   console.log("fixture: seeding the ENSv1 corpus");
   const { path: premigrationCsv, labels } = await seedV1(opts);
   console.log("fixture: verifying the shaped V1 state");
@@ -1561,11 +1665,17 @@ function addCommon(command: Command): Command {
       "--rpc-state-controls",
       "Enable impersonation/time control RPC methods",
       false,
-    )
-    .option(
-      "--handover-to <address>",
-      "Give the seeded names to this wallet once their state is checked",
     );
+}
+
+/// Names the wallet a run gives its seeded names to. Only the two commands that
+/// act on it take it: accepted-and-ignored elsewhere it reads as a way to
+/// select the recipient, which on `verify-v1` in particular would be a trap.
+function addHandoverOption(command: Command): Command {
+  return command.option(
+    "--handover-to <address>",
+    "Give the seeded names to this wallet once their state is checked",
+  );
 }
 
 /// Gate every fixture action that writes to the chain.
@@ -1630,9 +1740,11 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action((raw) => deployFixtures(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(
-      new Command("seed-v1").description(
-        "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
+    addHandoverOption(
+      addCommon(
+        new Command("seed-v1").description(
+          "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
+        ),
       ),
     ).action(async (raw) => {
       const opts = normalizeOptions(raw);
@@ -1651,9 +1763,11 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action((raw) => verifyV1(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(
-      new Command("handover").description(
-        "After verify-v1: give every seeded name in the selection to one wallet",
+    addHandoverOption(
+      addCommon(
+        new Command("handover").description(
+          "After verify-v1: give every seeded name in the selection to one wallet",
+        ),
       ),
     ).action((raw) => handover(normalizeOptions(raw))),
   );

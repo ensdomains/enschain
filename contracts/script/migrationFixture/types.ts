@@ -144,6 +144,10 @@ export type FixtureRunName = {
   /// Absent while the name is still held by the actor its scenario names, which
   /// is what every other stage expects.
   handedOverTo?: Address;
+  /// Actor alias the name was taken from. The owner checks relax onto the
+  /// recipient only for this alias, so a name that moved off some other holder
+  /// keeps asserting what the corpus declares.
+  handedOverFrom?: string;
 };
 
 export type FixtureRunState = {

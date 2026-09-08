@@ -1209,6 +1209,8 @@ export function planHandover(
   const skips: HandoverSkip[] = [];
   const holders: Address[] = [];
 
+  /// Returns whether the subject ends up with the recipient — either because a
+  /// transfer was planned, or because it is already there.
   const move = (args: {
     subject: string;
     wrapped: boolean;
@@ -1217,23 +1219,23 @@ export function planHandover(
     expiry: bigint;
     tokenId: bigint;
     node: Hex;
-  }): void => {
+  }): boolean => {
     const { subject, wrapped, holder, fuses, expiry, tokenId, node } = args;
-    if (sameAddress(holder, to)) return;
+    if (sameAddress(holder, to)) return true;
     if (holder === zeroAddress) {
       skips.push({ subject, reason: "no v1 holder" });
-      return;
+      return false;
     }
     if (!wrapped && sameAddress(holder, ctx.addresses.wrapper)) {
       skips.push({ subject, reason: "held by the NameWrapper" });
-      return;
+      return false;
     }
     const blocked = wrapped
       ? wrapperTransferBlock(fuses, expiry, state.now)
       : null;
     if (blocked) {
       skips.push({ subject, reason: blocked });
-      return;
+      return false;
     }
     holders.push(holder);
     calls.push(
@@ -1251,11 +1253,12 @@ export function planHandover(
             : `${row.fixture_id} handover (${subject})`,
       }),
     );
+    return true;
   };
 
   const topLabel = scenario.top_level_label;
   const wrapped = isWrapped(form);
-  move({
+  const moved = move({
     subject: scenario.name,
     wrapped,
     holder: wrapped ? state.wrapperOwner : state.registrant,
@@ -1265,16 +1268,26 @@ export function planHandover(
     node: namehash(scenario.name) as Hex,
   });
 
+  // The parent travels only with a child that travels. Moving it alone splits a
+  // pair whose whole reason for going together is that neither wallet can drive
+  // the scenario without the other: the recipient could not migrate a subname it
+  // does not hold, and the actor left holding the subname could no longer
+  // migrate the parent above it.
   if (isChild(form)) {
-    move({
-      subject: `${topLabel}.eth`,
-      wrapped: true,
-      holder: state.parentWrapperOwner ?? zeroAddress,
-      fuses: state.parentWrapperFuses ?? 0,
-      expiry: state.parentWrapperExpiry ?? 0n,
-      tokenId: tokenIdOf(topLabel),
-      node: namehash(`${topLabel}.eth`) as Hex,
-    });
+    const parent = `${topLabel}.eth`;
+    if (moved) {
+      move({
+        subject: parent,
+        wrapped: true,
+        holder: state.parentWrapperOwner ?? zeroAddress,
+        fuses: state.parentWrapperFuses ?? 0,
+        expiry: state.parentWrapperExpiry ?? 0n,
+        tokenId: tokenIdOf(topLabel),
+        node: namehash(parent) as Hex,
+      });
+    } else {
+      skips.push({ subject: parent, reason: "its child stayed" });
+    }
   }
 
   return { calls, skips, holders };

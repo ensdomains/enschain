@@ -597,29 +597,46 @@ is left alone, so an interrupted handover resumes.
 
 Three limits worth knowing before pointing a tester at the result:
 
-- **Some names cannot move at all.** The wrapper refuses a name with `CANNOT_TRANSFER` burned — 172
-  of the 6,052 `live_now` rows, all `wrapped_locked` or `locked_child` — and refuses an emancipated
-  name that has reached its grace period. Both stay with their actor, and the run reports each one
-  with its reason rather than failing.
-- **Operator approvals lapse.** 1,288 of the 7,104 corpus names approve `MigrationHelper` or a
-  fixture operator while shaping. An approval is scoped to the owner that granted it, so every one of
-  them is inert the moment the name moves. A recipient migrating through a helper route grants their
-  own first, which is what the app asks for anyway.
+- **Some names cannot move at all.** The wrapper refuses a name with `CANNOT_TRANSFER` burned — 196
+  corpus names, 172 of them `live_now`, all `wrapped_locked` or `locked_child` — and refuses an
+  emancipated `.eth` 2LD that has reached its grace period, or an emancipated subname past its
+  expiry. Those stay with their actor, and so does the parent of a subname that stayed: moving the
+  parent alone would split a pair that has to travel together, since neither wallet could then drive
+  the scenario. The run reports each one with its reason rather than failing.
+- **Blanket operator approvals lapse; frozen per-token ones do not.** 1,288 corpus names approve
+  `MigrationHelper` or a fixture operator with `setApprovalForAll`, which is scoped to the owner that
+  granted it, so all of those are inert the moment the name moves — a recipient migrating through a
+  helper route grants their own first, which is what the app asks for anyway. A further 72 names (56
+  `live_now`) instead approve a single wrapper token and then burn `CANNOT_APPROVE`.
+  `NameWrapper._beforeTransfer` clears a token approval only while that fuse is *unburned*, so those
+  approvals survive the transfer and the recipient cannot revoke them. The residual capability is
+  narrow — a stale approval feeds only `canExtendSubnames` and `upgrade`, never transfer authority or
+  `canModifyName` — but it is real, and it is deliberate: those scenarios exist to exercise a frozen
+  approval.
 - **Reverse records stay behind.** `set_reverse_claim` writes the *claiming actor's* reverse node,
   not the owner's, so the actors keep reverse records naming fixtures they no longer hold and the
   recipient's primary name is untouched.
 
 Child scenarios move with their parent 2LD, which seeding leaves wrapped to the batcher. Without it
 the recipient could never migrate the subname: `MigrationHelper` reverts `ParentNotMigrated` until
-the name above it has migrated, and only the parent's owner can do that.
+the name above it has migrated, and only the parent's owner can do that. The pair is all-or-nothing —
+a subname the wrapper refuses to move leaves its parent on the batcher.
 
 A cohort travels in batches, not one transaction per name. Each holder grants the batcher operator
 rights once per registry — at most six transactions for the three owner actors — and every transfer
-then runs
-inside the batcher. The grant confers nothing over a name once it has reached the recipient.
+then runs inside the batcher. The grant confers nothing over a name once it has reached the
+recipient.
 
 The run writes `<work-dir>/fixture-handover.json`: what moved, with transaction hashes, and what was
-left behind with the reason.
+left behind with the reason. It is written even when the run fails partway, and a rerun merges into
+it rather than replacing it, so the record of what moved survives the reruns the command invites.
+A `completed` flag says whether the batches finished; after an interrupted run, re-run the command
+before re-running `verify-v1`.
+
+After a handover `verify-v1` expects the recipient wherever the corpus names the actor the name was
+taken from, and says so — its summary reports how many ownership assertions were satisfied that way
+rather than against the declared actor. A name that moved off any other holder keeps asserting
+exactly what the corpus declares.
 
 ### Reserving the fixture labels on v2
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   decodeFunctionData,
   getAddress,
+  namehash,
   zeroAddress,
   type Address,
 } from "viem";
@@ -16,6 +17,7 @@ import {
   type PlanContext,
 } from "../../script/migrationFixture/plan.js";
 import { assertSeedable } from "../../script/migrationFixture.js";
+import { buildV1Checks } from "../../script/migrationFixture/verifyV1.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
 import {
   FUSES,
@@ -356,6 +358,8 @@ describe("handing a seeded name to a wallet", () => {
       getAddress(OWNER),
       getAddress(TESTER),
     ]);
+    // The wrapper token is the namehash, not the registrar's labelhash id.
+    expect(transfer.args?.[2]).toBe(BigInt(namehash("fxh.eth")));
     expect(transfer.args?.[3]).toBe(1n);
   });
 
@@ -426,9 +430,199 @@ describe("handing a seeded name to a wallet", () => {
 
     expect(plan.calls).toHaveLength(2);
     expect(plan.holders).toEqual([OWNER, BATCHER]);
-    for (const call of plan.calls) {
-      expect(call.target).toBe(WRAPPER);
-      expect(decoded(call).args?.[1]).toBe(getAddress(TESTER));
+    const [childCall, parentCall] = plan.calls.map(decoded);
+    expect(plan.calls[0].target).toBe(WRAPPER);
+    expect(plan.calls[1].target).toBe(WRAPPER);
+    expect(childCall.args?.[0]).toBe(getAddress(OWNER));
+    expect(childCall.args?.[2]).toBe(BigInt(namehash("sub.fxh.eth")));
+    expect(parentCall.args?.[0]).toBe(getAddress(BATCHER));
+    expect(parentCall.args?.[2]).toBe(BigInt(namehash("fxh.eth")));
+    for (const call of [childCall, parentCall]) {
+      expect(call.args?.[1]).toBe(getAddress(TESTER));
     }
+  });
+
+  it("keeps a refused child's parent with the batcher", () => {
+    const child = handoverEnvelope(["locked_child"], {
+      name: "sub.fxh.eth",
+      child_label: "sub",
+    });
+    const plan = planHandover(
+      child,
+      planCtx,
+      TESTER,
+      liveState({
+        wrapperOwner: OWNER,
+        wrapperFuses: FUSES.CANNOT_TRANSFER,
+        wrapperExpiry: YEAR_AHEAD,
+        parentWrapperOwner: BATCHER,
+        parentWrapperExpiry: YEAR_AHEAD,
+      }),
+    );
+
+    // Moving the parent alone would split the pair: the recipient cannot
+    // migrate a subname it does not hold, and the actor left holding the
+    // subname can no longer migrate the name above it.
+    expect(plan.calls).toEqual([]);
+    expect(plan.holders).toEqual([]);
+    expect(plan.skips).toEqual([
+      { subject: "sub.fxh.eth", reason: "CANNOT_TRANSFER burned" },
+      { subject: "fxh.eth", reason: "its child stayed" },
+    ]);
+  });
+
+  it("leaves a name whose holder is gone, and one the wrapper holds", () => {
+    const absent = planHandover(
+      handoverEnvelope(["unwrapped"]),
+      planCtx,
+      TESTER,
+      liveState({ registrant: zeroAddress }),
+    );
+    expect(absent.calls).toEqual([]);
+    expect(absent.skips).toEqual([
+      { subject: "fxh.eth", reason: "no v1 holder" },
+    ]);
+
+    const wrapped = planHandover(
+      handoverEnvelope(["unwrapped"]),
+      planCtx,
+      TESTER,
+      liveState({ registrant: WRAPPER }),
+    );
+    expect(wrapped.calls).toEqual([]);
+    expect(wrapped.skips).toEqual([
+      { subject: "fxh.eth", reason: "held by the NameWrapper" },
+    ]);
+  });
+
+  it("moves an expired name that was never emancipated", () => {
+    const plan = planHandover(
+      handoverEnvelope(["wrapped_unlocked"]),
+      planCtx,
+      TESTER,
+      liveState({
+        wrapperOwner: OWNER,
+        // Expired, but PARENT_CANNOT_CONTROL is clear, so the wrapper still
+        // allows the transfer.
+        wrapperFuses: 0,
+        wrapperExpiry: NOW - 1n,
+      }),
+    );
+    expect(plan.skips).toEqual([]);
+    expect(plan.calls).toHaveLength(1);
+  });
+});
+
+describe("checking a handed-over name against its scenario", () => {
+  const RESOLVER = "0x00000000000000000000000000000000000000d4" as Address;
+  const V1 = {
+    registry: "0x00000000000000000000000000000000000000d1",
+    baseRegistrar: "0x00000000000000000000000000000000000000d2",
+    nameWrapper: "0x00000000000000000000000000000000000000d3",
+  } as const;
+
+  const refCtx = {
+    actors: new Map([
+      ["owner_a", OWNER],
+      ["owner_b", "0x00000000000000000000000000000000000000a2"],
+    ]),
+    fixtureContracts: {},
+    v1Address: (name: string) => {
+      if (name === "NameWrapper") return V1.nameWrapper;
+      if (name === "PublicResolver") return RESOLVER;
+      throw new Error(`unexpected v1 lookup: ${name}`);
+    },
+    v2Address: (name: string) => {
+      throw new Error(`unexpected v2 lookup: ${name}`);
+    },
+  } as unknown as RefContext;
+
+  const row = (pre: Record<string, any>, tags: string[]): FixtureEnvelope =>
+    ({
+      fixture_id: "FX-V01",
+      label: "fxv",
+      name: "fxv.eth",
+      scenario: {
+        scenario_id: "FX-V01",
+        name: "fxv.eth",
+        top_level_label: "fxv",
+        tags,
+        actors: { pre_migration_owner: "owner_a" },
+        v1: {
+          registration: { label: "fxv", owner_actor: "owner_a" },
+          setup_steps: [],
+          expected_pre_migration: pre,
+        },
+      },
+    }) as unknown as FixtureEnvelope;
+
+  const expectedFor = (checks: any[], field: string) =>
+    checks.find((c) => c.field === field)?.assert(true, zeroAddress)?.expected;
+
+  it("expects the recipient on both owner records of an unwrapped name", () => {
+    const checks = buildV1Checks(
+      row(
+        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
+        ["unwrapped"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER, from: "owner_a" },
+    );
+    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
+    expect(expectedFor(checks, "baseRegistrar.ownerOf")).toBe(TESTER);
+  });
+
+  it("relaxes only the wrapper owner of a wrapped name", () => {
+    const checks = buildV1Checks(
+      row(
+        {
+          registry_owner_ref: "v1.NameWrapper",
+          base_registrar_owner_ref: "v1.NameWrapper",
+          wrapper_owner_ref: "owner_a",
+        },
+        ["wrapped_unlocked"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER, from: "owner_a" },
+    );
+    expect(expectedFor(checks, "nameWrapper.ownerOf")).toBe(TESTER);
+    expect(expectedFor(checks, "registry.owner")).toBe(V1.nameWrapper);
+    expect(expectedFor(checks, "baseRegistrar.ownerOf")).toBe(V1.nameWrapper);
+  });
+
+  it("leaves a record spelled with the same alias resolving to the actor", () => {
+    const checks = buildV1Checks(
+      row(
+        {
+          registry_owner_ref: "owner_a",
+          base_registrar_owner_ref: "owner_a",
+          resolver_ref: "v1.PublicResolver",
+          records: [{ kind: "addr", coin_type: 60, value_actor: "owner_a" }],
+        },
+        ["unwrapped"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER, from: "owner_a" },
+    );
+    // The alias names ownership in one place and content in the other; only the
+    // ownership reading moves.
+    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
+    expect(expectedFor(checks, "record addr(60)")).toBe(OWNER);
+  });
+
+  it("keeps asserting the declared owner when the name moved off another alias", () => {
+    const checks = buildV1Checks(
+      row(
+        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
+        ["unwrapped"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER, from: "owner_b" },
+    );
+    expect(expectedFor(checks, "registry.owner")).toBe(OWNER);
   });
 });
