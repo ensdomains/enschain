@@ -1998,6 +1998,9 @@ export async function reconcilePreMigration(opts: {
   // Count names whose CANNOT_TRANSFER fuse is burned. One wrapper read per claimable
   // name, so opt-in.
   checkFuses?: boolean;
+  // How far the CSV's and the index's claimable counts may differ before the
+  // reconciliation fails. Defaults to no difference.
+  crossSourceTolerance?: string;
 }): Promise<ReconcileResult> {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
@@ -2059,6 +2062,22 @@ export async function reconcilePreMigration(opts: {
         ? `cross-source: CSV holds ${csv.count} claimable label(s)${csv.unknownExpiry > 0 ? ` (${csv.unknownExpiry} of them with no expiry recorded, counted as claimable)` : ""}, the index has ${claimable.length} claimable name(s)`
         : `cross-source: CSV holds ${csv.count} label(s) and records no expiries, so this is every row it carries and not a claimable count; the index has ${claimable.length} claimable name(s)`,
     );
+    // Only a CSV that records expiries produces a claimable count; without them the
+    // number above is every row it carries, which is not the same quantity and
+    // cannot be compared.
+    if (csv.filtered) {
+      const drift = Math.abs(csv.count - claimable.length);
+      const tolerance = parseNumber(opts.crossSourceTolerance, 0);
+      if (drift > tolerance && !opts.reportOnly) {
+        // Thrown here rather than collected with the per-name problems: a count
+        // disagreement says one of the two sources is incomplete, so the passes below
+        // would be examining the wrong set of names. It is also the cheapest evidence
+        // available, which is the whole point of taking it before the reads.
+        throw new Error(
+          `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${claimable.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`,
+        );
+      }
+    }
   }
 
   console.log(
@@ -2307,47 +2326,48 @@ export async function reconcilePreMigration(opts: {
     // applies would have nothing to bite on.
     //
     // A rehearsal reconciles a fork, and a fork answers for its parent on everything
-    // the record would otherwise hold: the same chain id, the same history. A pass
-    // taken there would authorise the real freeze on evidence gathered somewhere
-    // else, so a simulated endpoint is refused the record rather than trusted to be
-    // told apart later.
+    // the record would otherwise hold: the same chain id, and the same history below
+    // the fork point. The pass is still recorded — an operator wants to see that the
+    // rehearsal ran, and a later failure has to revoke an earlier pass either way —
+    // but it is stamped with what answered it, and the gate refuses that.
     const v1RpcUrl = opts.mainnetRpcUrl ?? opts.rpcUrl;
-    const simulated =
+    const simulatedEndpoint =
       (await describeSimulatedEndpoint(v1Client, v1RpcUrl)) ??
       (await describeSimulatedEndpoint(client, opts.rpcUrl));
-    if (simulated) {
+    if (simulatedEndpoint) {
       console.log(
-        `reconciliation passed, but no pass recorded: ${simulated}. Phase 3 accepts only a reconciliation of the chain it freezes.`,
+        `recorded as a rehearsal, which phase 3 will not accept: ${simulatedEndpoint}`,
       );
-    } else {
-      const indexBlock = BigInt(index.meta.block);
-      const indexBlockHash = (
-        await v1Client.getBlock({ blockNumber: indexBlock })
-      ).hash;
-      // Read from the chain rather than from `--chain-id`, so that the id recorded is
-      // the one that answered the reads.
-      const observedChainId = await v1Client.getChainId();
-      const headBlockNumber =
-        (await v1Client.getBlockNumber()) - PHASE_GATE_HEAD_CONFIRMATIONS;
-      const headBlockHash = (
-        await v1Client.getBlock({ blockNumber: headBlockNumber })
-      ).hash;
-      recordVerification(resolve(deploymentsDir), deploymentNetwork, {
-        check: PRECONDITION_RECONCILE,
-        chainId: observedChainId,
-        blockNumber: indexBlock.toString(),
-        blockHash: indexBlockHash,
-        headBlockNumber: headBlockNumber.toString(),
-        headBlockHash,
-        verifiedAt: new Date().toISOString(),
-        details: {
-          claimable: result.claimable,
-          reserved: result.reserved,
-          registered: result.registered,
-          rpcHead: (await client.getBlockNumber()).toString(),
-        },
-      });
     }
+
+    const indexBlock = BigInt(index.meta.block);
+    const indexBlockHash = (
+      await v1Client.getBlock({ blockNumber: indexBlock })
+    ).hash;
+    // Read from the chain rather than from `--chain-id`, so that the id recorded is
+    // the one that answered the reads.
+    const observedChainId = await v1Client.getChainId();
+    const headBlockNumber =
+      (await v1Client.getBlockNumber()) - PHASE_GATE_HEAD_CONFIRMATIONS;
+    const headBlockHash = (
+      await v1Client.getBlock({ blockNumber: headBlockNumber })
+    ).hash;
+    recordVerification(resolve(deploymentsDir), deploymentNetwork, {
+      check: PRECONDITION_RECONCILE,
+      chainId: observedChainId,
+      blockNumber: indexBlock.toString(),
+      blockHash: indexBlockHash,
+      headBlockNumber: headBlockNumber.toString(),
+      headBlockHash,
+      ...(simulatedEndpoint ? { simulatedEndpoint } : {}),
+      verifiedAt: new Date().toISOString(),
+      details: {
+        claimable: result.claimable,
+        reserved: result.reserved,
+        registered: result.registered,
+        rpcHead: (await client.getBlockNumber()).toString(),
+      },
+    });
   }
   if (problems.length > 0) {
     console.error(problems.slice(0, 20).join("\n"));
@@ -9242,6 +9262,11 @@ export async function main(argv = process.argv): Promise<void> {
               "--bonus-period-days <days>",
               "Days added to each name's v1 expiry to compute its expected v2 expiry",
               "62",
+            )
+            .option(
+              "--cross-source-tolerance <count>",
+              "How far the CSV's and the index's claimable counts may differ before the reconciliation fails",
+              "0",
             ),
         ),
       ),
@@ -9257,6 +9282,7 @@ export async function main(argv = process.argv): Promise<void> {
           reportOnly?: boolean;
           checkFuses?: boolean;
           bonusPeriodDays?: string;
+          crossSourceTolerance?: string;
           deploymentsDir?: string;
           deploymentNetwork?: string;
         },

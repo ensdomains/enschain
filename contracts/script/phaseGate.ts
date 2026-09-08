@@ -33,6 +33,13 @@ export type VerificationRecord = {
    */
   headBlockNumber: string;
   headBlockHash: string;
+  /**
+   * Set when the endpoint that answered the verification was a simulated node. A
+   * rehearsal is worth recording — an operator wants to see that it ran, and a later
+   * failure must still revoke an earlier pass — but it says nothing about the chain
+   * the irreversible step will act on, so the gate refuses it.
+   */
+  simulatedEndpoint?: string;
   verifiedAt: string;
   details?: Record<string, unknown>;
 };
@@ -101,6 +108,7 @@ export function readVerification(
 export type PreconditionFailure =
   | { kind: "missing" }
   | { kind: "unbound" }
+  | { kind: "simulated"; endpoint: string }
   | { kind: "wrong-chain"; recordedChainId: number }
   | { kind: "ahead"; verifiedBlock: bigint; currentBlock: bigint }
   | {
@@ -138,6 +146,9 @@ export async function checkPrecondition(opts: {
   if (!opts.record) return { kind: "missing" };
   if (opts.record.chainId !== opts.chainId) {
     return { kind: "wrong-chain", recordedChainId: opts.record.chainId };
+  }
+  if (opts.record.simulatedEndpoint) {
+    return { kind: "simulated", endpoint: opts.record.simulatedEndpoint };
   }
   if (!opts.record.blockHash || !opts.record.headBlockHash) {
     return { kind: "unbound" };
@@ -197,6 +208,8 @@ export function describePreconditionFailure(
       return `${check} has not passed for this deployment; run it first, or pass --skip-preconditions to proceed anyway`;
     case "unbound":
       return `${check} was recorded without a block hash, so it cannot be tied to this chain; re-run it here`;
+    case "simulated":
+      return `${check} last passed against ${failure.endpoint}, which is a simulated node rather than this chain; re-run it here`;
     case "wrong-chain":
       return `${check} was verified against chain ${failure.recordedChainId}, not this one; re-run it here`;
     case "ahead":

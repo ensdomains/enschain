@@ -134,6 +134,25 @@ describe("checkPrecondition", () => {
     });
   });
 
+  it("refuses a pass taken against a simulated node", async () => {
+    // A rehearsal's pass is recorded so the operator can see it ran, and so a later
+    // failure still revokes it — but it describes a fork, not the chain the freeze
+    // acts on.
+    expect(
+      await checkPrecondition({
+        record: record({
+          simulatedEndpoint: "http://127.0.0.1:8545 is a local endpoint",
+        }),
+        chainId: 1,
+        currentBlock: 150n,
+        canonicalBlockHash,
+      }),
+    ).toEqual({
+      kind: "simulated",
+      endpoint: "http://127.0.0.1:8545 is a local endpoint",
+    });
+  });
+
   it("fails a pass recorded on a fork, whose observed block is canonical", async () => {
     // The case the observed-block hash cannot catch, and the one a rehearsal
     // actually produces: an index built from a source that lags the chain names a

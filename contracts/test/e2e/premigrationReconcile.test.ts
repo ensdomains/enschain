@@ -9,6 +9,7 @@ import { encodeAbiParameters, keccak256, toHex, zeroAddress } from "viem";
 import { reconcilePreMigration } from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import { V1_INDEX_META_FILE } from "../../script/premigrationIndex.js";
+import { PREMIGRATION_CSV_HEADER } from "../../script/preMigrationUtils.js";
 import { readVerification } from "../../script/phaseGate.js";
 import { MAX_UINT64 } from "../../script/preMigration.js";
 import { FUSES } from "../../script/deploy-constants.js";
@@ -31,6 +32,20 @@ function labelhash(label: string): string {
 // Stands in for `premigration build-index`, which would otherwise need a live
 // subgraph. The reconciliation only consumes the index files, so writing them
 // directly exercises exactly the same path.
+// The export used in production carries an expiry per row; the shared test helper
+// leaves that column empty, which the reconciliation correctly refuses to read as a
+// claimable count. Rewrites the CSV with the expiries the names were registered with.
+function writeDatedCsv(
+  csvFile: string,
+  labels: string[],
+  entries: Array<{ expiry: bigint }>,
+) {
+  const rows = labels.map(
+    (label, index) => `,,,,,,${label},,${entries[index].expiry.toString()}`,
+  );
+  writeFileSync(csvFile, [PREMIGRATION_CSV_HEADER, ...rows].join("\n"));
+}
+
 function writeIndex(
   workDir: string,
   entries: Array<{ id: string; expiry: bigint }>,
@@ -259,6 +274,42 @@ describe("premigration reconcile", () => {
     // of the two indexers is wrong and it is far cheaper to learn that before the
     // freeze than after it.
     expect(result.crossSource).toEqual({ csv: 2, index: 2 });
+  });
+
+  it("fails when the two sources disagree on how many names are live", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    // The counts are only comparable when the CSV carries expiries, so this one does.
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    // An index holding one of the two names, as a lagging indexer would produce.
+    // Both sources are internally consistent, so nothing but the counts reports that
+    // a name went unexamined.
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    await expect(run(workDir, fromBlock, { csvFile })).rejects.toThrow(
+      /disagree on how many names are live/,
+    );
+  });
+
+  it("accepts a disagreement inside an explicit tolerance", async () => {
+    const { workDir, csvFile, indexEntries, fromBlock } = await seed([
+      "alpha",
+      "beta",
+    ]);
+    writeDatedCsv(csvFile, ["alpha", "beta"], indexEntries);
+    writeIndex(workDir, indexEntries.slice(0, 1));
+
+    // `reportOnly` because the short index also leaves the reverse pass with a
+    // complaint of its own; the tolerance is what this test is about.
+    const result = await run(workDir, fromBlock, {
+      csvFile,
+      crossSourceTolerance: "1",
+      reportOnly: true,
+    });
+
+    expect(result.crossSource).toEqual({ csv: 2, index: 1 });
   });
 
   it("counts names whose CANNOT_TRANSFER fuse blocks the transfer path", async () => {
