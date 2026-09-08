@@ -28,6 +28,7 @@ import {
   http,
   keccak256,
   namehash,
+  parseAbi,
   parseAbiItem,
   parseEther,
   stringToHex,
@@ -154,6 +155,20 @@ const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
 const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
+
+/// The registry reads that are issued in batches, named one function at a time.
+///
+/// `multicall` infers a result type per entry, and doing that against the whole
+/// registry ABI exceeds the type instantiation depth, which degrades every result to
+/// `unknown[]` and pushes the checking into casts. Naming only the functions being
+/// called keeps the results typed.
+const REGISTRY_BATCH_ABI = parseAbi([
+  "struct State { uint8 status; uint64 expiry; address latestOwner; uint256 tokenId; uint256 resource; }",
+  "function getState(uint256 anyId) view returns (State state)",
+  "function getResource(uint256 anyId) view returns (uint256)",
+  "function getResolver(string label) view returns (address)",
+  "function roles(uint256 anyId, address account) view returns (uint256)",
+]);
 const RPC_RETRY_COUNT = 3;
 /// Transport-level retries for a dropped connection, on top of viem's own
 /// JSON-RPC retries, which never see a request that failed to reach the node.
@@ -1706,7 +1721,7 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: registry.address,
-        abi: Artifact_PermissionedRegistry.abi,
+        abi: REGISTRY_BATCH_ABI,
         functionName: "getState",
         args: [labelId(label)],
       })),
@@ -1787,7 +1802,7 @@ async function verifyPreMigration(opts: {
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
-          abi: Artifact_PermissionedRegistry.abi,
+          abi: REGISTRY_BATCH_ABI,
           functionName: "getResolver",
           args: [label],
         })),
@@ -2033,7 +2048,7 @@ export async function reconcilePreMigration(opts: {
       allowFailure: true,
       contracts: batch.map((entry) => ({
         address: registryAddress,
-        abi: Artifact_PermissionedRegistry.abi,
+        abi: REGISTRY_BATCH_ABI,
         functionName: "getState",
         args: [BigInt(entry.id)],
       })),
@@ -2309,7 +2324,7 @@ async function readV2StatesInBatches(
       allowFailure: true,
       contracts: batch.map((labelhash) => ({
         address: registryAddress,
-        abi: Artifact_PermissionedRegistry.abi,
+        abi: REGISTRY_BATCH_ABI,
         functionName: "getState",
         args: [BigInt(labelhash)],
       })),
@@ -4152,7 +4167,7 @@ export async function verifyV2Roles(opts: {
         allowFailure: true,
         contracts: resources.map((resource) => ({
           address: registry.address,
-          abi: Artifact_PermissionedRegistry.abi,
+          abi: REGISTRY_BATCH_ABI,
           functionName: "getResource",
           args: [resource],
         })),
@@ -4185,7 +4200,7 @@ export async function verifyV2Roles(opts: {
       allowFailure: true,
       contracts: pairs.map((pair) => ({
         address: registry.address,
-        abi: Artifact_PermissionedRegistry.abi,
+        abi: REGISTRY_BATCH_ABI,
         functionName: "roles",
         args: [pair.resource, pair.account],
       })),
