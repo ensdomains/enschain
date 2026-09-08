@@ -2,20 +2,24 @@ import { describe, it } from "bun:test";
 import {
   createRhinestoneAccount,
   type RhinestoneAccountConfig,
+  type Session,
 } from "@rhinestone/sdk";
 import { getPermissionId } from "@rhinestone/sdk/smart-sessions";
 import {
   type Account,
   type Address,
+  concat,
   encodeAbiParameters,
   encodeFunctionData,
   encodePacked,
   keccak256,
   parseAbiParameters,
+  parseSignature,
   recoverMessageAddress,
   recoverTypedDataAddress,
   size,
   slice,
+  toHex,
   type Hex,
   zeroAddress,
   zeroHash,
@@ -42,6 +46,7 @@ const HCA_USER_SALT = 0n;
 const ERC7579_ERC1271_MODE = `0x0201${"00".repeat(30)}` as Hex;
 const MOCK_ORCHESTRATOR_URL = "https://hca-orchestrator.invalid";
 const MOCK_BUNDLER_URL = "https://hca-bundler.invalid";
+const SMART_SESSION_EMISSARY = "0xad568B3F825A8d5FFc06DD3253526B64D810Ae89";
 
 type HCAExecution = {
   target: Address;
@@ -66,7 +71,6 @@ type MockIntentInput = {
 
 type MockRouteOptions = {
   arbiter: Address;
-  enabledSessionValidator?: Address;
   fundingMethod: "NO_FUNDING" | "PERMIT2";
   settlementLayer: "INTENT_EXECUTOR" | "ACROSS";
   sourceToken?: Address;
@@ -178,23 +182,6 @@ async function withMockedIntentRoute<T>(
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     if (url === `${MOCK_ORCHESTRATOR_URL}/intents/route`) {
       return Response.json(mockIntentRoute(body as MockIntentInput, options));
-    }
-    if (
-      options.enabledSessionValidator &&
-      (body as JsonRpcRequest | undefined)?.method === "eth_call"
-    ) {
-      const request = body as JsonRpcRequest;
-      const call = request.params?.[0] as { to?: Address } | undefined;
-      if (
-        call?.to?.toLowerCase() ===
-        options.enabledSessionValidator.toLowerCase()
-      ) {
-        return Response.json({
-          jsonrpc: "2.0",
-          id: request.id,
-          result: `0x${"00".repeat(31)}01`,
-        });
-      }
     }
     return originalFetch(input, init);
   }) as typeof globalThis.fetch;
@@ -313,13 +300,13 @@ describe("Standalone HCA", () => {
   async function buildSessionSignature({
     hca,
     nonce,
-    permissionId,
+    authorization,
     sessionKey,
     executions,
   }: {
     hca: Address;
     nonce: bigint;
-    permissionId: Hex;
+    authorization: { permissionId: Hex; proof: Hex };
     sessionKey: Account;
     executions: HCAExecution[];
   }): Promise<Hex> {
@@ -331,16 +318,187 @@ describe("Standalone HCA", () => {
       args: [hca, nonce, executions],
     })) as Hex;
     return encodePacked(
-      ["address", "bytes1", "bytes32", "uint256", "bytes", "bytes"],
+      [
+        "address",
+        "bytes1",
+        "bytes32",
+        "bytes",
+        "uint256",
+        "address",
+        "uint96",
+        "uint96",
+        "uint48",
+        "bytes",
+        "bytes",
+      ],
       [
         zeroAddress,
-        "0x01",
-        permissionId,
+        "0x05",
+        authorization.permissionId,
+        authorization.proof,
         nonce,
+        zeroAddress,
+        0n,
+        0n,
+        0,
         data,
         await signRhinestoneMessage(sessionKey, digest),
       ],
     );
+  }
+
+  async function createSessionAuthorization({
+    hca,
+    owner,
+    sessionKey,
+    validUntil,
+    resolver,
+    refundToken = env.erc20.MockUSDC.address,
+    maxRefundExchangeRate = 1n,
+    maxRefundGasOverhead = 0,
+    maxRefundAmount = 1n,
+  }: {
+    hca: Address;
+    owner: Account;
+    sessionKey: Account;
+    validUntil: number;
+    resolver: Address;
+    refundToken?: Address;
+    maxRefundExchangeRate?: bigint;
+    maxRefundGasOverhead?: number;
+    maxRefundAmount?: bigint;
+  }) {
+    const code = await env.client.getCode({ address: hca });
+    const sessionNonce =
+      code && code !== "0x"
+        ? (
+            (await env.client.readContract({
+              address: hca,
+              abi: stack.hcaImplementation.abi,
+              functionName: "ownerAndSessionNonce",
+            })) as readonly [Address, bigint]
+          )[1]
+        : 0n;
+    const salt = keccak256(
+      encodeAbiParameters(
+        [
+          { type: "uint96" },
+          { type: "uint48" },
+          { type: "address" },
+          { type: "address" },
+          { type: "uint96" },
+          { type: "uint48" },
+          { type: "uint96" },
+        ],
+        [
+          sessionNonce,
+          validUntil,
+          resolver,
+          refundToken,
+          maxRefundExchangeRate,
+          maxRefundGasOverhead,
+          maxRefundAmount,
+        ],
+      ),
+    );
+    const session: Session = {
+      chain: env.client.chain,
+      account: hca,
+      salt,
+      owners: { type: "ecdsa", accounts: [sessionKey] },
+    };
+    const account = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...(await standaloneConfig(owner)),
+      ...(code && code !== "0x" && { initData: { address: hca } }),
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if ((body as JsonRpcRequest | undefined)?.method === "eth_call") {
+        const request = body as JsonRpcRequest;
+        const call = request.params?.[0] as { to?: Address } | undefined;
+        if (call?.to?.toLowerCase() === SMART_SESSION_EMISSARY.toLowerCase()) {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: zeroHash,
+          });
+        }
+      }
+      return originalFetch(input, init);
+    }) as typeof globalThis.fetch;
+    let details;
+    try {
+      details = await account.experimental_getSessionDetails([session]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const userSignature = await account.experimental_signEnableSession(details);
+    if (
+      size(userSignature) !== 85 ||
+      slice(userSignature, 0, 20).toLowerCase() !== zeroAddress.toLowerCase()
+    ) {
+      throw new Error("unexpected HCA owner session authorization");
+    }
+    const parsed = parseSignature(slice(userSignature, 20));
+    const ownerV = parsed.v ?? BigInt(27 + (parsed.yParity ?? 0));
+    const packedSessions = details.hashesAndChainIds.map(
+      ({ chainId, sessionDigest }) =>
+        encodePacked(["uint64", "bytes32"], [BigInt(chainId), sessionDigest]),
+    );
+    const proof = concat([
+      encodePacked(
+        [
+          "address",
+          "uint48",
+          "uint96",
+          "address",
+          "address",
+          "uint96",
+          "uint48",
+          "uint96",
+          "uint8",
+          "uint8",
+        ],
+        [
+          sessionKey.address,
+          validUntil,
+          sessionNonce,
+          resolver,
+          refundToken,
+          maxRefundExchangeRate,
+          maxRefundGasOverhead,
+          maxRefundAmount,
+          0,
+          details.hashesAndChainIds.length,
+        ],
+      ),
+      ...packedSessions,
+      parsed.r,
+      parsed.s,
+      toHex(ownerV, { size: 1 }),
+    ]);
+    return {
+      permissionId: getPermissionId(session),
+      proof,
+      session,
+      enableData: {
+        userSignature,
+        hashesAndChainIds: details.hashesAndChainIds,
+        sessionToEnableIndex: 0,
+        hcaSessionNonce: sessionNonce,
+        hcaSessionConfig: {
+          sessionKey: sessionKey.address,
+          validUntil,
+          resolver,
+          refundToken,
+          maxRefundExchangeRate,
+          maxRefundGasOverhead,
+          maxRefundAmount,
+        },
+      },
+    };
   }
 
   async function executeOwnerIntent({
@@ -360,38 +518,6 @@ describe("Standalone HCA", () => {
     await env.waitFor(
       stack.executor.write.execute([hca, executions, signature]),
     );
-  }
-
-  async function enableSession({
-    hca,
-    owner,
-    permissionId,
-    sessionKey,
-    validUntil,
-    resolver,
-  }: {
-    hca: Address;
-    owner: Account;
-    permissionId: Hex;
-    sessionKey: Account;
-    validUntil: number;
-    resolver: Address;
-  }) {
-    await executeOwnerIntent({
-      hca,
-      owner,
-      executions: [
-        {
-          target: stack.validator.address,
-          value: 0n,
-          callData: encodeFunctionData({
-            abi: stack.validator.abi,
-            functionName: "enableSession",
-            args: [permissionId, sessionKey.address, validUntil, resolver],
-          }),
-        },
-      ],
-    });
   }
 
   // Local E2E deploys separately. A sponsored production route can put deployment and
@@ -489,7 +615,21 @@ describe("Standalone HCA", () => {
     const executions: HCAExecution[] = [];
 
     const resolverCode = await env.client.getCode({ address: resolver });
-    if (!resolverCode || resolverCode === "0x") {
+    const deploysResolver = !resolverCode || resolverCode === "0x";
+    if (deploysResolver) {
+      const encodedName = dnsEncodeName(name);
+      const resolverCalls = [
+        encodeFunctionData({
+          abi: artifacts.PermissionedResolver.abi,
+          functionName: "setAddress",
+          args: [encodedName, COIN_TYPE_ETH, owner.address],
+        }),
+        encodeFunctionData({
+          abi: artifacts.PermissionedResolver.abi,
+          functionName: "setText",
+          args: [encodedName, "avatar", `https://euc.li/${name}`],
+        }),
+      ];
       executions.push({
         target: env.v2.VerifiableFactory.address,
         value: 0n,
@@ -505,12 +645,9 @@ describe("Standalone HCA", () => {
               args: [
                 [
                   { account: hca, roleBitmap: ROLES.ALL },
-                  // Make the owner co-admin of its resolver ("0x00" = DNS-encoded root, i.e. root
-                  // resource) so record management never depends on the disposable HCA. The policy
-                  // only permits this grant when the grantee is the owner.
                   { account: owner.address, roleBitmap: ROLES.ALL },
                 ],
-                [],
+                resolverCalls,
               ],
             }),
           ],
@@ -546,33 +683,28 @@ describe("Standalone HCA", () => {
           ],
         }),
       },
-      {
-        target: resolver,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: artifacts.PermissionedResolver.abi,
-          functionName: "setAddress",
-          args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
-        }),
-      },
-      {
-        target: resolver,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: artifacts.PermissionedResolver.abi,
-          functionName: "setText",
-          args: [dnsEncodeName(name), "url", `https://example.com/${label}`],
-        }),
-      },
-      {
-        target: resolver,
-        value: 0n,
-        callData: encodeFunctionData({
-          abi: artifacts.PermissionedResolver.abi,
-          functionName: "setName",
-          args: [dnsEncodeName(getReverseName(owner.address)), name],
-        }),
-      },
+      ...(!deploysResolver
+        ? [
+            {
+              target: resolver,
+              value: 0n,
+              callData: encodeFunctionData({
+                abi: artifacts.PermissionedResolver.abi,
+                functionName: "setAddress",
+                args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
+              }),
+            },
+            {
+              target: resolver,
+              value: 0n,
+              callData: encodeFunctionData({
+                abi: artifacts.PermissionedResolver.abi,
+                functionName: "setText",
+                args: [dnsEncodeName(name), "avatar", `https://euc.li/${name}`],
+              }),
+            },
+          ]
+        : []),
       {
         target: env.shared.DefaultReverseRegistrarAdapter.address,
         value: 0n,
@@ -691,6 +823,23 @@ describe("Standalone HCA", () => {
       env.v2.PermissionedResolverImpl.address,
     );
 
+    const [rootRecordId, nameRecordId] = await Promise.all([
+      env.client.readContract({
+        address: resolver,
+        abi: artifacts.PermissionedResolver.abi,
+        functionName: "getRecordId",
+        args: [zeroHash],
+      }),
+      env.client.readContract({
+        address: resolver,
+        abi: artifacts.PermissionedResolver.abi,
+        functionName: "getRecordId",
+        args: [namehash(name)],
+      }),
+    ]);
+    expectVar({ rootRecordId }).toStrictEqual(0n);
+    expectVar({ nameRecordId }).toBeGreaterThan(0n);
+
     const hcaBalance = await env.erc20.MockUSDC.read.balanceOf([hca]);
     expectVar({ hcaBalance }).toStrictEqual(0n);
     expectVar({ price }).toBeGreaterThan(0n);
@@ -699,7 +848,7 @@ describe("Standalone HCA", () => {
       makeResolutions({
         name,
         addresses: [{ coinType: COIN_TYPE_ETH, value: owner.address }],
-        texts: [{ key: "url", value: `https://example.com/${label}` }],
+        texts: [{ key: "avatar", value: `https://euc.li/${name}` }],
       }),
     );
     const [result] = await env.v2.UniversalResolver.read.resolve([
@@ -770,12 +919,6 @@ describe("Standalone HCA", () => {
       ...config,
     });
     const hca = computeHcaAddress(owner.address);
-    const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
-    const sdkSession = {
-      chain: env.client.chain,
-      owners: { type: "ecdsa" as const, accounts: [sessionKey] },
-    };
-    const permissionId = getPermissionId(sdkSession);
 
     expectVar({ configuredAdapter }).toEqualAddress(
       env.shared.DefaultReverseRegistrarAdapter.address,
@@ -797,19 +940,6 @@ describe("Standalone HCA", () => {
         HCA_USER_SALT,
       ]),
     );
-    const currentBlock = await env.client.getBlock();
-    await enableSession({
-      hca,
-      owner,
-      permissionId,
-      sessionKey,
-      validUntil: Number(currentBlock.timestamp + 3600n),
-      resolver: zeroAddress,
-    });
-    expectVar({
-      sdkSessionEnabled:
-        await account.experimental_isSessionEnabled(sdkSession),
-    }).toStrictEqual(true);
     const signature = await account.signTypedData(
       {
         domain: {
@@ -847,17 +977,24 @@ describe("Standalone HCA", () => {
       endpointUrl: MOCK_ORCHESTRATOR_URL,
     });
     const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
-    const session = {
-      chain: env.client.chain,
-      owners: { type: "ecdsa" as const, accounts: [sessionKey] },
-    };
-    const permissionId = getPermissionId(session);
     const refundToken = env.erc20.MockUSDC.address;
     const refundPaymaster = await stack.validator.read.GAS_REFUND_PAYMASTER();
     const maxExchangeRate = 10_000_000_000n;
     const maxGasOverhead = 100_000;
     const maxRefundAmount = 25_000_000n;
     const packedOverhead = (maxRefundAmount << 128n) | BigInt(maxGasOverhead);
+    const currentBlock = await env.client.getBlock();
+    const authorization = await createSessionAuthorization({
+      hca: account.getAddress(),
+      owner,
+      sessionKey,
+      validUntil: Number(currentBlock.timestamp + 3600n),
+      resolver: zeroAddress,
+      refundToken,
+      maxRefundExchangeRate: maxExchangeRate,
+      maxRefundGasOverhead: maxGasOverhead,
+      maxRefundAmount,
+    });
     const calls: HCAExecution[] = [
       {
         target: refundToken,
@@ -882,7 +1019,6 @@ describe("Standalone HCA", () => {
     const signed = await withMockedIntentRoute(
       {
         arbiter: stack.executor.address,
-        enabledSessionValidator: stack.validator.address,
         fundingMethod: "NO_FUNDING",
         settlementLayer: "INTENT_EXECUTOR",
         gasRefund: {
@@ -904,7 +1040,8 @@ describe("Standalone HCA", () => {
           sponsored: false,
           signers: {
             type: "experimental_session",
-            session,
+            session: authorization.session,
+            enableData: authorization.enableData,
             verifyExecutions: true,
           },
         });
@@ -920,20 +1057,24 @@ describe("Standalone HCA", () => {
         "address",
         "bytes1",
         "bytes32",
+        "bytes",
         "uint256",
         "address",
-        "uint256",
-        "uint256",
+        "uint96",
+        "uint96",
+        "uint48",
         "bytes",
       ],
       [
         zeroAddress,
-        "0x02",
-        permissionId,
+        "0x05",
+        authorization.permissionId,
+        authorization.proof,
         targetExecutionNonce,
         refundToken,
         maxExchangeRate,
-        packedOverhead,
+        maxRefundAmount,
+        maxGasOverhead,
         operation,
       ],
     );
@@ -1040,6 +1181,38 @@ describe("Standalone HCA", () => {
       signature: slice(originSignature as Hex, 20),
     });
     expectVar({ recovered }).toEqualAddress(owner.address);
+  });
+
+  it("rejects standalone HCA cross-chain session sources", async () => {
+    const owner = env.namedAccounts.user;
+    const account = await createRhinestoneAccount({
+      ...sdkConfig(),
+      ...(await standaloneConfig(owner)),
+      endpointUrl: MOCK_ORCHESTRATOR_URL,
+    });
+    const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
+    const session: Session = {
+      chain: env.client.chain,
+      account: account.getAddress(),
+      owners: { type: "ecdsa", accounts: [sessionKey] },
+    };
+    const targetChain = {
+      ...env.client.chain,
+      id: env.client.chain.id + 1,
+    };
+
+    await expect(
+      account.prepareTransaction({
+        sourceChains: [env.client.chain],
+        targetChain,
+        calls: [],
+        signers: {
+          type: "experimental_session",
+          session,
+          verifyExecutions: true,
+        },
+      }),
+    ).rejects.toThrow("Standalone HCA cross-chain sessions are not supported");
   });
 
   it("prepares and signs a fresh standalone HCA UserOperation", async () => {
@@ -1210,7 +1383,7 @@ describe("Standalone HCA", () => {
     });
   });
 
-  it("reuses one owner-enabled session for registration and a later primary change", async () => {
+  it("reuses one owner-authorized session for registration and a later primary change", async () => {
     const owner = env.namedAccounts.user;
     const sessionKey = privateKeyToAccount(BURNER_SESSION_SIGNER_KEY);
     const label = "hcasessionkey";
@@ -1219,16 +1392,11 @@ describe("Standalone HCA", () => {
       owner,
     );
     const currentBlock = await env.client.getBlock();
-    const validUntil = Number(currentBlock.timestamp + 3600n);
-    const permissionId = keccak256(
-      encodePacked(["address", "address"], [hca, sessionKey.address]),
-    );
-    await enableSession({
+    const authorization = await createSessionAuthorization({
       hca,
       owner,
-      permissionId,
       sessionKey,
-      validUntil,
+      validUntil: Number(currentBlock.timestamp + 3600n),
       resolver,
     });
 
@@ -1250,7 +1418,7 @@ describe("Standalone HCA", () => {
     const blockedSignature = await buildSessionSignature({
       hca,
       nonce: 1n,
-      permissionId,
+      authorization,
       sessionKey,
       executions: blockedExecutions,
     });
@@ -1266,7 +1434,7 @@ describe("Standalone HCA", () => {
     const signature = await buildSessionSignature({
       hca,
       nonce: 2n,
-      permissionId,
+      authorization,
       sessionKey,
       executions,
     });
@@ -1288,7 +1456,7 @@ describe("Standalone HCA", () => {
     const laterSignature = await buildSessionSignature({
       hca,
       nonce: 3n,
-      permissionId,
+      authorization,
       sessionKey,
       executions: laterExecutions,
     });
@@ -1315,16 +1483,11 @@ describe("Standalone HCA", () => {
       owner,
     );
     const currentBlock = await env.client.getBlock();
-    const validUntil = Number(currentBlock.timestamp + 3600n);
-    const permissionId = keccak256(
-      encodePacked(["address", "address"], [hca, sessionKey.address]),
-    );
-    await enableSession({
+    const authorization = await createSessionAuthorization({
       hca,
       owner,
-      permissionId,
       sessionKey,
-      validUntil,
+      validUntil: Number(currentBlock.timestamp + 3600n),
       resolver,
     });
 
@@ -1340,7 +1503,7 @@ describe("Standalone HCA", () => {
     const signature = await buildSessionSignature({
       hca,
       nonce: 1n,
-      permissionId,
+      authorization,
       sessionKey,
       executions,
     });

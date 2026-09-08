@@ -26,6 +26,7 @@ export default execute(
     const validator = get<Abi_HCAOwnerAndSessionValidator>(
       "HCAOwnerAndSessionValidator",
     );
+    const ownerRegistry = get("StandaloneHCAFactory");
     const localExecutor = getOrNull<Abi_MockRegistrationIntentExecutor>(
       "MockRegistrationIntentExecutor",
     );
@@ -61,6 +62,7 @@ export default execute(
         "0x",
         upgradeSet.address,
         zeroAddress,
+        ownerRegistry.address,
       ],
     });
   },
@@ -75,6 +77,7 @@ export default execute(
     dependencies: [
       "HCAOwnerAndSessionValidator",
       "MockRegistrationIntentExecutor",
+      "StandaloneHCAFactory",
     ],
   },
 );

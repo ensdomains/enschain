@@ -23,16 +23,15 @@ library LibRegistry {
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
     {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         // supply <root> if end of name
-        (bytes32 labelHash, uint256 next) = NameCoder.readLabel(name, offset);
-        if (labelHash == bytes32(0)) {
-            return (rootRegistry, address(0), bytes32(0), offset);
+        if (bytes(label).length == 0) {
+            return (rootRegistry, address(0), bytes32(0), 0);
         }
         // lookup parent name
         (exactRegistry, resolver, node, resolverOffset) = findResolver(rootRegistry, name, next);
         // if there was a parent registry...
         if (address(exactRegistry) != address(0)) {
-            (string memory label, ) = NameCoder.extractLabel(name, offset);
             // remember the resolver (if it exists)
             address res = exactRegistry.getResolver(label);
             if (res != address(0)) {
@@ -41,7 +40,7 @@ library LibRegistry {
             }
             exactRegistry = exactRegistry.getSubregistry(label);
         }
-        node = NameCoder.namehash(node, labelHash); // update namehash
+        node = NameCoder.namehash(node, keccak256(bytes(label))); // update namehash
     }
 
     /// @dev Find the owner for `name[offset:]`.

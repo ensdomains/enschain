@@ -27,7 +27,7 @@ library EACBaseRolesLib {
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Admin roles imply their corresponding regular roles.
+    /// @dev Regular roles are discarded and admin roles imply their corresponding regular roles.
     function withAdminRolesApplied(uint256 roleBitmap) internal pure returns (uint256) {
         roleBitmap >>= 128;
         return (roleBitmap << 128) | roleBitmap;

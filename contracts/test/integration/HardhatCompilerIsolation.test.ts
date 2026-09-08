@@ -44,6 +44,10 @@ const hcaProfile: CompilerProfile = {
   evmVersion: "cancun",
   optimizerRuns: 1000,
 };
+const hcaHotRuntimeProfile: CompilerProfile = {
+  ...hcaProfile,
+  optimizerRuns: 23_000,
+};
 const wrapperRegistryProfile: CompilerProfile = {
   solcVersion: "0.8.25",
   solcLongVersion: "0.8.25+commit.b61c2a91",
@@ -57,10 +61,18 @@ const nameWrapperProfile: CompilerProfile = {
   optimizerRuns: 1200,
 };
 const hcaSources = new Set([
+  "src/hca/HCAValidatorBase.sol",
   "src/hca/HCAFundingSessionValidator.sol",
   "src/hca/HCAOwnerAndSessionValidator.sol",
   "src/hca/StandaloneHCAFactory.sol",
   "src/hca/StandaloneSingleOwnerHCA.sol",
+  "src/hca/libraries/HCAExecutionLib.sol",
+  "src/hca/libraries/HCAOperationHashLib.sol",
+  "src/hca/libraries/HCAPermit2Lib.sol",
+  "src/hca/libraries/HCARegistrarPolicyLib.sol",
+  "src/hca/libraries/HCAResolverPolicyLib.sol",
+  "src/hca/libraries/HCASignatureLib.sol",
+  "src/hca/libraries/HCASmartSessionLib.sol",
 ]);
 const externalDeploymentSources = [
   "lib/ens-contracts/contracts/ccipRead/GatewayProvider.sol",
@@ -147,6 +159,9 @@ async function expectExactSourcePragma(
 }
 
 function expectedFirstPartyProfile(sourceName: string): CompilerProfile {
+  if (sourceName === "src/hca/HCAOwnerAndSessionValidator.sol") {
+    return hcaHotRuntimeProfile;
+  }
   if (hcaSources.has(sourceName)) return hcaProfile;
   if (sourceName === "src/registry/WrapperRegistry.sol") {
     return wrapperRegistryProfile;

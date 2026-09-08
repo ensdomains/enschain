@@ -2,8 +2,9 @@
 pragma solidity 0.8.27;
 
 import {IProxyAuthorization} from "@ensdomains/verifiable-factory/IProxyAuthorization.sol";
+import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
-import {IModule} from "nexus/interfaces/modules/IModule.sol";
 import {IValidator} from "nexus/interfaces/modules/IValidator.sol";
 import {
     CALLTYPE_BATCH,
@@ -23,6 +24,8 @@ import {Execution} from "nexus/types/DataTypes.sol";
 
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
+import {IStandaloneHCAFactory} from "./interfaces/IStandaloneHCAFactory.sol";
+
 /// @title Standalone Single Owner HCA
 /// @notice Nexus account whose owner is set once during account initialization.
 /// @dev Module changes are disabled after initialization and the configured default validator
@@ -33,20 +36,8 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     using NonceLib for uint256;
 
     ////////////////////////////////////////////////////////////////////////
-    // Constants & Immutables
+    // Immutables
     ////////////////////////////////////////////////////////////////////////
-
-    /// @notice Selector for ERC-721 token receipt.
-    /// @dev Returned by `onERC721Received`.
-    bytes4 internal constant ERC721_RECEIVED_SELECTOR = 0x150b7a02;
-
-    /// @notice Selector for single ERC-1155 token receipt.
-    /// @dev Returned by `onERC1155Received`.
-    bytes4 internal constant ERC1155_RECEIVED_SELECTOR = 0xf23a6e61;
-
-    /// @notice Selector for batched ERC-1155 token receipt.
-    /// @dev Returned by `onERC1155BatchReceived`.
-    bytes4 internal constant ERC1155_BATCH_RECEIVED_SELECTOR = 0xbc197c81;
 
     /// @notice The allowlist of upgrade target implementations permitted from this implementation.
     IAddressSet public immutable UPGRADE_SET;
@@ -55,12 +46,19 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @dev The initial trusted implementation uses the zero address and rejects all predecessors.
     IAddressSet public immutable PREDECESSOR_UPGRADE_SET;
 
+    /// @notice The factory that stores immutable owner certifications for production HCAs.
+    /// @dev A zero address retains direct-deployment behavior for isolated account deployments.
+    IStandaloneHCAFactory public immutable OWNER_REGISTRY;
+
+    /// @dev The VerifiableFactory allowed to invoke production proxy initialization.
+    address private immutable _ACCOUNT_DEPLOYER;
+
     ////////////////////////////////////////////////////////////////////////
     // Storage
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice The initialized account owner.
-    /// @dev Set once during `initializeAccount`.
+    /// @dev Legacy owner storage retained at its original offset for upgrade compatibility.
+    ///      New factory deployments read the canonical owner from `OWNER_REGISTRY`.
     address private _owner;
 
     /// @notice The nonce bound to every enabled fixed session.
@@ -108,7 +106,7 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
 
     /// @dev Restricts a function to the initialized account owner.
     modifier onlyOwner() {
-        if (msg.sender != _owner) {
+        if (msg.sender != _accountOwner()) {
             revert CallerNotOwner();
         }
         _;
@@ -137,38 +135,50 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     /// @param validatorInitData_ Initialization data passed to the default validator.
     /// @param upgradeSet_ The allowlist of permitted upgrade target implementations.
     /// @param predecessorUpgradeSet_ The predecessor allowlist; zero rejects every predecessor.
+    /// @param ownerRegistry_ The factory containing immutable HCA owner certifications.
     constructor(
         address entryPoint_,
         address defaultValidator_,
         address intentExecutor_,
         bytes memory validatorInitData_,
         IAddressSet upgradeSet_,
-        IAddressSet predecessorUpgradeSet_
+        IAddressSet predecessorUpgradeSet_,
+        IStandaloneHCAFactory ownerRegistry_
     )
         Nexus(entryPoint_, defaultValidator_, intentExecutor_, validatorInitData_, "")
     {
         UPGRADE_SET = upgradeSet_;
         PREDECESSOR_UPGRADE_SET = predecessorUpgradeSet_;
+        OWNER_REGISTRY = ownerRegistry_;
+        _ACCOUNT_DEPLOYER =
+            address(ownerRegistry_) == address(0)
+                ? address(0)
+                : address(ownerRegistry_.VERIFIABLE_FACTORY());
     }
 
     ////////////////////////////////////////////////////////////////////////
     // Implementation
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initializes the account owner.
+    /// @notice Initializes a direct account or validates a factory account's proposed owner.
+    /// @dev The immutable default executor is authorized directly by Nexus and does not require
+    ///      per-account module initialization.
     /// @param initData ABI-encoded owner address.
     function initializeAccount(bytes calldata initData) external payable override {
-        if (_owner != address(0)) {
-            revert StandaloneHCAAlreadyInitialized();
-        }
-
         address initialOwner = abi.decode(initData, (address));
         if (initialOwner == address(0)) {
             revert OwnerCannotBeZero();
         }
 
-        _owner = initialOwner;
-        IModule(_DEFAULT_EXECUTOR).onInstall("");
+        IStandaloneHCAFactory ownerRegistry = OWNER_REGISTRY;
+        if (address(ownerRegistry) == address(0)) {
+            if (_owner != address(0)) {
+                revert StandaloneHCAAlreadyInitialized();
+            }
+            _owner = initialOwner;
+        } else if (msg.sender != _ACCOUNT_DEPLOYER) {
+            revert StandaloneHCAAlreadyInitialized();
+        }
     }
 
     /// @notice Disables module installation.
@@ -246,16 +256,49 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
         return IValidator(_DEFAULT_VALIDATOR).validateUserOp(userOp, userOpHash);
     }
 
+    /// @notice Validates a signature through the account's fixed default validator.
+    /// @dev Preserves Nexus's zero-address default-validator prefix and ERC-7739 detection while
+    ///      omitting dynamic validator and pre-validation-hook lookups that this account disables.
+    /// @param hash The digest to validate.
+    /// @param signature A zero-address validator prefix followed by validator-specific data.
+    /// @return magicValue The ERC-1271 success value, or the failure value when validation reverts.
+    function isValidSignature(bytes32 hash, bytes calldata signature)
+        external
+        view
+        override
+        returns (bytes4 magicValue)
+    {
+        if (signature.length == 0) {
+            if (uint256(hash) == (~signature.length / 0xffff) * 0x7739) {
+                return checkERC7739Support(hash, signature);
+            }
+        }
+
+        address validator = address(bytes20(signature[:20]));
+        if (validator != address(0)) {
+            revert ValidatorNotInstalled(validator);
+        }
+        try IValidator(_DEFAULT_VALIDATOR).isValidSignatureWithSender(
+            msg.sender,
+            hash,
+            signature[20:]
+        ) returns (bytes4 result) {
+            return result;
+        } catch {
+            return bytes4(0xffffffff);
+        }
+    }
+
     /// @notice Returns the account owner.
     function owner() external view returns (address) {
-        return _owner;
+        return _accountOwner();
     }
 
     /// @notice Returns the account owner and current session nonce.
     /// @return owner_ The account owner.
     /// @return sessionNonce_ The current session nonce.
     function ownerAndSessionNonce() external view returns (address owner_, uint96 sessionNonce_) {
-        return (_owner, _sessionNonce);
+        return (_accountOwner(), _sessionNonce);
     }
 
     /// @notice Returns whether a predecessor may upgrade into this implementation.
@@ -300,18 +343,27 @@ contract StandaloneSingleOwnerHCA is Nexus, IProxyAuthorization {
     function _fallback(bytes calldata callData) internal override {
         if (callData.length >= 4) {
             bytes4 selector = bytes4(callData[0:4]);
-            if (selector == ERC721_RECEIVED_SELECTOR) {
+            if (selector == IERC721Receiver.onERC721Received.selector) {
                 revert NoNFTAllowed();
             }
-            if (selector == ERC1155_RECEIVED_SELECTOR) {
+            if (selector == IERC1155Receiver.onERC1155Received.selector) {
                 revert NoNFTAllowed();
             }
-            if (selector == ERC1155_BATCH_RECEIVED_SELECTOR) {
+            if (selector == IERC1155Receiver.onERC1155BatchReceived.selector) {
                 revert NoNFTAllowed();
             }
         }
 
         super._fallback(callData);
+    }
+
+    /// @dev Returns the factory-certified owner or the directly initialized legacy owner.
+    function _accountOwner() internal view returns (address owner_) {
+        IStandaloneHCAFactory ownerRegistry = OWNER_REGISTRY;
+        return
+            address(ownerRegistry) == address(0)
+                ? _owner
+                : ownerRegistry.hcaOwners(address(this));
     }
 
     /// @dev Requires the owner as caller and allowlist approval for the target implementation.

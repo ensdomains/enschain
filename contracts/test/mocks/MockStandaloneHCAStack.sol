@@ -95,13 +95,20 @@ contract MockValidatorModule is IValidator {
 
 
 /// @title Mock Executor Module
-/// @notice Test-only ERC-7579 executor with no behavior.
+/// @notice Test-only ERC-7579 executor that records module initialization.
 contract MockExecutorModule is IExecutor {
-    /// @notice No-op install hook.
-    function onInstall(bytes calldata) external pure {}
+    /// @notice Whether an account invoked the install hook.
+    mapping(address account => bool initialized) public initialized;
 
-    /// @notice No-op uninstall hook.
-    function onUninstall(bytes calldata) external pure {}
+    /// @notice Records the calling account as initialized.
+    function onInstall(bytes calldata) external {
+        initialized[msg.sender] = true;
+    }
+
+    /// @notice Clears the calling account's initialization marker.
+    function onUninstall(bytes calldata) external {
+        initialized[msg.sender] = false;
+    }
 
     /// @notice Reports the executor module type.
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
@@ -111,8 +118,10 @@ contract MockExecutorModule is IExecutor {
     /// @notice Unused module-type encoding.
     function getModuleTypes() external pure returns (EncodedModuleTypes) {}
 
-    /// @notice Always reports initialized.
-    function isInitialized(address) external pure returns (bool) {
-        return true;
+    /// @notice Returns whether an account invoked the install hook.
+    /// @param account The account to inspect.
+    /// @return Whether the account is initialized.
+    function isInitialized(address account) external view returns (bool) {
+        return initialized[account];
     }
 }

@@ -97,6 +97,9 @@ describe("HCA deployment script scope", () => {
     expect(deployHCAOwnerAndSessionValidator.dependencies).toContain(
       "ETHRegistry",
     );
+    expect(deployHCAOwnerAndSessionValidator.dependencies).toContain(
+      "PermissionedResolverImpl",
+    );
     expect(deployHCAOwnerAndSessionValidator.dependencies).not.toContain(
       "ETHRegistrar",
     );

@@ -1,6 +1,6 @@
 import { labelhash, zeroAddress, type Abi, type Address } from "viem";
 import { dnsEncodeName } from "../test/utils/utils.js";
-import { MAX_EXPIRY, ROLES } from "./deploy-constants.js";
+import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 
 export const SUFFIX_BATCH_SIZE = 25;
 
@@ -52,7 +52,7 @@ export async function filterAvailableSuffixes({
           functionName: "getStatus",
           args: [BigInt(labelhash(suffix))],
         });
-        return status === 0 ? suffix : "";
+        return status === STATUS.AVAILABLE ? suffix : "";
       }),
     );
     suffixes.push(...available.filter(Boolean));

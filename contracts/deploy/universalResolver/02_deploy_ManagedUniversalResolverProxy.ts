@@ -32,9 +32,9 @@ export default execute(
     // Reuse a long-lived intermediate URP when one already fronts the top URP on
     // this network. A fresh v2 deployment then only re-points this proxy at the
     // new implementation, leaving the externally-administered top URP untouched.
-    // A clean-testnet run is excluded: it builds a self-owned stack with its own
-    // top URP, so adopting the canonical proxy would point it at a live
-    // deployment's implementation under an admin it does not control.
+    // A clean-testnet run is excluded: it builds a self-owned stack down to its
+    // own top URP, so adopting the canonical proxy would leave the cutover
+    // upgrading a live deployment's proxy under an admin it does not control.
     const knownIntermediate = tags["clean-testnet"]
       ? null
       : await loadKnownIntermediateUrpDeployment(

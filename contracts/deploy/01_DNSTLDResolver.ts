@@ -55,18 +55,19 @@ export default execute(
       ],
     });
 
-    const candidates = tags.local
+    const allSuffixes = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes();
-    const suffixes = await filterAvailableSuffixes({
+
+    const publicTLDs = await filterAvailableSuffixes({
       read,
       publicSuffixList,
       rootRegistry,
-      candidates,
+      candidates: allSuffixes.filter((x) => !x.includes(".")), // only TLDs
     });
 
-    if (suffixes.length === 0) {
-      console.warn("  - No suffixes found");
+    if (!publicTLDs.length) {
+      console.warn("  - No public DNS TLDs found");
       return;
     }
 
@@ -82,11 +83,11 @@ export default execute(
       rootRegistry,
       batchRegistrar,
       resolver: dnsTLDResolver.address,
-      suffixes,
+      suffixes: publicTLDs,
     });
   },
   {
-    tags: ["DNSTLDResolver", "v2"],
+    tags: ["DNSTLDResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: [
       "RootRegistry",
       "ENSRegistry",
@@ -96,9 +97,6 @@ export default execute(
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
       "ContractNamer",
-      // Run the v1 root-TLD mirror first so it claims root TLDs for v1 fallback;
-      // this resolver then registers only the remaining (non-root) public suffixes.
-      "DNSV1MirrorTLDs",
     ],
   },
 );

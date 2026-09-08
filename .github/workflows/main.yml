@@ -43,11 +43,10 @@ jobs:
       - uses: ./.github/actions/setup
 
       # The suite reaches the deploy scripts, which import `generated/`. That is a
-      # compile output and is not committed, so it has to be built first.
+      # compile output and is not committed, so `test:unit` builds it first.
       - name: Run TypeScript unit tests
         run: |
           cd contracts && \
-          bun run compile:hardhat && \
           bun run test:unit
         env:
           NODE_OPTIONS: --max-old-space-size=8192

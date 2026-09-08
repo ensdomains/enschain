@@ -26,6 +26,7 @@ import {
     ModePayload
 } from "nexus/lib/ModeLib.sol";
 import {Execution} from "nexus/types/DataTypes.sol";
+import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {Test} from "forge-std/Test.sol";
@@ -39,8 +40,13 @@ import {
 import {Grant} from "~src/access-control/interfaces/IEACGrantInitializable.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
 import {HCAOwnerAndSessionValidator} from "~src/hca/HCAOwnerAndSessionValidator.sol";
+import {HCAExecutionLib} from "~src/hca/libraries/HCAExecutionLib.sol";
+import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
+import {HCARegistrarPolicyLib} from "~src/hca/libraries/HCARegistrarPolicyLib.sol";
+import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
 import {StandaloneHCAFactory} from "~src/hca/StandaloneHCAFactory.sol";
 import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
+import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
@@ -80,8 +86,6 @@ contract StandaloneSingleOwnerHCATest is Test {
         uint128 denom;
     }
 
-    bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
-
     bytes4 constant COMMIT_SELECTOR = 0xf14fcbc8;
     bytes4 constant REGISTER_SELECTOR = 0xcff3e7c2;
     bytes4 constant RENEW_SELECTOR = 0x89d779c3;
@@ -91,7 +95,12 @@ contract StandaloneSingleOwnerHCATest is Test {
     bytes4 constant CLAIM_WITH_HCA_SELECTOR = 0xc90695df;
     bytes4 constant MULTICALL_SELECTOR = 0xac9650d8;
 
+    bytes32 constant EXECUTION_TYPEHASH = keccak256("Ops(address to,uint256 value,bytes data)");
+    bytes32 constant OPERATION_TYPEHASH =
+        keccak256("Op(bytes32 vt,Ops[] ops)Ops(address to,uint256 value,bytes data)");
+
     bytes NAME = "\x04test\x00";
+    bytes REGISTRATION_NAME = "\x05alice\x03eth\x00";
 
     uint256 ownerKey = 0xA11CE;
     uint256 sessionKey = 0x5E5510;
@@ -263,6 +272,46 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(StandaloneSingleOwnerHCA(payable(proxy)).owner(), owner);
     }
 
+    function test_standaloneSingleOwnerHCA_proxyUsesFixedExecutorWithoutInstallHook() public {
+        MockValidatorModule defaultValidator = new MockValidatorModule();
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA implementation =
+            new StandaloneSingleOwnerHCA(
+                entryPoint,
+                address(defaultValidator),
+                address(defaultExecutor),
+                "",
+                upgradeSet,
+                IAddressSet(address(0)),
+                IStandaloneHCAFactory(address(0))
+            );
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneSingleOwnerHCA account =
+            StandaloneSingleOwnerHCA(
+                payable(
+                    factory.deployProxy(
+                        address(implementation),
+                        2,
+                        abi.encodeCall(
+                            StandaloneSingleOwnerHCA.initializeAccount,
+                            (abi.encode(owner))
+                        )
+                    )
+                )
+            );
+
+        assertFalse(defaultExecutor.isInitialized(address(account)));
+        assertTrue(account.isModuleInstalled(2, address(defaultExecutor), ""));
+
+        WalletPaidTarget target = new WalletPaidTarget();
+        vm.prank(address(defaultExecutor));
+        account.executeFromExecutor(
+            ModeLib.encodeSimpleSingle(),
+            ExecLib.encodeSingle(address(target), 0, abi.encodeCall(WalletPaidTarget.setValue, (7)))
+        );
+        assertEq(target.value(), 7);
+    }
+
     function test_standaloneSingleOwnerHCA_revokeSessionsBumpsNonce() public {
         StandaloneSingleOwnerHCA account = _newAccount();
         account.initializeAccount(abi.encode(owner));
@@ -363,6 +412,50 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(hca.validate(validator, digest, _signV01(ownerKey, digest)), ERC1271_MAGICVALUE);
     }
 
+    function test_standaloneSingleOwnerHCA_validatesThroughFixedDefaultValidator() public {
+        MockExecutorModule defaultExecutor = new MockExecutorModule();
+        StandaloneSingleOwnerHCA account =
+            new StandaloneSingleOwnerHCA(
+                entryPoint,
+                address(validator),
+                address(defaultExecutor),
+                "",
+                upgradeSet,
+                IAddressSet(address(0)),
+                IStandaloneHCAFactory(address(0))
+            );
+        account.initializeAccount(abi.encode(owner));
+
+        bytes32 digest = keccak256("standalone owner intent");
+        bytes memory signature = abi.encodePacked(address(0), _sign(ownerKey, digest));
+
+        vm.prank(intentExecutor);
+        assertEq(account.isValidSignature(digest, signature), ERC1271_MAGICVALUE);
+
+        vm.prank(intentExecutor);
+        assertEq(
+            account.isValidSignature(digest, abi.encodePacked(address(0), _sign(badKey, digest))),
+            bytes4(0xffffffff)
+        );
+
+        bytes32 erc7739DetectionHash = bytes32((type(uint256).max / 0xffff) * 0x7739);
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
+        vm.prank(intentExecutor);
+        account.isValidSignature(erc7739DetectionHash, "");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IModuleManagerEventsAndErrors.ValidatorNotInstalled.selector,
+                address(validator)
+            )
+        );
+        vm.prank(intentExecutor);
+        account.isValidSignature(
+            digest,
+            abi.encodePacked(address(validator), _sign(ownerKey, digest))
+        );
+    }
+
     function test_validator_rejectsInvalidOwnerAuthorization() public {
         bytes32 digest = keccak256("owner intent");
 
@@ -386,314 +479,17 @@ contract StandaloneSingleOwnerHCATest is Test {
         hca.validate(validator, digest, abi.encodePacked(bytes32(0), bytes32(0), uint8(27)));
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
+        hca.validate(
+            validator,
+            digest,
+            abi.encodePacked(bytes32(uint256(1)), bytes32(type(uint256).max), uint8(27))
+        );
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
         validatorHarness.recoverHarness(digest, hex"1234");
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
         hca.validate(validator, digest, hex"1234");
-    }
-
-    function test_validator_usesPreEnabledRhinestoneSession() public {
-        bytes32 permissionId = keccak256("registration session");
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-        assertTrue(validator.isPermissionEnabled(address(hca), permissionId));
-
-        bytes memory registrationData = _registrationOperationData(owner, resolver);
-        assertEq(
-            _verifySession(permissionId, sessionKey, registrationData),
-            validator.verifyExecution.selector
-        );
-
-        bytes memory laterData =
-            _singleOperationData(
-                defaultReverseRegistrarHCAAdapter,
-                0,
-                abi.encodeWithSelector(SET_NAME_WITH_HCA_SELECTOR, owner, "later.eth")
-            );
-        assertEq(
-            _verifySession(permissionId, sessionKey, laterData),
-            validator.verifyExecution.selector
-        );
-    }
-
-    function test_validator_usesPreEnabledSessionThroughERC1271() public {
-        bytes32 permissionId = keccak256("registration session");
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("commitment")
-        )});
-        bytes memory operationData = _erc1271OperationData(executions);
-        uint256 nonce = 123;
-        bytes32 digest =
-            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
-
-        assertEq(
-            hca.validate(
-                validator,
-                digest,
-                _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
-            ),
-            ERC1271_MAGICVALUE
-        );
-
-        executions[0].callData = abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("different commitment")
-        );
-        bytes memory differentOperation = _erc1271OperationData(executions);
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(permissionId, nonce, differentOperation, sessionKey, digest)
-        );
-    }
-
-    function test_validator_usesRefundAwareSessionThroughERC1271() public {
-        bytes32 permissionId = keccak256("refund registration session");
-        uint96 maxExchangeRate = 10_000_000_000;
-        uint48 maxGasOverhead = 100_000;
-        uint96 maxRefundAmount = 25_000_000;
-        vm.prank(address(hca));
-        validator.enableSessionWithRefund(
-            permissionId,
-            sessionSigner,
-            uint48(block.timestamp + 1 days),
-            resolver,
-            usdc,
-            maxExchangeRate,
-            maxGasOverhead,
-            maxRefundAmount
-        );
-
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
-            APPROVE_SELECTOR,
-            gasRefundPaymaster,
-            maxRefundAmount
-        )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("commitment")
-        )});
-        bytes memory operationData = _erc1271OperationData(executions);
-        uint256 packedOverhead = (uint256(maxRefundAmount) << 128) | maxGasOverhead;
-        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
-            HCAOwnerAndSessionValidator.GasRefund({token: usdc, exchangeRate: maxExchangeRate, overhead: packedOverhead});
-        uint256 nonce = 321;
-        bytes32 digest =
-            validatorHarness.singleChainDigestWithRefundHarness(
-                address(hca),
-                nonce,
-                operationData,
-                gasRefund
-            );
-
-        assertEq(
-            hca.validate(
-                validator,
-                digest,
-                _fixedSessionRefundEnvelope(
-                    permissionId,
-                    nonce,
-                    gasRefund,
-                    operationData,
-                    sessionKey,
-                    digest
-                )
-            ),
-            ERC1271_MAGICVALUE
-        );
-
-        executions[0].callData = abi.encodeWithSelector(
-            APPROVE_SELECTOR,
-            gasRefundPaymaster,
-            maxRefundAmount - 1
-        );
-        operationData = _erc1271OperationData(executions);
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-
-        executions[0].callData = abi.encodeWithSelector(
-            APPROVE_SELECTOR,
-            gasRefundPaymaster,
-            maxRefundAmount
-        );
-        operationData = _erc1271OperationData(executions);
-
-        gasRefund.exchangeRate = maxExchangeRate + 1;
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-
-        gasRefund.exchangeRate = maxExchangeRate;
-        gasRefund.overhead = (uint256(maxRefundAmount + 1) << 128) | maxGasOverhead;
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-
-        gasRefund.overhead = (uint256(maxRefundAmount) << 128) | uint256(maxGasOverhead + 1);
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-
-        gasRefund = HCAOwnerAndSessionValidator.GasRefund({token: dai, exchangeRate: maxExchangeRate, overhead: packedOverhead});
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-    }
-
-    function test_validator_noRefundSessionRejectsExecutorRefund() public {
-        bytes32 permissionId = keccak256("no-refund registration session");
-        vm.prank(address(hca));
-        validator.enableSession(
-            permissionId,
-            sessionSigner,
-            uint48(block.timestamp + 1 days),
-            resolver
-        );
-
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("commitment")
-        )});
-        bytes memory operationData = _erc1271OperationData(executions);
-        HCAOwnerAndSessionValidator.GasRefund memory gasRefund =
-            HCAOwnerAndSessionValidator.GasRefund({token: usdc, exchangeRate: 1, overhead: 0});
-        uint256 nonce = 654;
-        bytes32 digest =
-            validatorHarness.singleChainDigestWithRefundHarness(
-                address(hca),
-                nonce,
-                operationData,
-                gasRefund
-            );
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-
-        gasRefund = HCAOwnerAndSessionValidator.GasRefund({token: address(0), exchangeRate: 1, overhead: 0});
-        digest = validatorHarness.singleChainDigestWithRefundHarness(
-            address(hca),
-            nonce,
-            operationData,
-            gasRefund
-        );
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionRefundEnvelope(
-                permissionId,
-                nonce,
-                gasRefund,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
     }
 
     function test_validator_matchesRhinestoneSingleChainDigest() public {
@@ -707,14 +503,12 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(0x5678),
                 gasRefundPaymaster
             );
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: address(0x9aBc), value: 0, callData: abi.encodeWithSelector(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: address(0x9aBc), value: 0, callData: abi.encodeWithSelector(
             COMMIT_SELECTOR,
             bytes32(uint256(0x1111111111111111111111111111111111111111111111111111111111111111))
         )});
-        bytes memory operationData =
-            abi.encodePacked(vectorValidator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        bytes memory operationData = _erc1271OperationData(executions);
 
         assertEq(
             vectorValidator.singleChainDigestHarness(address(0x1234), 123, operationData),
@@ -722,183 +516,62 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_appliesFixedPolicyThroughERC1271() public {
-        bytes32 permissionId = keccak256("registration session");
-        vm.prank(address(hca));
-        validator.enableSession(
-            permissionId,
-            sessionSigner,
-            uint48(block.timestamp + 1 days),
-            resolver
+    function testFuzz_validator_hashesPackedZeroValueOperations(
+        address firstTarget,
+        bytes calldata firstCallData,
+        address secondTarget,
+        bytes calldata secondCallData,
+        bool includeSecond
+    )
+        public
+        view
+    {
+        uint256 firstLength = firstCallData.length > 256 ? 256 : firstCallData.length;
+        uint256 secondLength = secondCallData.length > 256 ? 256 : secondCallData.length;
+        bytes memory firstData = firstCallData[:firstLength];
+        bytes memory secondData = secondCallData[:secondLength];
+        Execution[] memory executions = new Execution[](includeSecond ? 2 : 1);
+        executions[0] = Execution({target: firstTarget, value: 0, callData: firstData});
+        if (includeSecond) {
+            executions[1] = Execution({target: secondTarget, value: 0, callData: secondData});
+        }
+
+        bytes32[] memory executionHashes = new bytes32[](executions.length);
+        for (uint256 i; i < executions.length; ++i) {
+            executionHashes[i] = keccak256(
+                abi.encode(
+                    EXECUTION_TYPEHASH,
+                    executions[i].target,
+                    executions[i].value,
+                    keccak256(executions[i].callData)
+                )
+            );
+        }
+        bytes32 expectedHash =
+            keccak256(
+                abi.encode(
+                    OPERATION_TYPEHASH,
+                    HCAOperationHashLib.ERC7579_ERC1271_MODE,
+                    keccak256(abi.encodePacked(executionHashes))
+                )
+            );
+
+        assertEq(
+            validatorHarness.operationHashHarness(_erc1271OperationData(executions)),
+            expectedHash
         );
-
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: makeAddr("forbidden"), value: 0, callData: hex"12345678"});
-        bytes memory operationData = _erc1271OperationData(executions);
-        uint256 nonce = 456;
-        bytes32 digest =
-            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
-
-        vm.expectPartialRevert(HCAOwnerAndSessionValidator.ActionNotAllowed.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
-        );
-    }
-
-    function test_validator_sessionExpiryAndNonceRevocation() public {
-        bytes32 permissionId = keccak256("registration session");
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-
-        bytes memory operationData = _commitOperationData();
-        hca.setSessionNonce(1);
-        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        _verifySession(permissionId, sessionKey, operationData);
-
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-        assertTrue(validator.isPermissionEnabled(address(hca), permissionId));
-
-        vm.warp(validUntil + 1);
-        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
-        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
-        _verifySession(permissionId, sessionKey, operationData);
-    }
-
-    function test_validator_rejectsInvalidFixedSessionAuthorization() public {
-        bytes32 permissionId = keccak256("registration session");
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-
-        bytes memory operationData = _erc1271CommitOperationData();
-        uint256 nonce = 123;
-        bytes32 digest =
-            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(permissionId, nonce, operationData, badKey, digest)
-        );
-
-        hca.setSessionNonce(1);
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
-        );
-
-        hca.setSessionNonce(0);
-        vm.warp(validUntil + 1);
-        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(permissionId, nonce, operationData, sessionKey, digest)
-        );
-    }
-
-    function test_validator_rejectsMalformedFixedSessionEnvelope() public {
-        bytes memory shortRefundEnvelope = new bytes(130);
-        shortRefundEnvelope[0] = 0x02;
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
-        hca.validate(validator, bytes32(0), shortRefundEnvelope);
-
-        bytes memory unknownModeEnvelope = new bytes(130);
-        unknownModeEnvelope[0] = 0x03;
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
-        hca.validate(validator, bytes32(0), unknownModeEnvelope);
-
-        bytes memory operationData = _erc1271CommitOperationData();
-        uint256 nonce = 123;
-        bytes32 digest =
-            validatorHarness.singleChainDigestHarness(address(hca), nonce, operationData);
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        hca.validate(
-            validator,
-            digest,
-            _fixedSessionEnvelope(
-                keccak256("missing session"),
-                nonce,
-                operationData,
-                sessionKey,
-                digest
-            )
-        );
-    }
-
-    function test_validator_rejectsInvalidSessionAuthorization() public {
-        bytes32 permissionId = keccak256("registration session");
-        uint48 validUntil = uint48(block.timestamp + 1 days);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.OwnerUnavailable.selector);
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, address(0), validUntil, resolver);
-
-        vm.warp(block.timestamp + 1);
-        vm.expectRevert(HCAOwnerAndSessionValidator.SessionExpired.selector);
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, uint48(block.timestamp - 1), resolver);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.GasRefundNotAllowed.selector);
-        vm.prank(address(hca));
-        validator.enableSessionWithRefund(
-            permissionId,
-            sessionSigner,
-            validUntil,
-            resolver,
-            address(0),
-            1,
-            0,
-            1
-        );
-
-        vm.prank(address(hca));
-        validator.enableSession(permissionId, sessionSigner, validUntil, resolver);
-
-        bytes memory operationData = _commitOperationData();
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        _verifySession(permissionId, badKey, operationData);
-
-        HCAOwnerAndSessionValidator.Operation memory operation =
-            HCAOwnerAndSessionValidator.Operation({data: operationData});
-        bytes memory validData = _sessionUse(permissionId, sessionKey, keccak256(operationData));
-        vm.expectRevert(HCAOwnerAndSessionValidator.CallerNotIntentExecutor.selector);
-        validator.verifyExecution(address(hca), keccak256(operationData), validData, operation);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSessionData.selector);
-        vm.prank(intentExecutor);
-        validator.verifyExecution(address(hca), keccak256(operationData), hex"01", operation);
-
-        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidSigner.selector);
-        vm.prank(intentExecutor);
-        validator.verifyExecution(
-            address(hca),
-            keccak256(operationData),
-            _sessionUse(keccak256("missing session"), sessionKey, keccak256(operationData)),
-            operation
-        );
-
-        vm.mockCallRevert(
-            address(hca),
-            abi.encodeWithSignature("ownerAndSessionNonce()"),
-            abi.encode("owner unavailable")
-        );
-        assertFalse(validator.isPermissionEnabled(address(hca), permissionId));
-        vm.clearMockedCalls();
     }
 
     function test_validator_allowsExactCounterfactualResolverDeployment() public view {
+        bytes[] memory setters = new bytes[](2);
+        setters[0] = abi.encodeCall(
+            IAddressSetter.setAddress,
+            (REGISTRATION_NAME, COIN_TYPE_ETH, abi.encodePacked(owner))
+        );
+        setters[1] = abi.encodeCall(
+            ITextSetter.setText,
+            (REGISTRATION_NAME, "avatar", "https://euc.li/alice.eth")
+        );
         validatorHarness.checkRegistrationPolicyHarness(
             address(hca),
             owner,
@@ -908,7 +581,7 @@ contract StandaloneSingleOwnerHCATest is Test {
                 counterfactualResolverSalt,
                 abi.encodeCall(
                     IPermissionedResolverInitializable.initialize,
-                    (_defaultGrants(), new bytes[](0))
+                    (_defaultGrants(), setters)
                 )
             )
         );
@@ -924,11 +597,10 @@ contract StandaloneSingleOwnerHCATest is Test {
                     (_defaultGrants(), new bytes[](0))
                 )
             );
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](3);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
+        Execution[] memory executions = new Execution[](3);
+        executions[0] = Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
         executions[1] = executions[0];
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        executions[2] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
         )});
@@ -948,54 +620,24 @@ contract StandaloneSingleOwnerHCATest is Test {
         HCAOwnerAndSessionValidator.GasRefund memory gasRefund;
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
-        validatorHarness.checkInitialRegistrationPolicyHarness(
+        validatorHarness.checkStatelessRegistrationPolicyHarness(
             address(hca),
             owner,
-            bytes32(0),
             proof,
             "",
             gasRefund
         );
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](0);
+        Execution[] memory executions = new Execution[](0);
         bytes memory operationData = _erc1271OperationData(executions);
         vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        validatorHarness.checkInitialRegistrationPolicyHarness(
+        validatorHarness.checkStatelessRegistrationPolicyHarness(
             address(hca),
             owner,
-            bytes32(0),
             proof,
             operationData,
             gasRefund
         );
-
-        executions = new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("first")
-        )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
-            COMMIT_SELECTOR,
-            bytes32("second")
-        )});
-        operationData = _erc1271OperationData(executions);
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        validatorHarness.checkInitialRegistrationPolicyHarness(
-            address(hca),
-            owner,
-            bytes32(0),
-            proof,
-            operationData,
-            gasRefund
-        );
-
-        executions = new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodePacked(
-            validatorHarness.TRANSFER_FROM_SELECTOR()
-        )});
-        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
-        validatorHarness.fundingCallIndexesHarness(executions, address(hca), owner, usdc);
 
         vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
         validatorHarness.checkResolverBindingHarness(address(0), true, false);
@@ -1012,7 +654,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
         validatorHarness.operationHashHarness(
-            abi.encodePacked(bytes32(uint256(0xDEAD)), abi.encode(executions))
+            _packOperation(bytes32(uint256(0xDEAD) << 240), executions)
         );
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
@@ -1068,7 +710,7 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         grants = _defaultGrants();
         setters = new bytes[](1);
-        setters[0] = abi.encodeCall(ITextSetter.setText, (NAME, "avatar", "ipfs://avatar"));
+        setters[0] = abi.encodeWithSelector(APPROVE_SELECTOR, ethRegistrar, 1);
         _expectValidationRevert(
             _registrationWithResolverDeployment(
                 permittedResolverImpl,
@@ -1079,7 +721,7 @@ contract StandaloneSingleOwnerHCATest is Test {
                 )
             ),
             counterfactualResolver,
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+            HCAOwnerAndSessionValidator.ActionNotAllowed.selector
         );
         _expectValidationRevert(
             _registrationWithResolverDeployment(
@@ -1096,9 +738,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function test_validator_requiresDeploymentForCounterfactualResolver() public {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
         )});
@@ -1120,25 +761,24 @@ contract StandaloneSingleOwnerHCATest is Test {
                     (_defaultGrants(), new bytes[](0))
                 )
             );
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
+        executions[1] = Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
         _expectValidationRevert(
             _operationData(executions),
             counterfactualResolver,
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
 
-        executions = new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: counterfactualResolver, value: 0, callData: abi.encodeCall(
+        executions = new Execution[](2);
+        executions[0] = Execution({target: counterfactualResolver, value: 0, callData: abi.encodeCall(
             ITextSetter.setText,
             (NAME, "avatar", "ipfs://avatar")
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
+        executions[1] = Execution({target: verifiableFactory, value: 0, callData: deploymentCall});
 
         _expectValidationRevert(
             _operationData(executions),
@@ -1171,14 +811,13 @@ contract StandaloneSingleOwnerHCATest is Test {
             _registrationOperationDataWithDefaultReverseName(owner, resolver, "bob.eth")
         );
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "alice",
             owner,
             resolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "bob",
             owner,
             resolver
@@ -1191,28 +830,53 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_acceptsMultipleRegistryAuthorizedRegistrars() public {
+    function test_validator_rejectsMultipleRegistryAuthorizedRegistrars() public {
         address alternateRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
         ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](3);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
             "alice",
             owner,
             resolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: alternateRegistrar, value: 0, callData: _registerCallDataForLabel(
+        executions[1] = Execution({target: alternateRegistrar, value: 0, callData: _registerCallDataForLabel(
             "bob",
             owner,
             resolver
         )});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HCAOwnerAndSessionValidator.ActionNotAllowed.selector,
+                alternateRegistrar,
+                REGISTER_SELECTOR
+            )
+        );
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _operationData(executions)
+        );
+    }
+
+    function test_validator_rejectsApprovalForAnotherRegistryAuthorizedRegistrar() public {
+        address alternateRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
+        ethRegistry.grantRootRoles(RegistryRolesLib.ROLE_REGISTRAR, alternateRegistrar);
+
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+            owner,
+            resolver
+        )});
+        executions[1] = Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
             APPROVE_SELECTOR,
             alternateRegistrar,
             1 ether
         )});
 
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
         validatorHarness.checkRegistrationPolicyHarness(
             address(hca),
             owner,
@@ -1410,14 +1074,30 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
     }
 
-    function test_validator_checksIntentTokenAgainstBatchRegistrarOracles() public {
-        bytes memory registerBatch = _registrationOperationData(owner, resolver);
-        assertTrue(validatorHarness.isBatchRegistrarPaymentTokenHarness(registerBatch, usdc));
+    function test_validator_checksIntentTokenAgainstSingleBatchRegistrarOracle() public {
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "alice",
+            owner,
+            resolver
+        )});
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallDataForLabel(
+            "bob",
+            owner,
+            resolver
+        )});
+        bytes memory registerBatch = _operationData(executions);
+        address rentPriceOracle = address(IRentPriceOracleProvider(ethRegistrar).rentPriceOracle());
         assertFalse(
             validatorHarness.isBatchRegistrarPaymentTokenHarness(
                 registerBatch,
                 makeAddr("junk-token")
             )
+        );
+
+        executions[1].target = _deployRegistrarWithOracle(_defaultPaymentTokens());
+        assertFalse(
+            validatorHarness.isBatchRegistrarPaymentTokenHarness(_operationData(executions), usdc)
         );
 
         bytes memory commitBatch =
@@ -1431,6 +1111,18 @@ contract StandaloneSingleOwnerHCATest is Test {
         );
 
         assertFalse(validatorHarness.isBatchRegistrarPaymentTokenHarness(hex"", usdc));
+
+        vm.expectCall(
+            ethRegistrar,
+            abi.encodeWithSelector(IRentPriceOracleProvider.rentPriceOracle.selector),
+            1
+        );
+        vm.expectCall(
+            rentPriceOracle,
+            abi.encodeWithSelector(IRentPriceOracle.isPaymentToken.selector, usdc),
+            1
+        );
+        assertTrue(validatorHarness.isBatchRegistrarPaymentTokenHarness(registerBatch, usdc));
     }
 
     function test_validator_treatsUnresponsiveRegistrarOracleAsUnsupported() public {
@@ -1505,17 +1197,17 @@ contract StandaloneSingleOwnerHCATest is Test {
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 1, callData: abi.encodeWithSelector(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 1, callData: abi.encodeWithSelector(
             COMMIT_SELECTOR,
             bytes32("commitment")
         )});
-        operationData = _operationData(executions);
-        _expectValidationRevert(
-            operationData,
+        vm.expectRevert(HCAOwnerAndSessionValidator.PolicyRuleFailed.selector);
+        validatorHarness.checkRegistrationExecutionsHarness(
+            address(hca),
+            owner,
             address(0),
-            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
+            executions
         );
     }
 
@@ -1536,13 +1228,12 @@ contract StandaloneSingleOwnerHCATest is Test {
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             resolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             otherResolver
         )});
@@ -1553,11 +1244,11 @@ contract StandaloneSingleOwnerHCATest is Test {
             HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
 
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             address(0)
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             resolver
         )});
@@ -1695,6 +1386,13 @@ contract StandaloneSingleOwnerHCATest is Test {
 
         vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
         validatorHarness.singleChainDigestHarness(address(hca), 0, hex"");
+
+        vm.expectRevert(HCAOwnerAndSessionValidator.InvalidOperationEncoding.selector);
+        validatorHarness.singleChainDigestHarness(
+            address(hca),
+            0,
+            abi.encodePacked(bytes2(HCAOperationHashLib.ERC7579_ERC1271_MODE), uint8(1))
+        );
     }
 
     function test_validator_moduleSurface() public view {
@@ -1729,6 +1427,14 @@ contract StandaloneSingleOwnerHCATest is Test {
         assertEq(validator.validateUserOp(userOp, userOpHash), 1);
 
         userOp.signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(29));
+        vm.prank(address(hca));
+        assertEq(validator.validateUserOp(userOp, userOpHash), 1);
+
+        userOp.signature = abi.encodePacked(
+            bytes32(uint256(1)),
+            bytes32(type(uint256).max),
+            uint8(27)
+        );
         vm.prank(address(hca));
         assertEq(validator.validateUserOp(userOp, userOpHash), 1);
 
@@ -1869,6 +1575,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_deploysAndExecutesPaymasterSponsoredOwnerUserOp() public {
         EntryPoint userOpEntryPoint = new EntryPoint();
         MockExecutorModule defaultExecutor = new MockExecutorModule();
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         StandaloneSingleOwnerHCA implementation =
             new StandaloneSingleOwnerHCA(
                 address(userOpEntryPoint),
@@ -1876,10 +1584,9 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultExecutor),
                 "",
                 upgradeSet,
-                IAddressSet(address(0))
+                IAddressSet(address(0)),
+                deployer
             );
-        VerifiableFactory factory = new VerifiableFactory();
-        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
         uint256 userSalt = 4337;
         uint256 deploymentSalt = deployer.deploymentSalt(owner, address(implementation), userSalt);
@@ -1943,6 +1650,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_entryPointRejectsOwnerDelegatecallUserOp() public {
         EntryPoint userOpEntryPoint = new EntryPoint();
         MockExecutorModule defaultExecutor = new MockExecutorModule();
+        VerifiableFactory factory = new VerifiableFactory();
+        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         StandaloneSingleOwnerHCA implementation =
             new StandaloneSingleOwnerHCA(
                 address(userOpEntryPoint),
@@ -1950,10 +1659,9 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultExecutor),
                 "",
                 upgradeSet,
-                IAddressSet(address(0))
+                IAddressSet(address(0)),
+                deployer
             );
-        VerifiableFactory factory = new VerifiableFactory();
-        StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
         StandaloneSingleOwnerHCA account =
             StandaloneSingleOwnerHCA(payable(deployer.deploy(owner, address(implementation), 4338)));
@@ -2075,7 +1783,8 @@ contract StandaloneSingleOwnerHCATest is Test {
             address(defaultExecutor),
             "",
             upgradeSet,
-            IAddressSet(address(0))
+            IAddressSet(address(0)),
+            IStandaloneHCAFactory(address(0))
         );
         account.initializeAccount(abi.encode(owner));
     }
@@ -2116,7 +1825,8 @@ contract StandaloneSingleOwnerHCATest is Test {
                 address(defaultExecutor),
                 "",
                 upgradeSet,
-                predecessorUpgradeSet
+                predecessorUpgradeSet,
+                IStandaloneHCAFactory(address(0))
             );
     }
 
@@ -2228,14 +1938,13 @@ contract StandaloneSingleOwnerHCATest is Test {
         view
         returns (bytes memory)
     {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](2);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: verifiableFactory, value: 0, callData: _resolverDeploymentCall(
+        Execution[] memory executions = new Execution[](2);
+        executions[0] = Execution({target: verifiableFactory, value: 0, callData: _resolverDeploymentCall(
             implementation,
             salt,
             initData
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        executions[1] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             owner,
             counterfactualResolver
         )});
@@ -2269,26 +1978,25 @@ contract StandaloneSingleOwnerHCATest is Test {
         resolverCalls[0] = abi.encodeCall(ITextSetter.setText, (NAME, "avatar", "ipfs://avatar"));
         resolverCalls[1] = abi.encodeCall(INameSetter.setName, (NAME, "alice.eth"));
 
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](5);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
+        Execution[] memory executions = new Execution[](5);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: _registerCallData(
             registrant,
             registrationResolver
         )});
-        executions[1] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
+        executions[1] = Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
             IAddressSetter.setAddress,
             (NAME, COIN_TYPE_ETH, abi.encodePacked(registrant))
         )});
-        executions[2] = HCAOwnerAndSessionValidator.Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
+        executions[2] = Execution({target: registrationResolver, value: 0, callData: abi.encodeCall(
             IMulticallable.multicall,
             (resolverCalls)
         )});
-        executions[3] = HCAOwnerAndSessionValidator.Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
+        executions[3] = Execution({target: usdc, value: 0, callData: abi.encodeWithSelector(
             APPROVE_SELECTOR,
             ethRegistrar,
             1 ether
         )});
-        executions[4] = HCAOwnerAndSessionValidator.Execution({target: defaultReverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
+        executions[4] = Execution({target: defaultReverseRegistrarHCAAdapter, value: 0, callData: abi.encodeWithSelector(
             SET_NAME_WITH_HCA_SELECTOR,
             registrant,
             defaultReverseName
@@ -2329,9 +2037,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     }
 
     function _commitOperationData() internal view returns (bytes memory) {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
             COMMIT_SELECTOR,
             bytes32("commitment")
         )});
@@ -2340,36 +2047,50 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function _singleOperationData(address target, uint256 value, bytes memory callData)
         internal
-        view
+        pure
         returns (bytes memory)
     {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: target, value: value, callData: callData});
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: target, value: value, callData: callData});
         return _operationData(executions);
     }
 
-    function _operationData(HCAOwnerAndSessionValidator.Execution[] memory executions)
-        internal
-        view
-        returns (bytes memory)
-    {
-        return
-            abi.encodePacked(validator.ERC7579_EMISSARY_EXECUTION_MODE(), abi.encode(executions));
+    function _operationData(Execution[] memory executions) internal pure returns (bytes memory) {
+        return _packOperation(HCAOperationHashLib.ERC7579_EMISSARY_EXECUTION_MODE, executions);
     }
 
-    function _erc1271OperationData(HCAOwnerAndSessionValidator.Execution[] memory executions)
+    function _erc1271OperationData(Execution[] memory executions)
         internal
-        view
+        pure
         returns (bytes memory)
     {
-        return abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+        return _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
+    }
+
+    function _packOperation(bytes32 mode, Execution[] memory executions)
+        internal
+        pure
+        returns (bytes memory packed)
+    {
+        packed = abi.encodePacked(bytes2(mode), uint8(executions.length));
+        for (uint256 i; i < executions.length; ++i) {
+            Execution memory execution = executions[i];
+            require(execution.value == 0, "nonzero execution value");
+            require(execution.callData.length <= type(uint24).max, "execution calldata too large");
+            packed = bytes.concat(
+                packed,
+                abi.encodePacked(
+                    execution.target,
+                    uint24(execution.callData.length),
+                    execution.callData
+                )
+            );
+        }
     }
 
     function _erc1271CommitOperationData() internal view returns (bytes memory) {
-        HCAOwnerAndSessionValidator.Execution[] memory executions =
-            new HCAOwnerAndSessionValidator.Execution[](1);
-        executions[0] = HCAOwnerAndSessionValidator.Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeWithSelector(
             COMMIT_SELECTOR,
             bytes32("commitment")
         )});
@@ -2394,23 +2115,6 @@ contract StandaloneSingleOwnerHCATest is Test {
             allowedResolver,
             operationData
         );
-    }
-
-    function _verifySession(bytes32 permissionId, uint256 signerKey, bytes memory operationData)
-        internal
-        returns (bytes4)
-    {
-        bytes32 digest = keccak256(operationData);
-        HCAOwnerAndSessionValidator.Operation memory operation =
-            HCAOwnerAndSessionValidator.Operation({data: operationData});
-        vm.prank(intentExecutor);
-        return
-            validator.verifyExecution(
-                address(hca),
-                digest,
-                _sessionUse(permissionId, signerKey, digest),
-                operation
-            );
     }
 
     function _sessionUse(bytes32 permissionId, uint256 signerKey, bytes32 digest)
@@ -2521,7 +2225,7 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     {}
 
     function callArgsHarness(bytes memory callData) external pure returns (bytes memory) {
-        return _callArgs(callData);
+        return HCAExecutionLib.callArgs(callData);
     }
 
     function isBatchRegistrarPaymentTokenHarness(bytes calldata operationData, address token)
@@ -2529,7 +2233,14 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         view
         returns (bool)
     {
-        return _isBatchRegistrarPaymentToken(operationData, token);
+        if (operationData.length < 32) {
+            return false;
+        }
+        return
+            HCARegistrarPolicyLib.isBatchPaymentToken(
+                HCAOperationHashLib.decode(operationData).executions,
+                token
+            );
     }
 
     function recoverHarness(bytes32 digest, bytes calldata signature)
@@ -2537,7 +2248,11 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         pure
         returns (address)
     {
-        return _recover(digest, signature);
+        address signer = HCASignatureLib.recover(digest, signature);
+        if (signer == address(0)) {
+            revert InvalidSigner();
+        }
+        return signer;
     }
 
     function checkRegistrationPolicyHarness(
@@ -2549,13 +2264,48 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         external
         view
     {
-        _checkRegistrationPolicy(account, owner, resolver, operationData);
+        if (operationData.length < 3) {
+            revert InvalidOperationEncoding();
+        }
+        HCAOperationHashLib.DecodedOperation memory operation =
+            HCAOperationHashLib.decode(operationData);
+        if (!HCAOperationHashLib.isSupportedMode(operation.mode)) {
+            revert InvalidOperationEncoding();
+        }
+        _checkRegistrationExecutions(
+            account,
+            owner,
+            resolver,
+            operation.executions,
+            GasRefund(address(0), 0, 0),
+            address(0),
+            false
+        );
     }
 
-    function checkInitialRegistrationPolicyHarness(
+    function checkRegistrationExecutionsHarness(
         address account,
         address owner,
-        bytes32 permissionId,
+        address resolver,
+        Execution[] calldata executions
+    )
+        external
+        view
+    {
+        _checkRegistrationExecutions(
+            account,
+            owner,
+            resolver,
+            executions,
+            GasRefund(address(0), 0, 0),
+            address(0),
+            false
+        );
+    }
+
+    function checkStatelessRegistrationPolicyHarness(
+        address account,
+        address owner,
         SessionEnableProof calldata proof,
         bytes calldata operationData,
         GasRefund calldata gasRefund
@@ -2563,27 +2313,9 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         external
         view
     {
-        _checkInitialRegistrationPolicy(
-            account,
-            owner,
-            permissionId,
-            proof,
-            operationData,
-            gasRefund
-        );
-    }
-
-    function fundingCallIndexesHarness(
-        Execution[] memory executions,
-        address account,
-        address owner,
-        address token
-    )
-        external
-        pure
-        returns (uint256 permitIndex, uint256 transferIndex)
-    {
-        return _fundingCallIndexes(executions, account, owner, token);
+        (HCAOperationHashLib.DecodedOperation memory operation, ) =
+            _decodeERC1271Operation(operationData);
+        _checkStatelessRegistrationPolicy(account, owner, proof, operation, gasRefund);
     }
 
     function checkResolverBindingHarness(address resolver, bool usesResolver, bool deploysResolver)
@@ -2592,12 +2324,15 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
     {
         _checkResolverBinding(
             resolver,
-            RegistrationPolicyState({usesResolver: usesResolver, deploysResolver: deploysResolver})
+            RegistrationPolicyState({usesResolver: usesResolver, deploysResolver: deploysResolver, authorizedRegistrar: address(
+                0
+            )})
         );
     }
 
     function operationHashHarness(bytes calldata operationData) external pure returns (bytes32) {
-        return _operationHash(operationData);
+        (, bytes32 operationHash) = _decodeERC1271Operation(operationData);
+        return operationHash;
     }
 
     function readUintHarness(bytes memory callData, uint256 offset) external pure returns (uint256) {
@@ -2609,7 +2344,8 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         view
         returns (bytes32)
     {
-        return _singleChainDigest(account, nonce, operationData, GasRefund(address(0), 0, 0));
+        (, bytes32 operationHash) = _decodeERC1271Operation(operationData);
+        return _singleChainDigest(account, nonce, operationHash, GasRefund(address(0), 0, 0));
     }
 
     function singleChainDigestWithRefundHarness(
@@ -2622,7 +2358,8 @@ contract HCAOwnerAndSessionValidatorHarness is HCAOwnerAndSessionValidator {
         view
         returns (bytes32)
     {
-        return _singleChainDigest(account, nonce, operationData, gasRefund);
+        (, bytes32 operationHash) = _decodeERC1271Operation(operationData);
+        return _singleChainDigest(account, nonce, operationHash, gasRefund);
     }
 }
 
@@ -2642,7 +2379,8 @@ contract StandaloneSingleOwnerHCAHarness is StandaloneSingleOwnerHCA {
             defaultExecutor,
             validatorInitData,
             upgradeSet,
-            predecessorUpgradeSet
+            predecessorUpgradeSet,
+            IStandaloneHCAFactory(address(0))
         )
     {}
 

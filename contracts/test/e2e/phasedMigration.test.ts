@@ -20,7 +20,7 @@ import {
   zeroHash,
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
-import { ROLES, STATUS } from "../../script/deploy-constants.js";
+import { FUSES, ROLES, STATUS } from "../../script/deploy-constants.js";
 import { migrationDataComponents } from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
@@ -78,17 +78,26 @@ describe("Phased migration rehearsal", () => {
     const initialLabel = "phaseoldok";
     const firstMigrationLabel = "phasemigrateone";
     const remainingMigrationLabel = "phasemigratetwo";
+    const lockedMigrationLabel = "phasemigratelocked";
 
     await registerViaV1Controller(initialLabel, user);
     await registerViaV1Controller(firstMigrationLabel, user);
     await registerViaV1Controller(remainingMigrationLabel, user);
+    await registerViaV1Controller(lockedMigrationLabel, user);
+    // Wrap and lock before phase 3 freezes v1, so the locked route has a name
+    // to carry through the phases.
+    await wrapLockedV1Name(lockedMigrationLabel, user);
 
     const initialOwner = await env.v1.BaseRegistrar.read.ownerOf([
       idFromLabel(initialLabel),
     ]);
     expect(initialOwner.toLowerCase()).toBe(user.address.toLowerCase());
 
-    createCSVFile(csvFilePath, [firstMigrationLabel, remainingMigrationLabel]);
+    createCSVFile(csvFilePath, [
+      firstMigrationLabel,
+      remainingMigrationLabel,
+      lockedMigrationLabel,
+    ]);
     await preMigrationMain(
       buildMainArgs(env, csvFilePath, {
         limit: 1,
@@ -132,6 +141,16 @@ describe("Phased migration rehearsal", () => {
     const migratedState = await verifyV2State(env, firstMigrationLabel);
     expect(migratedState.status).toBe(STATUS.REGISTERED);
     expect(migratedState.latestOwner.toLowerCase()).toBe(
+      user.address.toLowerCase(),
+    );
+
+    // The locked route reaches v2 through a different controller and receiver
+    // than the unwrapped one, so the phases have to wire both.
+    await migrateLockedV1Name(lockedMigrationLabel, user);
+
+    const lockedState = await verifyV2State(env, lockedMigrationLabel);
+    expect(lockedState.status).toBe(STATUS.REGISTERED);
+    expect(lockedState.latestOwner.toLowerCase()).toBe(
       user.address.toLowerCase(),
     );
 
@@ -233,6 +252,54 @@ describe("Phased migration rehearsal", () => {
       account,
       value: price.base + price.premium,
     });
+  }
+
+  /// Wraps a v1 name and burns CANNOT_UNWRAP, giving the locked migration route
+  /// a name in the form it requires.
+  async function wrapLockedV1Name(label: string, account: Account) {
+    await env.v1.BaseRegistrar.write.safeTransferFrom(
+      [
+        account.address,
+        env.v1.NameWrapper.address,
+        idFromLabel(label),
+        encodeAbiParameters(
+          [
+            { name: "label", type: "string" },
+            { name: "owner", type: "address" },
+            { name: "fuses", type: "uint16" },
+            { name: "resolver", type: "address" },
+          ],
+          [label, account.address, FUSES.CANNOT_UNWRAP, zeroAddress],
+        ),
+      ],
+      { account },
+    );
+  }
+
+  async function migrateLockedV1Name(label: string, account: Account) {
+    const node = namehash(`${label}.eth`);
+    const resolver = await env.v1.ENSRegistry.read.resolver([node]);
+    const data = encodeAbiParameters(
+      [{ type: "tuple", components: migrationDataComponents }],
+      [
+        {
+          label,
+          owner: account.address,
+          subregistry: zeroAddress,
+          resolver,
+        },
+      ],
+    );
+    await env.v1.NameWrapper.write.safeTransferFrom(
+      [
+        account.address,
+        env.v2.LockedMigrationController.address,
+        BigInt(node),
+        1n,
+        data,
+      ],
+      { account },
+    );
   }
 
   async function migrateUnwrappedV1Name(label: string, account: Account) {

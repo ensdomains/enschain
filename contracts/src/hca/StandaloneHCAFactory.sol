@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
+import {IUUPSProxy} from "@ensdomains/verifiable-factory/IUUPSProxy.sol";
 import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -130,10 +131,12 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
             initData
         );
 
-        address deployedImplementation = VERIFIABLE_FACTORY.verifyContract(hca);
+        (, address deployedImplementation) = IUUPSProxy(hca).getVerifiableProxyData();
         if (deployedImplementation != hcaImplementation) {
             revert UnexpectedHCAImplementation(hcaImplementation, deployedImplementation);
         }
+
+        hcaOwners[hca] = owner;
 
         address deployedOwner;
         try IStandaloneHCAOwner(hca).owner() returns (address owner_) {
@@ -145,7 +148,6 @@ contract StandaloneHCAFactory is IStandaloneHCAFactory, Ownable {
             revert UnexpectedHCAOwner(owner, deployedOwner);
         }
 
-        hcaOwners[hca] = owner;
         emit HCADeployed(hca, owner, hcaImplementation, userSalt);
     }
 

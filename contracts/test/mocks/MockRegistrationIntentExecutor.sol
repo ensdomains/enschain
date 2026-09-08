@@ -132,7 +132,7 @@ contract MockRegistrationIntentExecutor is IExecutor {
         return abi.encodePacked(ERC7579_ERC1271_MODE, abi.encode(executions));
     }
 
-    /// @notice Encodes an ERC-7579 pure-emissary execution operation.
+    /// @notice Encodes a compact zero-value ERC-7579 session operation.
     /// @param executions The executions to encode.
     /// @return The encoded operation payload consumed by the validator.
     function encodeSessionOperation(Execution[] calldata executions)
@@ -140,7 +140,23 @@ contract MockRegistrationIntentExecutor is IExecutor {
         pure
         returns (bytes memory)
     {
-        return encodeOperation(executions);
+        bytes memory packed =
+            abi.encodePacked(bytes2(ERC7579_ERC1271_MODE), uint8(executions.length));
+        for (uint256 i; i < executions.length; ++i) {
+            Execution calldata execution = executions[i];
+            if (execution.value != 0 || execution.callData.length > type(uint24).max) {
+                revert InvalidSignature();
+            }
+            packed = bytes.concat(
+                packed,
+                abi.encodePacked(
+                    execution.target,
+                    uint24(execution.callData.length),
+                    execution.callData
+                )
+            );
+        }
+        return packed;
     }
 
     /// @notice Reproduces the production IntentExecutor's no-refund SingleChainOps digest.

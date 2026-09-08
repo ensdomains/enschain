@@ -36,10 +36,10 @@ contract StandaloneHCAFactoryTest is Test {
 
     function setUp() public {
         verifiableFactory = new VerifiableFactory();
+        hcaFactory = new StandaloneHCAFactory(verifiableFactory, address(this));
         implementation = _newImplementation("entry-point");
         otherImplementation = _newImplementation("other-entry-point");
         unapprovedImplementation = _newImplementation("unapproved-entry-point");
-        hcaFactory = new StandaloneHCAFactory(verifiableFactory, address(this));
         hcaFactory.setImplementationApproval(address(implementation), true);
         hcaFactory.setImplementationApproval(address(otherImplementation), true);
     }
@@ -89,6 +89,10 @@ contract StandaloneHCAFactoryTest is Test {
         assertEq(hcaFactory.authorizedOwnerOf(hca), owner);
         assertEq(StandaloneSingleOwnerHCA(payable(hca)).owner(), owner);
         assertEq(verifiableFactory.verifyContract(hca), address(implementation));
+        assertEq(vm.load(hca, bytes32(0)), bytes32(0));
+
+        vm.expectRevert(StandaloneSingleOwnerHCA.StandaloneHCAAlreadyInitialized.selector);
+        StandaloneSingleOwnerHCA(payable(hca)).initializeAccount(abi.encode(otherOwner));
     }
 
     function test_allowsMultipleHCAsForOneOwner() public {
@@ -247,7 +251,8 @@ contract StandaloneHCAFactoryTest is Test {
                 address(new MockExecutorModule()),
                 "",
                 _deployPermissionedAddressSet(address(this)),
-                IAddressSet(address(0))
+                IAddressSet(address(0)),
+                hcaFactory
             );
     }
 

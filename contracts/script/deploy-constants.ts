@@ -196,7 +196,7 @@ export const STATUS = {
   AVAILABLE: 0,
   RESERVED: 1,
   REGISTERED: 2,
-};
+} as const;
 
 // see: INameWrapper.sol
 export const FUSES = {

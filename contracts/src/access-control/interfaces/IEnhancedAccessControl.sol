@@ -8,7 +8,7 @@ pragma solidity ^0.8.20;
 /// * Up to 32 roles and 32 corresponding admin roles
 /// * Up to 15 assignees per role
 ///
-/// @dev Interface selector: `0x8f452d62`
+/// @dev Interface selector: `0x0132e43d`
 interface IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
@@ -118,12 +118,6 @@ interface IEnhancedAccessControl {
         view
         returns (bool);
 
-    /// @notice Checks if any of the roles in the given role bitmap has assignees.
-    /// @param resource The resource to check.
-    /// @param roleBitmap The roles bitmap to check.
-    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
-    function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);
-
     /// @notice Returns the number of assignees for the roles in the given role bitmap.
     /// @param resource The resource to check.
     /// @param roleBitmap The roles bitmap to check.
@@ -133,4 +127,22 @@ interface IEnhancedAccessControl {
         external
         view
         returns (uint256 counts, uint256 mask);
+
+    /// @notice Checks if any of the roles in the given role bitmap has assignees.
+    /// @dev Derivable from `getAssigneeCount()`.
+    /// @param resource The resource to check.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @return `true` if any of the roles in the given role bitmap has assignees, `false` otherwise.
+    function hasAssignees(uint256 resource, uint256 roleBitmap) external view returns (bool);
+
+    /// @notice Checks if account is the only assignee.
+    /// @dev Derivable from `getAssigneeCount()` and `roles()`.
+    /// @param resource The resource to check.
+    /// @param roleBitmap The roles bitmap to check.
+    /// @param account The account to check.
+    /// @return `true` if the only assignee.
+    function isOnlyAssignee(uint256 resource, uint256 roleBitmap, address account)
+        external
+        view
+        returns (bool);
 }

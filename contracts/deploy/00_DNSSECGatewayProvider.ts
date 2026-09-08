@@ -10,6 +10,6 @@ export default execute(
     });
   },
   {
-    tags: ["DNSSECGatewayProvider", "v2"],
+    tags: ["DNSSECGatewayProvider", "v2", "migration:phase1:deploy-v2"],
   },
 );

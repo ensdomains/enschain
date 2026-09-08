@@ -16,7 +16,7 @@ import { expectVar } from "../utils/expectVar.js";
 const network = await hre.network.connect();
 
 async function fixture() {
-  const v1 = await deployV1Fixture(network, true);
+  const v1 = await deployV1Fixture(network, true, false);
   const v2 = await deployV2Fixture(network, true);
   const ethResolver = v1.ownedResolver.address;
   const ensV2Resolver = await network.viem.deployContract("ENSV2Resolver", [

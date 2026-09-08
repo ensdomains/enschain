@@ -1,6 +1,6 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import {
   type KnownProfile,

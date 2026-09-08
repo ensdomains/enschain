@@ -13,7 +13,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSTXTResolver", "v2"],
+    tags: ["DNSTXTResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: ["ContractNamer"],
   },
 );

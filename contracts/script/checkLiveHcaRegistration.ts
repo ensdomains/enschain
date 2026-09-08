@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey } from "viem/accounts";
 
 import { SEPOLIA_USDC } from "./deploy-constants.ts";
 
@@ -258,7 +258,7 @@ type DeferredSummary = {
     destinationPermissionId: string;
     ownerAuthorizationReused?: boolean;
     sourcePolicyInstalledAtCommit: boolean;
-    destinationEnabledAtCommit: boolean;
+    destinationAuthorizationStateless: boolean;
   };
   routes: { commit: DeferredRoute; reveal: DeferredRoute };
 };
@@ -352,11 +352,12 @@ function deferredOwner(
     state = JSON.parse(readFileSync(stateFile, "utf8")) as LiveState;
   }
   if (!state) {
-    const owner = privateKeyToAccount(key as `0x${string}`);
-    const tag = owner.address.slice(2, 10).toLowerCase();
-    const run = Date.now().toString(36).slice(-6);
+    const run = BigInt(generatePrivateKey())
+      .toString(36)
+      .padStart(8, "0")
+      .slice(-8);
     state = {
-      labels: [`hca${tag}${run}a`, `hca${tag}${run}b`],
+      labels: [`hca${run}a`, `hca${run}b`],
       secrets: [generatePrivateKey(), generatePrivateKey()],
       sessionKey: generatePrivateKey(),
       validUntil: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
@@ -937,7 +938,7 @@ function assertDeferred(summary: DeferredSummary, printResult = true) {
   assert.equal(summary.funds.deliveredAtCommit, "1");
   assert(BigInt(summary.funds.deliveredAtReveal) > 1n);
   assert.equal(summary.sessions.sourcePolicyInstalledAtCommit, true);
-  assert.equal(summary.sessions.destinationEnabledAtCommit, true);
+  assert.equal(summary.sessions.destinationAuthorizationStateless, true);
   assert.equal(summary.routes.commit.sourceSignedBySession, true);
   assert.equal(summary.routes.commit.destinationSignedBySession, true);
   assert.equal(summary.routes.commit.walletSignatures, 0);

@@ -6,13 +6,19 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
+import {Execution} from "nexus/types/DataTypes.sol";
 
 import {
     HCAFundingSessionValidator,
     IRhinestoneClaimRouter
 } from "~src/hca/HCAFundingSessionValidator.sol";
+import {HCAOperationHashLib} from "~src/hca/libraries/HCAOperationHashLib.sol";
+import {HCASignatureLib} from "~src/hca/libraries/HCASignatureLib.sol";
+import {HCASmartSessionLib} from "~src/hca/libraries/HCASmartSessionLib.sol";
 
 contract HCAFundingSessionValidatorTest is Test {
     struct ClaimFixture {
@@ -26,10 +32,6 @@ contract HCAFundingSessionValidatorTest is Test {
         bytes32 destinationOpsHash;
         bytes32 qualifierHash;
     }
-
-    bytes4 constant ERC1271_MAGICVALUE = 0x1626ba7e;
-    bytes4 constant PERMIT_SELECTOR =
-        bytes4(keccak256("permit(address,address,uint256,uint256,uint8,bytes32,bytes32)"));
 
     bytes32 constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
@@ -157,14 +159,14 @@ contract HCAFundingSessionValidatorTest is Test {
             abi.encodePacked(
                 bytes1(uint8(4)),
                 config.permissionId,
-                bytes4(0),
+                bytes2(0),
                 new bytes(65 + 410 + 1)
             );
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
         _validate(bytes32(0), zeroLengthProofEnvelope);
 
         HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
-        proof.hashesAndChainIds = new HCAFundingSessionValidator.HashAndChainId[](0);
+        proof.hashesAndChainIds = new HCASmartSessionLib.HashAndChainId[](0);
         bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
         (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
@@ -205,7 +207,7 @@ contract HCAFundingSessionValidatorTest is Test {
         bytes memory operation = _fundingOperation(COMMIT_SOURCE_COST, true);
         (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
         bytes memory envelope = _envelope(proof, digest, claim, operation);
-        envelope[37 + abi.encode(proof).length] ^= 0x01;
+        envelope[33 + _packAuthorization(proof).length] ^= 0x01;
 
         vm.expectRevert(HCAFundingSessionValidator.InvalidSession.selector);
         _validate(digest, envelope);
@@ -260,14 +262,13 @@ contract HCAFundingSessionValidatorTest is Test {
     function test_rejectsInvalidFundingCalls() public {
         HCAFundingSessionValidator.FundingAuthorizationProof memory proof = _ownerProof(config);
 
-        HCAFundingSessionValidator.Execution[] memory executions =
-            new HCAFundingSessionValidator.Execution[](1);
-        executions[0] = HCAFundingSessionValidator.Execution({target: sourceToken, value: 0, callData: abi.encodeCall(
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: sourceToken, value: 0, callData: abi.encodeCall(
             IERC20.transferFrom,
             (owner, makeAddr("wrong-nexus"), COMMIT_SOURCE_COST)
         )});
         bytes memory wrongRecipientOperation =
-            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+            _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
         (bytes memory claim, bytes32 digest) =
             _claim(wrongRecipientOperation, COMMIT_SOURCE_COST, 100_000, 1);
         vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
@@ -275,7 +276,7 @@ contract HCAFundingSessionValidatorTest is Test {
 
         executions[0].callData = hex"deadbeef";
         bytes memory unknownCallOperation =
-            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+            _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
         (claim, digest) = _claim(unknownCallOperation, COMMIT_SOURCE_COST, 100_000, 2);
         vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
         _validate(digest, _envelope(proof, digest, claim, unknownCallOperation));
@@ -295,24 +296,23 @@ contract HCAFundingSessionValidatorTest is Test {
         vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
         _validate(digest, _envelope(proof, digest, claim, hex"00"));
 
-        HCAFundingSessionValidator.Execution[] memory executions =
-            new HCAFundingSessionValidator.Execution[](1);
-        executions[0] = HCAFundingSessionValidator.Execution({target: sourceToken, value: 0, callData: hex"dead"});
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: sourceToken, value: 0, callData: hex"dead"});
         bytes memory shortSelectorOperation =
-            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+            _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
         (claim, digest) = _claim(shortSelectorOperation, COMMIT_SOURCE_COST, 100_000, 2);
         vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
         _validate(digest, _envelope(proof, digest, claim, shortSelectorOperation));
 
         executions[0].callData = abi.encodePacked(IERC20.transferFrom.selector);
         bytes memory shortArgumentsOperation =
-            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+            _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
         (claim, digest) = _claim(shortArgumentsOperation, COMMIT_SOURCE_COST, 100_000, 3);
         vm.expectRevert(HCAFundingSessionValidator.InvalidOperation.selector);
         _validate(digest, _envelope(proof, digest, claim, shortArgumentsOperation));
 
         executions[0].callData = abi.encodeWithSelector(
-            PERMIT_SELECTOR,
+            IERC20Permit.permit.selector,
             makeAddr("wrong-owner"),
             nexus,
             TOTAL_SOURCE_BUDGET,
@@ -322,7 +322,7 @@ contract HCAFundingSessionValidatorTest is Test {
             bytes32(uint256(2))
         );
         bytes memory invalidPermitOperation =
-            abi.encodePacked(validator.ERC7579_ERC1271_MODE(), abi.encode(executions));
+            _packOperation(HCAOperationHashLib.ERC7579_ERC1271_MODE, executions);
         (claim, digest) = _claim(invalidPermitOperation, COMMIT_SOURCE_COST, 100_000, 4);
         vm.expectRevert(HCAFundingSessionValidator.FundingPolicyFailed.selector);
         _validate(digest, _envelope(proof, digest, claim, invalidPermitOperation));
@@ -504,7 +504,7 @@ contract HCAFundingSessionValidatorTest is Test {
                 true,
                 sourceToken,
                 PERMIT2,
-                validator.ERC7579_ERC1271_EMISSARY_EXECUTION_MODE()
+                HCAOperationHashLib.ERC7579_ERC1271_EMISSARY_EXECUTION_MODE
             );
         (bytes memory claim, bytes32 digest) = _claim(operation, COMMIT_SOURCE_COST, 100_000, 1);
 
@@ -680,7 +680,7 @@ contract HCAFundingSessionValidatorTest is Test {
                 includePermit,
                 target,
                 approvalSpender,
-                validator.ERC7579_ERC1271_MODE()
+                HCAOperationHashLib.ERC7579_ERC1271_MODE
             );
     }
 
@@ -695,12 +695,11 @@ contract HCAFundingSessionValidatorTest is Test {
         view
         returns (bytes memory)
     {
-        HCAFundingSessionValidator.Execution[] memory executions =
-            new HCAFundingSessionValidator.Execution[](includePermit ? 3 : 1);
+        Execution[] memory executions = new Execution[](includePermit ? 3 : 1);
         uint256 offset;
         if (includePermit) {
-            executions[offset++] = HCAFundingSessionValidator.Execution({target: target, value: 0, callData: abi.encodeWithSelector(
-                PERMIT_SELECTOR,
+            executions[offset++] = Execution({target: target, value: 0, callData: abi.encodeWithSelector(
+                IERC20Permit.permit.selector,
                 owner,
                 nexus,
                 TOTAL_SOURCE_BUDGET,
@@ -709,16 +708,16 @@ contract HCAFundingSessionValidatorTest is Test {
                 bytes32(uint256(1)),
                 bytes32(uint256(2))
             )});
-            executions[offset++] = HCAFundingSessionValidator.Execution({target: target, value: 0, callData: abi.encodeCall(
+            executions[offset++] = Execution({target: target, value: 0, callData: abi.encodeCall(
                 IERC20.approve,
                 (approvalSpender, type(uint256).max)
             )});
         }
-        executions[offset++] = HCAFundingSessionValidator.Execution({target: target, value: 0, callData: abi.encodeCall(
+        executions[offset++] = Execution({target: target, value: 0, callData: abi.encodeCall(
             IERC20.transferFrom,
             (owner, nexus, pullAmount)
         )});
-        return abi.encodePacked(mode, abi.encode(executions));
+        return _packOperation(mode, executions);
     }
 
     function _claim(
@@ -836,16 +835,16 @@ contract HCAFundingSessionValidatorTest is Test {
         bytes32 arbitrumSessionDigest = _signedSessionHash(arbitrumConfig);
 
         proof.sessionToEnableIndex = 1;
-        proof.hashesAndChainIds = new HCAFundingSessionValidator.HashAndChainId[](3);
-        proof.hashesAndChainIds[0] = HCAFundingSessionValidator.HashAndChainId({chainId: uint64(
+        proof.hashesAndChainIds = new HCASmartSessionLib.HashAndChainId[](3);
+        proof.hashesAndChainIds[0] = HCASmartSessionLib.HashAndChainId({chainId: uint64(
             baseConfig.destinationChainId
         ), sessionDigest: keccak256("destination-session")});
-        proof.hashesAndChainIds[1] = HCAFundingSessionValidator.HashAndChainId({chainId: BASE_SEPOLIA_CHAIN_ID, sessionDigest: baseSessionDigest});
-        proof.hashesAndChainIds[2] = HCAFundingSessionValidator.HashAndChainId({chainId: ARBITRUM_SEPOLIA_CHAIN_ID, sessionDigest: arbitrumSessionDigest});
+        proof.hashesAndChainIds[1] = HCASmartSessionLib.HashAndChainId({chainId: BASE_SEPOLIA_CHAIN_ID, sessionDigest: baseSessionDigest});
+        proof.hashesAndChainIds[2] = HCASmartSessionLib.HashAndChainId({chainId: ARBITRUM_SEPOLIA_CHAIN_ID, sessionDigest: arbitrumSessionDigest});
 
         bytes32[] memory chainSessionHashes = new bytes32[](proof.hashesAndChainIds.length);
         for (uint256 i; i < proof.hashesAndChainIds.length; ++i) {
-            HCAFundingSessionValidator.HashAndChainId memory item = proof.hashesAndChainIds[i];
+            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
             chainSessionHashes[i] = keccak256(
                 abi.encode(CHAIN_SESSION_TYPEHASH, item.chainId, item.sessionDigest)
             );
@@ -901,17 +900,29 @@ contract HCAFundingSessionValidatorTest is Test {
         view
         returns (bytes memory)
     {
-        bytes memory proofData = abi.encode(proof);
+        bytes memory proofData = _packAuthorization(proof);
         return
             abi.encodePacked(
                 bytes1(uint8(4)),
                 config.permissionId,
-                bytes4(uint32(proofData.length)),
                 proofData,
                 _sessionSignature(permit2Digest),
                 claimData,
                 operationData
             );
+    }
+
+    function _packAuthorization(HCAFundingSessionValidator.FundingAuthorizationProof memory proof)
+        internal
+        pure
+        returns (bytes memory packed)
+    {
+        packed = abi.encodePacked(proof.sessionToEnableIndex, uint8(proof.hashesAndChainIds.length));
+        for (uint256 i; i < proof.hashesAndChainIds.length; ++i) {
+            HCASmartSessionLib.HashAndChainId memory item = proof.hashesAndChainIds[i];
+            packed = bytes.concat(packed, abi.encodePacked(item.chainId, item.sessionDigest));
+        }
+        return bytes.concat(packed, abi.encodePacked(proof.ownerR, proof.ownerS, proof.ownerV));
     }
 
     function _sessionSignature(bytes32 permit2Digest) internal view returns (bytes memory) {
@@ -965,33 +976,69 @@ contract HCAFundingSessionValidatorTest is Test {
         return abi.encode(uint256(1), owners);
     }
 
-    function _operationHash(bytes memory operationData) internal pure returns (bytes32) {
-        bytes32 mode;
-        assembly ("memory-safe") {
-            mode := mload(add(operationData, 0x20))
-        }
-        HCAFundingSessionValidator.Execution[] memory executions =
-            abi.decode(_slice(operationData, 32), (HCAFundingSessionValidator.Execution[]));
-        bytes32[] memory executionHashes = new bytes32[](executions.length);
+    function _packOperation(bytes32 mode, Execution[] memory executions)
+        internal
+        pure
+        returns (bytes memory packed)
+    {
+        packed = abi.encodePacked(bytes2(mode), uint8(executions.length));
         for (uint256 i; i < executions.length; ++i) {
-            executionHashes[i] = keccak256(
-                abi.encode(
-                    OPS_TYPEHASH,
-                    executions[i].target,
-                    executions[i].value,
-                    keccak256(executions[i].callData)
+            Execution memory execution = executions[i];
+            assertEq(execution.value, 0);
+            assertLe(execution.callData.length, type(uint24).max);
+            packed = bytes.concat(
+                packed,
+                abi.encodePacked(
+                    execution.target,
+                    uint24(execution.callData.length),
+                    execution.callData
                 )
             );
         }
-        return
-            keccak256(abi.encode(OP_TYPEHASH, mode, keccak256(abi.encodePacked(executionHashes))));
     }
 
-    function _slice(bytes memory data, uint256 start) internal pure returns (bytes memory result) {
-        result = new bytes(data.length - start);
-        for (uint256 i; i < result.length; ++i) {
-            result[i] = data[start + i];
+    function _operationHash(bytes memory operationData) internal pure returns (bytes32) {
+        if (operationData.length < 3) {
+            revert HCAOperationHashLib.InvalidOperationEncoding();
         }
+        bytes2 modePrefix;
+        assembly ("memory-safe") {
+            modePrefix := mload(add(operationData, 0x20))
+        }
+        bytes32 mode = bytes32(modePrefix);
+        uint256 count = uint8(operationData[2]);
+        bytes32[] memory executionHashes = new bytes32[](count);
+        uint256 cursor = 3;
+        for (uint256 i; i < count; ++i) {
+            if (operationData.length < cursor + 23) {
+                revert HCAOperationHashLib.InvalidOperationEncoding();
+            }
+            address target;
+            assembly ("memory-safe") {
+                target := shr(96, mload(add(add(operationData, 0x20), cursor)))
+            }
+            uint256 callDataLength =
+                (uint256(uint8(operationData[cursor + 20])) << 16) |
+                (uint256(uint8(operationData[cursor + 21])) << 8) |
+                uint256(uint8(operationData[cursor + 22]));
+            cursor += 23;
+            if (operationData.length < cursor + callDataLength) {
+                revert HCAOperationHashLib.InvalidOperationEncoding();
+            }
+            bytes32 callDataHash;
+            assembly ("memory-safe") {
+                callDataHash := keccak256(add(add(operationData, 0x20), cursor), callDataLength)
+            }
+            executionHashes[i] = keccak256(
+                abi.encode(OPS_TYPEHASH, target, uint256(0), callDataHash)
+            );
+            cursor += callDataLength;
+        }
+        if (cursor != operationData.length) {
+            revert HCAOperationHashLib.InvalidOperationEncoding();
+        }
+        return
+            keccak256(abi.encode(OP_TYPEHASH, mode, keccak256(abi.encodePacked(executionHashes))));
     }
 }
 
@@ -1010,7 +1057,15 @@ contract HCAFundingSessionValidatorHarness is HCAFundingSessionValidator {
         view
         returns (uint256)
     {
-        return _validateFundingOperation(account, _sessions[configAccount], operationData);
+        if (operationData.length < 3) {
+            revert InvalidOperation();
+        }
+        HCAOperationHashLib.DecodedOperation memory operation =
+            HCAOperationHashLib.decode(operationData);
+        if (!HCAOperationHashLib.isSupportedMode(operation.mode)) {
+            revert InvalidOperation();
+        }
+        return _validateFundingOperation(account, _sessions[configAccount], operation);
     }
 
     function validatePermit2ClaimHarness(bytes32 digest, bytes calldata data, address configAccount)
@@ -1030,6 +1085,10 @@ contract HCAFundingSessionValidatorHarness is HCAFundingSessionValidator {
         pure
         returns (address)
     {
-        return _recover(digest, signature);
+        address signer = HCASignatureLib.recover(digest, signature);
+        if (signer == address(0)) {
+            revert InvalidSession();
+        }
+        return signer;
     }
 }

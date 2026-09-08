@@ -23,7 +23,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSAliasResolver", "v2"],
+    tags: ["DNSAliasResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider", "ContractNamer"],
   },
 );

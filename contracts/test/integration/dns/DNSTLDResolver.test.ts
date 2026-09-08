@@ -362,9 +362,7 @@ describe("DNSTLDResolver", () => {
   describe("DNSTXTResolver", () => {
     const contenthash = "0xabcdef";
     const anotherAddress = "0x1234567812345678123456781234567812345678";
-    const x = `0x${"a".repeat(64)}` as const;
-    const y = `0x${"b".repeat(64)}` as const;
-    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash} xy=${concat([x, y])}`;
+    const context = `a[60]=${testAddress} a[e0]=${anotherAddress} t[url]='${testURL}' d[abc]=${testData} c=${contenthash}`;
     const encodedRRs = encodeRRs([
       makeTXT(basicProfile.name, `ENS1 ${dnsTXTResolverName} ${context}`),
     ]);
@@ -440,36 +438,6 @@ describe("DNSTLDResolver", () => {
             abi: F.dnsTXTResolver.abi,
             errorName: "InvalidDataLength",
             args: [dummyBytes4, 20n],
-          }),
-        ]);
-    });
-
-    it("invalid length: pubkey", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([
-        encodeRRs([
-          makeTXT(
-            basicProfile.name,
-            `ENS1 ${dnsTXTResolverName} xy=${dummyBytes4}`,
-          ),
-        ]),
-      ]);
-      const [res] = makeResolutions({
-        name: basicProfile.name,
-        pubkey: { x, y },
-      });
-      await expect(
-        F.v2.universalResolver.read.resolve([
-          dnsEncodeName(basicProfile.name),
-          res.call,
-        ]),
-      )
-        .toBeRevertedWithCustomError("ResolverError")
-        .withArgs([
-          encodeErrorResult({
-            abi: F.dnsTXTResolver.abi,
-            errorName: "InvalidDataLength",
-            args: [dummyBytes4, 64n],
           }),
         ]);
     });
@@ -565,15 +533,6 @@ describe("DNSTLDResolver", () => {
       });
     });
 
-    it("pubkey()", async () => {
-      const F = await network.networkHelpers.loadFixture(fixture);
-      await F.mockDNSSEC.write.setResponse([encodedRRs]);
-      await F.expectTXT({
-        name: basicProfile.name,
-        pubkey: { x, y },
-      });
-    });
-
     it("multicall", async () => {
       const F = await network.networkHelpers.loadFixture(fixture);
       await F.mockDNSSEC.write.setResponse([encodedRRs]);
@@ -586,7 +545,6 @@ describe("DNSTLDResolver", () => {
         ],
         texts: [{ key: "url", value: testURL }],
         contenthash: { value: contenthash },
-        pubkey: { x, y },
       });
     });
   });

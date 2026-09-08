@@ -66,7 +66,7 @@ import {
   ROLES,
   SEPOLIA_USDC,
 } from "./deploy-constants.js";
-import { ADDR_ABI } from "../test/utils/resolver-abis.ts";
+import { ADDR_ABI, PROFILE_ABI } from "../test/utils/resolver-abis.ts";
 
 const DEPLOYMENT_NETWORK = process.env.DEPLOYMENT_NETWORK ?? "sepolia";
 const HCA_DEPLOYMENT_NETWORK =
@@ -337,6 +337,15 @@ type LiveSessionEnableData = {
   hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
   sessionToEnableIndex: number;
   hcaSessionNonce?: bigint;
+  hcaSessionConfig?: {
+    sessionKey: Address;
+    validUntil: number;
+    resolver: Address;
+    refundToken: Address;
+    maxRefundExchangeRate: bigint;
+    maxRefundGasOverhead: number;
+    maxRefundAmount: bigint;
+  };
 };
 
 function asPrivateKey(value: string): Hex {
@@ -592,23 +601,31 @@ async function ensureFundingSessionValidator() {
     address,
     sourcePublicClient! as unknown as PublicClient,
   );
-  const [intentExecutor, permit2, router] = await Promise.all([
-    sourcePublicClient!.readContract({
-      address,
-      abi: HCAFundingSessionValidator.abi,
-      functionName: "INTENT_EXECUTOR",
-    }),
-    sourcePublicClient!.readContract({
-      address,
-      abi: HCAFundingSessionValidator.abi,
-      functionName: "PERMIT2",
-    }),
-    sourcePublicClient!.readContract({
-      address,
-      abi: HCAFundingSessionValidator.abi,
-      functionName: "ROUTER",
-    }),
-  ]);
+  let bindings: readonly [Address, Address, Address];
+  try {
+    bindings = await Promise.all([
+      sourcePublicClient!.readContract({
+        address,
+        abi: HCAFundingSessionValidator.abi,
+        functionName: "INTENT_EXECUTOR",
+      }),
+      sourcePublicClient!.readContract({
+        address,
+        abi: HCAFundingSessionValidator.abi,
+        functionName: "PERMIT2",
+      }),
+      sourcePublicClient!.readContract({
+        address,
+        abi: HCAFundingSessionValidator.abi,
+        functionName: "ROUTER",
+      }),
+    ]);
+  } catch {
+    throw new Error(
+      `funding-session validator ${address} is incompatible with the stateless HCA source; set HCA_FUNDING_SESSION_VALIDATOR to a compatible deployment`,
+    );
+  }
+  const [intentExecutor, permit2, router] = bindings;
   assertAddress(
     "funding-session validator IntentExecutor",
     intentExecutor,
@@ -679,10 +696,15 @@ async function main() {
   }
 
   const deployments = {
-    verifiableFactory: deployment("VerifiableFactory"),
-    permissionedResolverImpl: deployment("PermissionedResolverImpl"),
-    ethRegistrar: deployment("ETHRegistrar"),
-    ethRegistry: deployment("ETHRegistry"),
+    verifiableFactory: deploymentFromEnv("HCA_VERIFIABLE_FACTORY", [
+      "VerifiableFactory",
+    ]),
+    permissionedResolverImpl: deploymentFromEnv(
+      "HCA_PERMISSIONED_RESOLVER_IMPL",
+      ["PermissionedResolverImpl"],
+    ),
+    ethRegistrar: deploymentFromEnv("HCA_ETH_REGISTRAR", ["ETHRegistrar"]),
+    ethRegistry: deploymentFromEnv("HCA_ETH_REGISTRY", ["ETHRegistry"]),
     paymentToken: deploymentFromEnv("HCA_TEST_PAYMENT_TOKEN", ["MockUSDC"]),
     standaloneHcaFactory: deploymentFromEnv(
       "HCA_STANDALONE_HCA_FACTORY",
@@ -713,9 +735,15 @@ async function main() {
       "UniversalResolverV2",
       "UniversalResolver",
     ]),
-    v1Registry: v1Deployment("ENSRegistry"),
-    defaultReverseRegistrar: v1Deployment("DefaultReverseRegistrar"),
-    reverseRegistrar: v1Deployment("ReverseRegistrar"),
+    v1Registry:
+      (process.env.HCA_V1_REGISTRY as Address | undefined) ??
+      v1Deployment("ENSRegistry"),
+    defaultReverseRegistrar:
+      (process.env.HCA_V1_DEFAULT_REVERSE_REGISTRAR as Address | undefined) ??
+      v1Deployment("DefaultReverseRegistrar"),
+    reverseRegistrar:
+      (process.env.HCA_V1_REVERSE_REGISTRAR as Address | undefined) ??
+      v1Deployment("ReverseRegistrar"),
     intentExecutor: RHINESTONE_INTENT_EXECUTOR,
     gasRefundPaymaster: RHINESTONE_GAS_REFUND_PAYMASTER,
   };
@@ -771,24 +799,31 @@ async function main() {
     deployments.standaloneHcaFactory,
   );
 
-  const validatorBindings = await Promise.all(
-    [
-      "DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER",
-      "REVERSE_REGISTRAR_HCA_ADAPTER",
-      "PERMITTED_RESOLVER_IMPL",
-      "ETH_REGISTRY",
-      "VERIFIABLE_FACTORY",
-      "INTENT_EXECUTOR",
-      "GAS_REFUND_PAYMASTER",
-    ].map(
-      (functionName) =>
-        publicClient.readContract({
-          address: deployments.validator,
-          abi: HCAOwnerAndSessionValidator.abi,
-          functionName: functionName as never,
-        }) as Promise<Address>,
-    ),
-  );
+  let validatorBindings: Address[];
+  try {
+    validatorBindings = await Promise.all(
+      [
+        "DEFAULT_REVERSE_REGISTRAR_HCA_ADAPTER",
+        "REVERSE_REGISTRAR_HCA_ADAPTER",
+        "PERMITTED_RESOLVER_IMPL",
+        "ETH_REGISTRY",
+        "VERIFIABLE_FACTORY",
+        "INTENT_EXECUTOR",
+        "GAS_REFUND_PAYMASTER",
+      ].map(
+        (functionName) =>
+          publicClient.readContract({
+            address: deployments.validator,
+            abi: HCAOwnerAndSessionValidator.abi,
+            functionName: functionName as never,
+          }) as Promise<Address>,
+      ),
+    );
+  } catch {
+    throw new Error(
+      `destination validator ${deployments.validator} is incompatible with the stateless HCA source; set HCA_OWNER_AND_SESSION_VALIDATOR and HCA_STANDALONE_HCA_IMPLEMENTATION to a compatible deployment`,
+    );
+  }
   const [
     boundReverseAdapter,
     boundV1ReverseAdapter,
@@ -1061,21 +1096,8 @@ async function main() {
 
   let sourceSession: Session | undefined;
   let sourcePermissionId: Hex | undefined;
-  let sourceEnableData:
-    | {
-        userSignature: Hex;
-        hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
-        sessionToEnableIndex: number;
-      }
-    | undefined;
-  let destinationEnableData:
-    | {
-        userSignature: Hex;
-        hashesAndChainIds: { chainId: bigint; sessionDigest: Hex }[];
-        sessionToEnableIndex: number;
-        hcaSessionNonce: bigint;
-      }
-    | undefined;
+  let sourceEnableData: LiveSessionEnableData | undefined;
+  let destinationEnableData: LiveSessionEnableData | undefined;
   let sourceAccount: RhinestoneAccount | undefined;
   if (HCA_CROSS_CHAIN || HCA_SAME_CHAIN_USER_PAID_USDC) {
     if (HCA_CROSS_CHAIN_SOURCE === "eoa") {
@@ -1229,6 +1251,15 @@ async function main() {
         hashesAndChainIds: sessionDetails.hashesAndChainIds,
         sessionToEnableIndex: 0,
         hcaSessionNonce,
+        hcaSessionConfig: {
+          sessionKey: session.address,
+          validUntil: Number(validUntil),
+          resolver,
+          refundToken: deployments.paymentToken,
+          maxRefundExchangeRate: MAX_REFUND_EXCHANGE_RATE,
+          maxRefundGasOverhead: Number(MAX_REFUND_GAS_OVERHEAD),
+          maxRefundAmount: MAX_REFUND_AMOUNT,
+        },
       };
       sourceEnableData = {
         userSignature: multiChainSignature,
@@ -1244,6 +1275,29 @@ async function main() {
         },
       });
     }
+  }
+
+  if (!destinationEnableData) {
+    const sessionDetails =
+      await candidateAccount.experimental_getSessionDetails([sessionConfig]);
+    const sessionAuthorization =
+      HCA_MULTI_CHAIN_SESSION_SIGNATURE ??
+      (await candidateAccount.experimental_signEnableSession(sessionDetails));
+    destinationEnableData = {
+      userSignature: sessionAuthorization,
+      hashesAndChainIds: sessionDetails.hashesAndChainIds,
+      sessionToEnableIndex: 0,
+      hcaSessionNonce,
+      hcaSessionConfig: {
+        sessionKey: session.address,
+        validUntil: Number(validUntil),
+        resolver,
+        refundToken: deployments.paymentToken,
+        maxRefundExchangeRate: MAX_REFUND_EXCHANGE_RATE,
+        maxRefundGasOverhead: Number(MAX_REFUND_GAS_OVERHEAD),
+        maxRefundAmount: MAX_REFUND_AMOUNT,
+      },
+    };
   }
 
   const firstAccount = initiallyDeployed
@@ -1310,9 +1364,6 @@ async function main() {
         paymentToken: deployments.paymentToken,
       });
 
-  const sessionEnabled =
-    await firstAccount.experimental_isSessionEnabled(sessionConfig);
-
   const commitments = await Promise.all(
     labels.map((label, index) =>
       makeCommitment(
@@ -1343,7 +1394,6 @@ async function main() {
         destinationPermissionId: permissionId,
         validUntil,
         initiallyDeployed,
-        destinationSessionEnabled: sessionEnabled,
         sourceWalletSignatureCount: () => sourceWalletSignatureCount,
         hcaOwnerSignatureCount: () => hcaOwnerSignatureCount,
         recordSourceWalletSignature: countSourceWalletSignature,
@@ -1394,30 +1444,6 @@ async function main() {
         | "permit-pull",
     });
     const firstRegistrationCalls: Call[] = [];
-    if (!sessionEnabled) {
-      firstRegistrationCalls.push({
-        to: deployments.validator,
-        value: 0n,
-        data: encodeFunctionData({
-          abi: HCAOwnerAndSessionValidator.abi,
-          functionName: HCA_USER_PAID_USDC
-            ? "enableSessionWithRefund"
-            : "enableSession",
-          args: HCA_USER_PAID_USDC
-            ? [
-                permissionId,
-                session.address,
-                Number(validUntil),
-                resolver,
-                deployments.paymentToken,
-                MAX_REFUND_EXCHANGE_RATE,
-                Number(MAX_REFUND_GAS_OVERHEAD),
-                MAX_REFUND_AMOUNT,
-              ]
-            : [permissionId, session.address, Number(validUntil), resolver],
-        }),
-      });
-    }
     if (HCA_USER_PAID_USDC) {
       firstRegistrationCalls.push({
         to: deployments.ethRegistrar,
@@ -1442,6 +1468,7 @@ async function main() {
       );
     }
 
+    const hcaOwnerSignaturesBeforeFirstRegistration = hcaOwnerSignatureCount;
     const firstRegistration = await executeCrossChainRegistration({
       account: sourceAccount!,
       recipient: recipientAccount.config,
@@ -1469,9 +1496,9 @@ async function main() {
         ? "new-user cross-chain deploy and commit"
         : "new-user cross-chain registration",
     });
-    if (hcaOwnerSignatureCount !== 0) {
+    if (hcaOwnerSignatureCount !== hcaOwnerSignaturesBeforeFirstRegistration) {
       throw new Error(
-        `cross-chain registration requested ${hcaOwnerSignatureCount} additional HCA owner signatures`,
+        "cross-chain registration requested an additional HCA owner signature",
       );
     }
 
@@ -1616,11 +1643,6 @@ async function main() {
       ...baseAccountConfig,
       initData: { address: hca },
     });
-    if (!(await sessionAccount.experimental_isSessionEnabled(sessionConfig))) {
-      throw new Error(
-        "fixed HCA session was not enabled by the Permit2-authorized intent",
-      );
-    }
     const hcaBalanceAfterCrossChain = (await publicClient.readContract({
       address: deployments.paymentToken,
       abi: MockERC20.abi,
@@ -1650,10 +1672,12 @@ async function main() {
           signers: {
             type: "experimental_session",
             session: sessionConfig,
+            enableData: destinationEnableData,
             verifyExecutions: true,
           },
           permissionId,
           expectedMode: MODE_ERC1271,
+          expectedSessionMode: "05",
           expectedSetupOps: 0,
           feeToken: deployments.paymentToken,
           protocolTokenSpend: prices[0],
@@ -1695,10 +1719,12 @@ async function main() {
       signers: {
         type: "experimental_session",
         session: sessionConfig,
+        enableData: destinationEnableData,
         verifyExecutions: true,
       },
       permissionId,
       expectedMode: MODE_ERC1271,
+      expectedSessionMode: "05",
       expectedSetupOps: 0,
       ...(HCA_USER_PAID_USDC && {
         feeToken: deployments.paymentToken,
@@ -1722,10 +1748,12 @@ async function main() {
       signers: {
         type: "experimental_session",
         session: sessionConfig,
+        enableData: destinationEnableData,
         verifyExecutions: true,
       },
       permissionId,
       expectedMode: MODE_ERC1271,
+      expectedSessionMode: "05",
       expectedSetupOps: 0,
       ...(HCA_USER_PAID_USDC && {
         feeToken: deployments.paymentToken,
@@ -1794,56 +1822,28 @@ async function main() {
     return;
   }
 
-  const firstCommitCalls: Call[] = HCA_SAME_CHAIN_USER_PAID_USDC
-    ? []
-    : [...(sameChainFunding?.calls ?? [])];
-  if (!sessionEnabled) {
-    firstCommitCalls.push({
-      to: deployments.validator,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: HCAOwnerAndSessionValidator.abi,
-        functionName: HCA_SAME_CHAIN_USER_PAID_USDC
-          ? "enableSessionWithRefund"
-          : "enableSession",
-        args: HCA_SAME_CHAIN_USER_PAID_USDC
-          ? [
-              permissionId,
-              session.address,
-              Number(validUntil),
-              resolver,
-              deployments.paymentToken,
-              MAX_REFUND_EXCHANGE_RATE,
-              Number(MAX_REFUND_GAS_OVERHEAD),
-              MAX_REFUND_AMOUNT,
-            ]
-          : [permissionId, session.address, Number(validUntil), resolver],
-      }),
-    });
-  }
-  firstCommitCalls.push({
-    to: deployments.ethRegistrar,
-    value: 0n,
-    data: encodeFunctionData({
-      abi: ETHRegistrar.abi,
-      functionName: "commit",
-      args: [commitments[0]],
-    }),
-  });
-
   const firstCommit = await executeIntent({
     account: firstAccount,
-    calls: firstCommitCalls,
-    ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
-      signers: {
-        type: "experimental_session" as const,
-        session: sessionConfig,
-        enableData: destinationEnableData,
-        verifyExecutions: true,
+    calls: [
+      ...(HCA_SAME_CHAIN_USER_PAID_USDC ? [] : (sameChainFunding?.calls ?? [])),
+      {
+        to: deployments.ethRegistrar,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: ETHRegistrar.abi,
+          functionName: "commit",
+          args: [commitments[0]],
+        }),
       },
-      permissionId,
-      ...(destinationEnableData && { expectedSessionMode: "05" as const }),
-    }),
+    ],
+    signers: {
+      type: "experimental_session",
+      session: sessionConfig,
+      enableData: destinationEnableData,
+      verifyExecutions: true,
+    },
+    permissionId,
+    expectedSessionMode: "05",
     expectedMode: MODE_ERC1271,
     expectedSetupOps: initiallyDeployed ? 0 : 1,
     ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
@@ -1857,13 +1857,10 @@ async function main() {
     phase: "new-user commit",
   });
   const expectedSessionAuthorizationSignatures =
-    HCA_SAME_CHAIN_USER_PAID_USDC &&
-    (sessionEnabled || HCA_MULTI_CHAIN_SESSION_SIGNATURE)
-      ? 0
-      : 1;
+    HCA_MULTI_CHAIN_SESSION_SIGNATURE ? 0 : 1;
   if (hcaOwnerSignatureCount !== expectedSessionAuthorizationSignatures) {
     throw new Error(
-      `new-user commit: expected ${expectedSessionAuthorizationSignatures} session authorization signatures, got ${hcaOwnerSignatureCount}`,
+      `same-chain route: expected ${expectedSessionAuthorizationSignatures} session authorization signatures, got ${hcaOwnerSignatureCount}`,
     );
   }
   if (HCA_DRY_RUN_ONLY) {
@@ -1901,10 +1898,12 @@ async function main() {
       signers: {
         type: "experimental_session",
         session: sessionConfig,
+        enableData: destinationEnableData,
         verifyExecutions: true,
       },
       permissionId,
       expectedMode: MODE_ERC1271,
+      expectedSessionMode: "05",
       expectedSetupOps: initiallyDeployed ? 0 : 1,
       phase: "new-user reveal",
     });
@@ -1933,10 +1932,11 @@ async function main() {
     ...baseAccountConfig,
     initData: { address: hca },
   });
-  if (!(await existingAccount.experimental_isSessionEnabled(sessionConfig))) {
-    throw new Error("fixed HCA session was not enabled by the first intent");
+  if (await existingAccount.experimental_isSessionEnabled(sessionConfig)) {
+    throw new Error(
+      "stateless HCA session unexpectedly wrote enablement state",
+    );
   }
-
   const funding = await verifySameChainWalletFunding(
     sameChainFunding!,
     HCA_SAME_CHAIN_USER_PAID_USDC ? firstCommit.feePayment!.totalCharge : 0n,
@@ -1957,10 +1957,12 @@ async function main() {
     signers: {
       type: "experimental_session",
       session: sessionConfig,
+      enableData: destinationEnableData,
       verifyExecutions: true,
     },
     permissionId,
     expectedMode: MODE_ERC1271,
+    expectedSessionMode: "05",
     expectedSetupOps: 0,
     ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
       feeToken: deployments.paymentToken,
@@ -1974,6 +1976,23 @@ async function main() {
     resolver,
     deployments,
     owner.address,
+  );
+  console.error(
+    JSON.stringify(
+      {
+        checkpoint: "new-user registration confirmed",
+        name: `${labels[0]}.eth`,
+        owner: owner.address,
+        hca,
+        resolver,
+        commitTransactionHash: firstCommit.transactionHash,
+        revealTransactionHash: firstReveal.transactionHash,
+        commitGasUsed: firstCommit.gasUsed,
+        revealGasUsed: firstReveal.gasUsed,
+        roundTripGasUsed: firstCommit.gasUsed + firstReveal.gasUsed,
+      },
+      jsonReplacer,
+    ),
   );
 
   const secondCommit = await executeIntent({
@@ -1992,10 +2011,12 @@ async function main() {
     signers: {
       type: "experimental_session",
       session: sessionConfig,
+      enableData: destinationEnableData,
       verifyExecutions: true,
     },
     permissionId,
     expectedMode: MODE_ERC1271,
+    expectedSessionMode: "05",
     expectedSetupOps: 0,
     ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
       feeToken: deployments.paymentToken,
@@ -2018,10 +2039,12 @@ async function main() {
     signers: {
       type: "experimental_session",
       session: sessionConfig,
+      enableData: destinationEnableData,
       verifyExecutions: true,
     },
     permissionId,
     expectedMode: MODE_ERC1271,
+    expectedSessionMode: "05",
     expectedSetupOps: 0,
     ...(HCA_SAME_CHAIN_USER_PAID_USDC && {
       feeToken: deployments.paymentToken,
@@ -2658,7 +2681,6 @@ async function runDeferredCrossChainRegistration({
   destinationPermissionId,
   validUntil,
   initiallyDeployed,
-  destinationSessionEnabled,
   sourceWalletSignatureCount,
   hcaOwnerSignatureCount,
   recordSourceWalletSignature,
@@ -2682,7 +2704,6 @@ async function runDeferredCrossChainRegistration({
   destinationPermissionId: Hex;
   validUntil: bigint;
   initiallyDeployed: boolean;
-  destinationSessionEnabled: boolean;
   sourceWalletSignatureCount: () => number;
   hcaOwnerSignatureCount: () => number;
   recordSourceWalletSignature: () => void;
@@ -2740,36 +2761,17 @@ async function runDeferredCrossChainRegistration({
       walletSignatures: 0,
     };
   } else {
-    const firstCalls: Call[] = [];
-    if (!destinationSessionEnabled) {
-      firstCalls.push({
-        to: deployments.validator,
+    const firstCalls: Call[] = [
+      {
+        to: deployments.ethRegistrar,
         value: 0n,
         data: encodeFunctionData({
-          abi: HCAOwnerAndSessionValidator.abi,
-          functionName: "enableSessionWithRefund",
-          args: [
-            destinationPermissionId,
-            session.address,
-            Number(validUntil),
-            resolver,
-            deployments.paymentToken,
-            MAX_REFUND_EXCHANGE_RATE,
-            Number(MAX_REFUND_GAS_OVERHEAD),
-            MAX_REFUND_AMOUNT,
-          ],
+          abi: ETHRegistrar.abi,
+          functionName: "commit",
+          args: [commitment],
         }),
-      });
-    }
-    firstCalls.push({
-      to: deployments.ethRegistrar,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: ETHRegistrar.abi,
-        functionName: "commit",
-        args: [commitment],
-      }),
-    });
+      },
+    ];
     firstRoute = await executeSessionCrossChainRegistration({
       account: sourceAccount,
       recipient: destinationAccount.config,
@@ -2788,9 +2790,7 @@ async function runDeferredCrossChainRegistration({
           },
           [sepolia.id]: {
             session: destinationSession,
-            ...(!destinationSessionEnabled && {
-              enableData: destinationEnableData,
-            }),
+            enableData: destinationEnableData,
             verifyExecutions: true,
           },
         },
@@ -2798,7 +2798,7 @@ async function runDeferredCrossChainRegistration({
       },
       sourcePermissionId,
       destinationPermissionId,
-      expectedDestinationSessionMode: destinationSessionEnabled ? "03" : "04",
+      expectedDestinationSessionMode: "04",
       expectedSourceSetupOps: 1,
       expectedRecipientSetupOps: initiallyDeployed ? 0 : 1,
       sourceWalletSignatureCount,
@@ -2850,14 +2850,8 @@ async function runDeferredCrossChainRegistration({
     functionName: "isInitialized",
     args: [sourceAddress],
   });
-  const destinationSessionIsEnabled =
-    await destinationSessionAccount.experimental_isSessionEnabled(
-      destinationSession,
-    );
-  if (!sourcePolicyEnabled || !destinationSessionIsEnabled) {
-    throw new Error(
-      "the commit route did not install the source policy and enable the HCA session",
-    );
+  if (!sourcePolicyEnabled) {
+    throw new Error("the commit route did not install the source policy");
   }
 
   const afterCommit = await readDeferredFundingState({
@@ -2922,6 +2916,7 @@ async function runDeferredCrossChainRegistration({
         },
         [sepolia.id]: {
           session: destinationSession,
+          enableData: destinationEnableData,
           verifyExecutions: true,
         },
       },
@@ -2929,7 +2924,7 @@ async function runDeferredCrossChainRegistration({
     },
     sourcePermissionId,
     destinationPermissionId,
-    expectedDestinationSessionMode: "03",
+    expectedDestinationSessionMode: "04",
     expectedSourceSetupOps: 0,
     expectedRecipientSetupOps: 0,
     sourceWalletSignatureCount,
@@ -3038,7 +3033,7 @@ async function runDeferredCrossChainRegistration({
             HCA_MULTI_CHAIN_SESSION_SIGNATURE && !HCA_RESUME_DEFERRED,
           ),
           sourcePolicyInstalledAtCommit: sourcePolicyEnabled,
-          destinationEnabledAtCommit: destinationSessionIsEnabled,
+          destinationAuthorizationStateless: true,
         },
         routes: { commit: firstRoute, reveal: revealRoute },
         registrationPriceBeforeCommit: price,
@@ -4599,39 +4594,63 @@ async function preparePermissionlessCrossChainRegistration({
     await assertCode("permissionlessly deployed HCA", hca);
   }
 
+  const commit = await executePermissionlessCommit({
+    commitment,
+    ethRegistrar: deployments.ethRegistrar,
+    phase: "permissionless cross-chain commit",
+  });
+
+  return {
+    phase: "permissionless deploy and commit",
+    deploymentTransactionHash,
+    commitTransactionHash: commit.transactionHash,
+    deploymentGasUsed,
+    commitGasUsed: commit.gasUsed,
+    gasUsed: deploymentGasUsed + commit.gasUsed,
+  };
+}
+
+async function executePermissionlessCommit({
+  commitment,
+  ethRegistrar,
+  phase,
+}: {
+  commitment: Hex;
+  ethRegistrar: Address;
+  phase: string;
+}) {
   await publicClient.simulateContract({
     account: relayer,
-    address: deployments.ethRegistrar,
+    address: ethRegistrar,
     abi: ETHRegistrar.abi,
     functionName: "commit",
     args: [commitment],
   });
-  const commitTransactionHash = await walletClient.writeContract({
+  const transactionHash = await walletClient.writeContract({
     account: relayer,
     chain: sepolia,
-    address: deployments.ethRegistrar,
+    address: ethRegistrar,
     abi: ETHRegistrar.abi,
     functionName: "commit",
     args: [commitment],
     maxFeePerGas: OPERATOR_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: OPERATOR_MAX_PRIORITY_FEE_PER_GAS,
   });
-  const commitReceipt = await publicClient.waitForTransactionReceipt({
-    hash: commitTransactionHash,
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: transactionHash,
   });
-  if (commitReceipt.status !== "success") {
-    throw new Error(
-      `permissionless commitment reverted: ${commitTransactionHash}`,
-    );
+  if (receipt.status !== "success") {
+    throw new Error(`permissionless commitment reverted: ${transactionHash}`);
   }
 
   return {
-    phase: "permissionless deploy and commit",
-    deploymentTransactionHash,
-    commitTransactionHash,
-    deploymentGasUsed,
-    commitGasUsed: commitReceipt.gasUsed,
-    gasUsed: deploymentGasUsed + commitReceipt.gasUsed,
+    phase,
+    transactionHash,
+    setupOps: 0,
+    mode: "permissionless",
+    gasUsed: receipt.gasUsed,
+    gasRefunds: [],
+    feePayment: undefined,
   };
 }
 
@@ -4975,10 +4994,12 @@ async function waitForCommitment(commitment: Hex, ethRegistrar: Address) {
       functionName: "MIN_COMMITMENT_AGE",
     }) as Promise<bigint>,
   ]);
-  const latest = await publicClient.getBlock();
   const validAt = committedAt + minAge;
-  if (latest.timestamp <= validAt) {
-    await Bun.sleep(Number(validAt - latest.timestamp + 2n) * 1000);
+  let latest = await publicClient.getBlock();
+  while (latest.timestamp <= validAt) {
+    const remaining = validAt - latest.timestamp + 1n;
+    await Bun.sleep(Number(remaining > 2n ? remaining : 2n) * 1000);
+    latest = await publicClient.getBlock();
   }
 }
 
@@ -5008,7 +5029,21 @@ async function registrationCalls({
   const name = `${label}.eth`;
   const calls: Call[] = [];
   const resolverCode = await publicClient.getCode({ address: resolver });
-  if (!resolverCode || resolverCode === "0x") {
+  const deploysResolver = !resolverCode || resolverCode === "0x";
+  if (deploysResolver) {
+    const encodedName = dnsEncodeName(name);
+    const resolverCalls = [
+      encodeFunctionData({
+        abi: PermissionedResolver.abi,
+        functionName: "setAddress",
+        args: [encodedName, COIN_TYPE_ETH, owner.address],
+      }),
+      encodeFunctionData({
+        abi: PermissionedResolver.abi,
+        functionName: "setText",
+        args: [encodedName, "avatar", `https://euc.li/${name}`],
+      }),
+    ];
     calls.push({
       to: deployments.verifiableFactory,
       value: 0n,
@@ -5026,7 +5061,7 @@ async function registrationCalls({
                 { account: hca, roleBitmap: ROLES.ALL },
                 { account: owner.address, roleBitmap: ROLES.ALL },
               ],
-              [],
+              resolverCalls,
             ],
           }),
         ],
@@ -5061,33 +5096,28 @@ async function registrationCalls({
         ],
       }),
     },
-    {
-      to: resolver,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: PermissionedResolver.abi,
-        functionName: "setAddress",
-        args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
-      }),
-    },
-    {
-      to: resolver,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: PermissionedResolver.abi,
-        functionName: "setText",
-        args: [dnsEncodeName(name), "url", `https://example.com/${label}`],
-      }),
-    },
-    {
-      to: resolver,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: PermissionedResolver.abi,
-        functionName: "setName",
-        args: [dnsEncodeName(getReverseName(owner.address)), name],
-      }),
-    },
+    ...(!deploysResolver
+      ? [
+          {
+            to: resolver,
+            value: 0n,
+            data: encodeFunctionData({
+              abi: PermissionedResolver.abi,
+              functionName: "setAddress",
+              args: [dnsEncodeName(name), COIN_TYPE_ETH, owner.address],
+            }),
+          },
+          {
+            to: resolver,
+            value: 0n,
+            data: encodeFunctionData({
+              abi: PermissionedResolver.abi,
+              functionName: "setText",
+              args: [dnsEncodeName(name), "avatar", `https://euc.li/${name}`],
+            }),
+          },
+        ]
+      : []),
     {
       to: deployments.defaultReverseRegistrarAdapter,
       value: 0n,
@@ -5161,13 +5191,42 @@ async function verifyRegistration(
     throw new Error("resolver roles were not retained for both wallet and HCA");
   }
 
-  const resolvedAddress = (await publicClient.readContract({
-    address: resolver,
+  const forwardCall = encodeFunctionData({
     abi: ADDR_ABI,
     functionName: "addr",
     args: [node],
-  })) as Address;
+  });
+  const resolvedAddressData = (await publicClient.readContract({
+    address: resolver,
+    abi: PermissionedResolver.abi,
+    functionName: "resolve",
+    args: [dnsEncodeName(name), forwardCall],
+  })) as Hex;
+  const resolvedAddress = decodeFunctionResult({
+    abi: ADDR_ABI,
+    functionName: "addr",
+    data: resolvedAddressData,
+  }) as Address;
   assertAddress("resolver address", resolvedAddress, expectedOwner);
+  const avatarCall = encodeFunctionData({
+    abi: PROFILE_ABI,
+    functionName: "text",
+    args: [node, "avatar"],
+  });
+  const avatarData = (await publicClient.readContract({
+    address: resolver,
+    abi: PermissionedResolver.abi,
+    functionName: "resolve",
+    args: [dnsEncodeName(name), avatarCall],
+  })) as Hex;
+  const avatar = decodeFunctionResult({
+    abi: PROFILE_ABI,
+    functionName: "text",
+    data: avatarData,
+  }) as string;
+  if (avatar !== `https://euc.li/${name}`) {
+    throw new Error(`resolver avatar=${avatar}`);
+  }
   const defaultPrimary = (await publicClient.readContract({
     address: deployments.defaultReverseRegistrar,
     abi: DefaultReverseRegistrar.abi,
@@ -5198,11 +5257,6 @@ async function verifyRegistration(
     args: [expectedOwner, COIN_TYPE_ETH],
   })) as [string, Address, Address];
   if (reversePrimary !== name) throw new Error(`UR reverse=${reversePrimary}`);
-  const forwardCall = encodeFunctionData({
-    abi: ADDR_ABI,
-    functionName: "addr",
-    args: [node],
-  });
   const [answer] = (await publicClient.readContract({
     address: deployments.universalResolver,
     abi: UniversalResolverV2.abi,
