@@ -1164,6 +1164,9 @@ export type HandoverPlan = {
   /// Addresses the plan moves a token away from. Each has to approve the
   /// batcher before the batch runs.
   holders: Address[];
+  /// Who holds the name itself right now — which is what a later check has to
+  /// compare against, since it may not be the actor the corpus declares.
+  nameHolder: Address;
 };
 
 const sameAddress = (a: Address, b: Address): boolean =>
@@ -1205,13 +1208,10 @@ export function planHandover(
 ): HandoverPlan {
   const scenario = row.scenario;
   const form = v1Form(scenario);
-  const calls: PlannedCall[] = [];
-  const skips: HandoverSkip[] = [];
-  const holders: Address[] = [];
+  const topLabel = scenario.top_level_label;
+  const wrapped = isWrapped(form);
 
-  /// Returns whether the subject ends up with the recipient — either because a
-  /// transfer was planned, or because it is already there.
-  const move = (args: {
+  type Subject = {
     subject: string;
     wrapped: boolean;
     holder: Address;
@@ -1219,46 +1219,22 @@ export function planHandover(
     expiry: bigint;
     tokenId: bigint;
     node: Hex;
-  }): boolean => {
-    const { subject, wrapped, holder, fuses, expiry, tokenId, node } = args;
-    if (sameAddress(holder, to)) return true;
-    if (holder === zeroAddress) {
-      skips.push({ subject, reason: "no v1 holder" });
-      return false;
-    }
-    if (!wrapped && sameAddress(holder, ctx.addresses.wrapper)) {
-      skips.push({ subject, reason: "held by the NameWrapper" });
-      return false;
-    }
-    const blocked = wrapped
-      ? wrapperTransferBlock(fuses, expiry, state.now)
-      : null;
-    if (blocked) {
-      skips.push({ subject, reason: blocked });
-      return false;
-    }
-    holders.push(holder);
-    calls.push(
-      ...transferNameCalls({
-        wrapped,
-        signer: BATCHER,
-        from: holder,
-        to,
-        tokenId,
-        node,
-        addresses: ctx.addresses,
-        label:
-          subject === scenario.name
-            ? `${row.fixture_id} handover`
-            : `${row.fixture_id} handover (${subject})`,
-      }),
-    );
-    return true;
   };
 
-  const topLabel = scenario.top_level_label;
-  const wrapped = isWrapped(form);
-  const moved = move({
+  /// Why this subject cannot move, or null when it can. A subject already at
+  /// the recipient needs no calls and blocks nothing.
+  const refusal = (s: Subject): string | null => {
+    if (sameAddress(s.holder, to)) return null;
+    if (s.holder === zeroAddress) return "no v1 holder";
+    if (!s.wrapped && sameAddress(s.holder, ctx.addresses.wrapper)) {
+      return "held by the NameWrapper";
+    }
+    return s.wrapped
+      ? wrapperTransferBlock(s.fuses, s.expiry, state.now)
+      : null;
+  };
+
+  const name: Subject = {
     subject: scenario.name,
     wrapped,
     holder: wrapped ? state.wrapperOwner : state.registrant,
@@ -1266,29 +1242,63 @@ export function planHandover(
     expiry: state.wrapperExpiry,
     tokenId: tokenIdOf(topLabel),
     node: namehash(scenario.name) as Hex,
-  });
+  };
 
-  // The parent travels only with a child that travels. Moving it alone splits a
-  // pair whose whole reason for going together is that neither wallet can drive
-  // the scenario without the other: the recipient could not migrate a subname it
-  // does not hold, and the actor left holding the subname could no longer
-  // migrate the parent above it.
+  // A subname and the name above it are one unit. The helper refuses a subname
+  // whose parent has not migrated, and only the parent's owner can migrate the
+  // parent — so a wallet holding one without the other can drive neither. Both
+  // are therefore decided before either is scheduled: whichever is refused, the
+  // pair stays put.
+  const subjects: Subject[] = [name];
   if (isChild(form)) {
-    const parent = `${topLabel}.eth`;
-    if (moved) {
-      move({
-        subject: parent,
-        wrapped: true,
-        holder: state.parentWrapperOwner ?? zeroAddress,
-        fuses: state.parentWrapperFuses ?? 0,
-        expiry: state.parentWrapperExpiry ?? 0n,
-        tokenId: tokenIdOf(topLabel),
-        node: namehash(parent) as Hex,
-      });
-    } else {
-      skips.push({ subject: parent, reason: "its child stayed" });
-    }
+    subjects.push({
+      subject: `${topLabel}.eth`,
+      wrapped: true,
+      holder: state.parentWrapperOwner ?? zeroAddress,
+      fuses: state.parentWrapperFuses ?? 0,
+      expiry: state.parentWrapperExpiry ?? 0n,
+      tokenId: tokenIdOf(topLabel),
+      node: namehash(`${topLabel}.eth`) as Hex,
+    });
   }
 
-  return { calls, skips, holders };
+  const refusals = subjects.map((s) => ({ subject: s, reason: refusal(s) }));
+  const refused = refusals.find((r) => r.reason);
+  if (refused) {
+    return {
+      calls: [],
+      skips: refusals.map((r) => ({
+        subject: r.subject.subject,
+        reason:
+          r.reason ??
+          (r.subject === name ? "its parent stayed" : "its child stayed"),
+      })),
+      holders: [],
+      nameHolder: name.holder,
+    };
+  }
+
+  const calls: PlannedCall[] = [];
+  const holders: Address[] = [];
+  for (const s of subjects) {
+    if (sameAddress(s.holder, to)) continue;
+    holders.push(s.holder);
+    calls.push(
+      ...transferNameCalls({
+        wrapped: s.wrapped,
+        signer: BATCHER,
+        from: s.holder,
+        to,
+        tokenId: s.tokenId,
+        node: s.node,
+        addresses: ctx.addresses,
+        label:
+          s.subject === scenario.name
+            ? `${row.fixture_id} handover`
+            : `${row.fixture_id} handover (${s.subject})`,
+      }),
+    );
+  }
+
+  return { calls, skips: [], holders, nameHolder: name.holder };
 }

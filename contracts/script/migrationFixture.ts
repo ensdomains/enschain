@@ -1440,6 +1440,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
   // Names the recipient does not end up holding, which is decided by the name's
   // own transfer rather than by anything planned around it.
   const stayed = new Set<string>();
+  const nameHolder = new Map<string, Address>();
   for (const row of selected) {
     const plan = planHandover(row, ctx, target, current.get(row.fixture_id)!);
     for (const skip of plan.skips) {
@@ -1447,6 +1448,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
       if (skip.subject === row.scenario.name) stayed.add(row.fixture_id);
     }
     for (const holder of plan.holders) holders.add(holder);
+    nameHolder.set(row.fixture_id, plan.nameHolder);
     if (plan.calls.length) perName.set(row.fixture_id, plan.calls);
   }
 
@@ -1471,9 +1473,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
   for (const row of selected) {
     if (perName.has(row.fixture_id) || stayed.has(row.fixture_id)) continue;
     byId.get(row.fixture_id)!.handedOverTo = target;
-    byId.get(row.fixture_id)!.handedOverFrom = preMigrationOwnerAlias(
-      row.scenario,
-    );
+    byId.get(row.fixture_id)!.handedOverFrom = nameHolder.get(row.fixture_id);
   }
   saveRunState(opts, state);
 
@@ -1534,9 +1534,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
         const run = byId.get(fixtureId);
         if (run && !stayed.has(fixtureId)) {
           run.handedOverTo = target;
-          run.handedOverFrom = preMigrationOwnerAlias(
-            rowById.get(fixtureId)!.scenario,
-          );
+          run.handedOverFrom = nameHolder.get(fixtureId);
         }
         saveRunState(opts, state);
       },
@@ -1660,7 +1658,7 @@ function addCommon(command: Command): Command {
       "--scenarios <scenarios>",
       "Comma-separated execution scenarios, e.g. live_now",
     )
-    .option("--fixture-ids <ids>", "Comma-separated fixture IDs")
+    .option("--ids <ids>", "Comma-separated fixture IDs")
     .option(
       "--replicas-per-vector <count>",
       "Keep at most N replicas of each source scenario",

@@ -286,7 +286,7 @@ export function buildV1Checks(
   row: FixtureEnvelope,
   ctx: RefContext,
   addresses: V1Addresses,
-  handover?: { to: Address; from?: string },
+  handover?: { to: Address; from?: Address },
 ): Check[] {
   const scenario = row.scenario;
   const pre = scenario.v1.expected_pre_migration;
@@ -308,11 +308,15 @@ export function buildV1Checks(
   // alias, which describe content rather than ownership.
   const terminalAlias = preMigrationOwnerAlias(scenario);
   // The relaxation is doubly gated: the ref has to name the terminal owner, and
-  // the handover has to have taken the name off that same alias. A name moved
-  // off any other holder keeps asserting exactly what the corpus declares.
+  // the name has to have been taken off the address that alias resolves to. A
+  // name that had drifted to some other holder before the handover keeps
+  // asserting exactly what the corpus declares, so the drift still surfaces.
+  // A name already at the recipient records no origin, and cannot: what it
+  // relaxes is the only reading left.
   const relaxes =
     handover &&
-    (handover.from === undefined || handover.from === terminalAlias);
+    (handover.from === undefined ||
+      addrEq(handover.from, resolveRef(terminalAlias, ctx)));
   let relaxed = 0;
   const ownerRef = (ref: string | null | undefined): Address => {
     if (relaxes && ref && stripActorPrefix(ref) === terminalAlias) {
@@ -499,7 +503,7 @@ export async function verifySeededV1State(
   rows: FixtureEnvelope[],
   ctx: RefContext,
   addresses: V1Addresses,
-  handedOver: Map<string, { to: Address; from?: string }> = new Map(),
+  handedOver: Map<string, { to: Address; from?: Address }> = new Map(),
   batchSize = 400,
 ): Promise<V1VerifyResult> {
   const checks = rows.flatMap((row) =>

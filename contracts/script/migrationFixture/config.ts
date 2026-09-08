@@ -162,7 +162,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
   if (!existsSync(file)) throw new Error(`missing fixture file: ${file}`);
 
   const tiers = splitList(opts.tiers);
-  const ids = splitList(opts.fixtureIds);
+  const ids = splitList(opts.ids);
   const scenarios = splitList(opts.scenarios);
 
   let rows = readFileSync(file, "utf8")

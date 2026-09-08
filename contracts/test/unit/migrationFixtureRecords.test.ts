@@ -471,6 +471,35 @@ describe("handing a seeded name to a wallet", () => {
     ]);
   });
 
+  it("keeps a movable child with a parent that cannot move", () => {
+    const child = handoverEnvelope(["locked_child"], {
+      name: "sub.fxh.eth",
+      child_label: "sub",
+    });
+    const plan = planHandover(child, planCtx, TESTER, {
+      wrapperOwner: OWNER,
+      wrapperFuses: 0,
+      // The child is live...
+      wrapperExpiry: YEAR_AHEAD,
+      registrant: zeroAddress,
+      parentWrapperOwner: BATCHER,
+      // ...while its 2LD parent has entered the grace period the wrapper
+      // treats as expiry, which only the parent's fuses make fatal.
+      parentWrapperFuses: FUSES.IS_DOT_ETH | FUSES.PARENT_CANNOT_CONTROL,
+      parentWrapperExpiry: NOW + 1n,
+      now: NOW,
+    });
+
+    // Moving the child alone would leave a subname its holder can never
+    // migrate, because the helper reverts until the parent has.
+    expect(plan.calls).toEqual([]);
+    expect(plan.holders).toEqual([]);
+    expect(plan.skips).toEqual([
+      { subject: "sub.fxh.eth", reason: "its parent stayed" },
+      { subject: "fxh.eth", reason: "expired" },
+    ]);
+  });
+
   it("leaves a name whose holder is gone, and one the wrapper holds", () => {
     const absent = planHandover(
       handoverEnvelope(["unwrapped"]),
@@ -515,6 +544,7 @@ describe("handing a seeded name to a wallet", () => {
 
 describe("checking a handed-over name against its scenario", () => {
   const RESOLVER = "0x00000000000000000000000000000000000000d4" as Address;
+  const OTHER_ACTOR = "0x00000000000000000000000000000000000000a2" as Address;
   const V1 = {
     registry: "0x00000000000000000000000000000000000000d1",
     baseRegistrar: "0x00000000000000000000000000000000000000d2",
@@ -524,7 +554,7 @@ describe("checking a handed-over name against its scenario", () => {
   const refCtx = {
     actors: new Map([
       ["owner_a", OWNER],
-      ["owner_b", "0x00000000000000000000000000000000000000a2"],
+      ["owner_b", OTHER_ACTOR],
     ]),
     fixtureContracts: {},
     v1Address: (name: string) => {
@@ -567,7 +597,7 @@ describe("checking a handed-over name against its scenario", () => {
       ),
       refCtx,
       V1,
-      { to: TESTER, from: "owner_a" },
+      { to: TESTER, from: OWNER },
     );
     expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
     expect(expectedFor(checks, "baseRegistrar.ownerOf")).toBe(TESTER);
@@ -585,7 +615,7 @@ describe("checking a handed-over name against its scenario", () => {
       ),
       refCtx,
       V1,
-      { to: TESTER, from: "owner_a" },
+      { to: TESTER, from: OWNER },
     );
     expect(expectedFor(checks, "nameWrapper.ownerOf")).toBe(TESTER);
     expect(expectedFor(checks, "registry.owner")).toBe(V1.nameWrapper);
@@ -605,7 +635,7 @@ describe("checking a handed-over name against its scenario", () => {
       ),
       refCtx,
       V1,
-      { to: TESTER, from: "owner_a" },
+      { to: TESTER, from: OWNER },
     );
     // The alias names ownership in one place and content in the other; only the
     // ownership reading moves.
@@ -613,7 +643,7 @@ describe("checking a handed-over name against its scenario", () => {
     expect(expectedFor(checks, "record addr(60)")).toBe(OWNER);
   });
 
-  it("keeps asserting the declared owner when the name moved off another alias", () => {
+  it("keeps asserting the declared owner when the name moved off another holder", () => {
     const checks = buildV1Checks(
       row(
         { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
@@ -621,7 +651,7 @@ describe("checking a handed-over name against its scenario", () => {
       ),
       refCtx,
       V1,
-      { to: TESTER, from: "owner_b" },
+      { to: TESTER, from: OTHER_ACTOR },
     );
     expect(expectedFor(checks, "registry.owner")).toBe(OWNER);
   });

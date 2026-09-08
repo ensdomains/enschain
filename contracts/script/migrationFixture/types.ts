@@ -144,10 +144,11 @@ export type FixtureRunName = {
   /// Absent while the name is still held by the actor its scenario names, which
   /// is what every other stage expects.
   handedOverTo?: Address;
-  /// Actor alias the name was taken from. The owner checks relax onto the
-  /// recipient only for this alias, so a name that moved off some other holder
-  /// keeps asserting what the corpus declares.
-  handedOverFrom?: string;
+  /// Address the name was actually taken from, read off the chain rather than
+  /// assumed from the corpus. The owner checks relax onto the recipient only
+  /// when this is the holder the scenario declares, so a name that had drifted
+  /// to some other actor keeps asserting what the corpus says.
+  handedOverFrom?: Address;
 };
 
 export type FixtureRunState = {
@@ -180,7 +181,7 @@ export type CommonOptions = {
   actorMnemonic?: string;
   limit?: string;
   tiers?: string;
-  fixtureIds?: string;
+  ids?: string;
   replicasPerVector?: string;
   scenarios?: string;
   rpcStateControls?: boolean;

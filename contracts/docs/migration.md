@@ -458,7 +458,7 @@ is. Selection flags compose:
 | `--scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
 | `--replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
 | `--tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
-| `--fixture-ids <list>` | An explicit set, for reproducing one case. |
+| `--ids <list>` | An explicit set, for reproducing one case. |
 | `--limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
 Seeding refuses a selection whose scenarios it cannot establish, naming them: an expiry that needs a
@@ -569,7 +569,7 @@ not take can still be reshaped.
 > `--replicas-per-vector` sorts by scenario id, `--limit` takes an alphabetical prefix that starts on
 > an affected vector: ten of the first forty. Standalone this is a report you can read past;
 > [in a rehearsal it aborts the run](#in-a-rehearsal). Until the corpus is fixed, pin the cohort with
-> `--fixture-ids` from a list the affected vectors are excluded from.
+> `--ids` from a list the affected vectors are excluded from.
 
 ### Handing the corpus to a tester
 
@@ -684,10 +684,12 @@ bun run migration -- fork full --network sepolia \
   --fixture-scenarios live_now --fixture-replicas-per-vector 1 --fixture-limit 40
 ```
 
-The selection flags mirror the standalone ones (`--fixture-scenarios`, `--fixture-tiers`,
-`--fixture-ids`, `--fixture-limit`, `--fixture-replicas-per-vector`), and
-`--fixture-handover-to <address>` [hands the seeded cohort to a tester](#handing-the-corpus-to-a-tester)
-once the state check passes. Keep a rehearsal cohort small:
+The selection flags are the standalone ones under a `--fixture-` prefix
+(`--fixture-scenarios`, `--fixture-tiers`, `--fixture-ids`, `--fixture-limit`,
+`--fixture-replicas-per-vector`), and `--fixture-handover-to <address>`
+[hands the seeded cohort to a tester](#handing-the-corpus-to-a-tester) once the state check passes.
+The prefix is what keeps them apart from the rehearsal's own `--initial-limit`, `--finish-limit` and
+signer options. Keep a rehearsal cohort small:
 every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
 costs far more wall-clock than the rest of the rehearsal put together.
 
