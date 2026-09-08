@@ -8,6 +8,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  writeDeploymentArtifact,
+  writeDeploymentRecord,
+  writeNamespaceMetadata,
+} from "../utils/deploymentArtifacts.js";
 import type { UserConfig } from "rocketh/types";
 import { encodeFunctionData, getAddress, toHex, type Address } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
@@ -82,41 +87,6 @@ describe("v1 registrar freeze", () => {
     rmSync(workDir, { recursive: true, force: true });
   });
 
-  function writeDeployment(
-    root: string,
-    namespace: string,
-    name: string,
-    deployment: { address: Address; abi: readonly unknown[] },
-  ) {
-    writeDeploymentRecord(root, namespace, name, {
-      address: deployment.address,
-      abi: deployment.abi,
-    });
-  }
-
-  function writeDeploymentRecord(
-    root: string,
-    namespace: string,
-    name: string,
-    deployment: unknown,
-  ) {
-    const dir = join(root, namespace);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, `${name}.json`),
-      JSON.stringify(deployment, (_, value) =>
-        typeof value === "bigint" ? value.toString() : value,
-      ),
-    );
-  }
-
-  function writeNamespaceMetadata(root: string, namespace: string) {
-    writeFileSync(
-      join(root, namespace, ".chain"),
-      JSON.stringify({ environment: namespace, chainId: "1" }),
-    );
-  }
-
   // Mirrors the artifact layout the freeze reads: the shared v1 contracts under the
   // v1 deployments root, and one v2 namespace per deployment — the active one plus a
   // superseded one whose handoff contracts must be revoked.
@@ -134,7 +104,7 @@ describe("v1 registrar freeze", () => {
       ["ReverseRegistrar", env.shared.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.shared.DefaultReverseRegistrar],
     ] as const) {
-      writeDeployment(v1DeploymentsDir, NETWORK, name, contract);
+      writeDeploymentArtifact(v1DeploymentsDir, NETWORK, name, contract);
     }
 
     for (const [name, contract] of [
@@ -149,7 +119,7 @@ describe("v1 registrar freeze", () => {
       ["ETHRenewerV1", env.v2.ETHRenewerV1],
       ["Graveyard", env.v2.Graveyard],
     ] as const) {
-      writeDeployment(deploymentsDir, activeNamespace, name, contract);
+      writeDeploymentArtifact(deploymentsDir, activeNamespace, name, contract);
     }
     writeNamespaceMetadata(deploymentsDir, activeNamespace);
 
@@ -158,7 +128,7 @@ describe("v1 registrar freeze", () => {
       ["DefaultReverseRegistrarAdapter", ARCHIVED_DEFAULT_REVERSE_ADAPTER],
       ["ETHRenewerV1", ARCHIVED_ETH_RENEWER],
     ] as const) {
-      writeDeployment(deploymentsDir, archivedNamespace, name, {
+      writeDeploymentArtifact(deploymentsDir, archivedNamespace, name, {
         address,
         abi: [],
       });
@@ -174,7 +144,7 @@ describe("v1 registrar freeze", () => {
       ["ReverseRegistrar", env.shared.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.shared.DefaultReverseRegistrar],
     ] as const) {
-      writeDeployment(v1DeploymentsDir, NETWORK, name, contract);
+      writeDeploymentArtifact(v1DeploymentsDir, NETWORK, name, contract);
     }
     writeNamespaceMetadata(v1DeploymentsDir, NETWORK);
 

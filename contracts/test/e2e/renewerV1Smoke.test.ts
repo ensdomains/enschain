@@ -23,6 +23,7 @@ import {
   verifyV1Renewer,
 } from "../../script/migration.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
+import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import {
   buildMainArgs,
   createCSVFile,
@@ -66,36 +67,19 @@ describe("ETHRenewerV1 renewal smoke", () => {
   // live environment, so the devnet's contracts are written out in the layout they
   // expect. These tests drive the shipped commands rather than the writes they
   // make, so that what phase 4 grants is checked against what it promises.
+  // The phase commands read addresses from deployment artifacts rather than from a
+  // live environment, so the devnet's contracts are written out in the layout they
+  // expect. These tests drive the shipped commands rather than the writes they
+  // make, so that what phase 4 grants is checked against what it promises.
   function writeDeploymentArtifacts() {
-    for (const [root, entries] of [
-      [
-        v1DeploymentsDir,
-        [
-          ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
-          ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
-        ],
-      ],
-      [
-        deploymentsDir,
-        [
-          ["ETHRenewerV1", env.v2.ETHRenewerV1],
-          ["Graveyard", env.v2.Graveyard],
-        ],
-      ],
-    ] as const) {
-      const dir = join(root, NETWORK);
-      mkdirSync(dir, { recursive: true });
-      for (const [name, contract] of entries) {
-        writeFileSync(
-          join(dir, `${name}.json`),
-          JSON.stringify({ address: contract.address, abi: contract.abi }),
-        );
-      }
-      writeFileSync(
-        join(dir, ".chain"),
-        JSON.stringify({ environment: NETWORK, chainId: "1" }),
-      );
-    }
+    writeDeploymentNamespace(v1DeploymentsDir, NETWORK, [
+      ["BaseRegistrarImplementation", env.v1.BaseRegistrar],
+      ["RegistrarSecurityController", env.v1.RegistrarSecurityController],
+    ]);
+    writeDeploymentNamespace(deploymentsDir, NETWORK, [
+      ["ETHRenewerV1", env.v2.ETHRenewerV1],
+      ["Graveyard", env.v2.Graveyard],
+    ]);
   }
 
   function phaseOptions() {

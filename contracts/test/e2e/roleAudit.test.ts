@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeDeploymentNamespace } from "../utils/deploymentArtifacts.js";
 import { getAddress, type Address } from "viem";
 
 import { DEPLOYMENT_ROLES, ROLES } from "../../script/deploy-constants.js";
@@ -38,22 +39,13 @@ describe("v2 role audit", () => {
   // this devnet actually deployed are written, so the audit sees the real set.
   function writeDeploymentArtifacts() {
     rmSync(deploymentsDir, { recursive: true, force: true });
-    const dir = join(deploymentsDir, NAMESPACE);
-    mkdirSync(dir, { recursive: true });
-    for (const name of AUDITED_DEPLOYMENTS) {
-      const deployment = env.rocketh.deployments[name];
-      if (!deployment) continue;
-      writeFileSync(
-        join(dir, `${name}.json`),
-        JSON.stringify({
-          address: deployment.address,
-          abi: deployment.abi,
-        }),
-      );
-    }
-    writeFileSync(
-      join(dir, ".chain"),
-      JSON.stringify({ environment: NAMESPACE, chainId: "1" }),
+    writeDeploymentNamespace(
+      deploymentsDir,
+      NAMESPACE,
+      AUDITED_DEPLOYMENTS.flatMap((name) => {
+        const deployment = env.rocketh.deployments[name];
+        return deployment ? [[name, deployment] as const] : [];
+      }),
     );
   }
 
