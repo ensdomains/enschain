@@ -317,7 +317,10 @@ export async function setupDevnet({
               "v2",
               "local",
               "use_root", // deploy root contracts
-              "allow_unsafe", // state hacks
+              // `allow_unsafe` is deliberately absent: it widens the DNS suffix
+              // batches past what the fixed gas cap on the TLD-enabling batch can
+              // pay for, which leaves no suffix enabled. The narrow batches
+              // estimate their own gas and check each suffix before sending it.
               "legacy", // legacy registry
               "tenderly", // let ENS deploy scripts run full setup on chain id 1 forks
             ],

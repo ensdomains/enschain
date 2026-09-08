@@ -96,6 +96,13 @@ export default execute(
       "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
       "RegistrarSecurityController",
+      // The v1 deploy scripts register their interface ids against whatever
+      // `.eth` currently resolves to, through a write only the v1 resolver's
+      // owner can make. Repointing `.eth` has to come after all of them. Only a
+      // devnet or clean-testnet run carries these scripts; elsewhere the tags
+      // name nothing and impose no order.
+      "WrappedETHRegistrarController",
+      "StaticBulkRenewal", // depends on ETHRegistrarController, which depends on NameWrapper
     ],
   },
 );

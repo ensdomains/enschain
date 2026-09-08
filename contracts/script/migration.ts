@@ -5642,12 +5642,15 @@ function buildDeployV1RockethConfig(
     signerAccountDefinition(opts.ownerPrivateKey, opts.owner),
   );
 
+  // `allow_unsafe` is deliberately absent: it widens the DNS suffix batches past
+  // what the fixed gas cap on the TLD-enabling batch can pay for, which leaves no
+  // suffix enabled. The narrow batches cost more requests but estimate their own
+  // gas and check each suffix first.
   const tags = uniqueTags([
     "test",
     "legacy",
     "use_root",
     opts.tenderly ? "tenderly" : undefined,
-    opts.tenderly ? "allow_unsafe" : undefined,
   ]);
 
   return {
