@@ -4657,20 +4657,20 @@ async function fixtureRunOptions(
     deploymentNetwork: base.deploymentNetwork,
     v1DeploymentsDir: base.v1DeploymentsDir,
     v1DeploymentNetwork: base.v1DeploymentNetwork,
-    privateKey,
-    actorMnemonic,
+    fixturePrivateKey: privateKey,
+    fixtureActorMnemonic: actorMnemonic,
     // Seeding registers through the v1 controller. On a chain a previous
     // migration already froze, the corpus cannot be created until that
     // controller is re-authorised, which only the v1 owner can do.
     v1Owner: base.v1Owner,
     v1OwnerKey: opts.v1OwnerPrivateKey,
-    limit: opts.fixtureLimit,
-    tiers: opts.fixtureTiers,
-    scenarios: opts.fixtureScenarios,
-    ids: opts.fixtureIds,
-    replicasPerVector: opts.fixtureReplicasPerVector,
+    fixtureLimit: opts.fixtureLimit,
+    fixtureTiers: opts.fixtureTiers,
+    fixtureScenarios: opts.fixtureScenarios,
+    fixtureIds: opts.fixtureIds,
+    fixtureReplicasPerVector: opts.fixtureReplicasPerVector,
     rpcStateControls: base.useRpcStateControls,
-    handoverTo: opts.fixtureHandoverTo,
+    fixtureHandoverTo: opts.fixtureHandoverTo,
   };
 }
 

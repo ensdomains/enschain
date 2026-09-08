@@ -1611,7 +1611,7 @@ export async function runFixtureSeedStage(
 ): Promise<{ labels: string[]; premigrationCsv: string }> {
   // A bad recipient must fail now, not after hours of seeding: on a rehearsal
   // the fork is torn down when the run ends, taking the corpus with it.
-  if (opts.handoverTo) {
+  if (opts.fixtureHandoverTo) {
     const target = requireHandoverTarget(opts);
     await assertCanReceiveNames(clients(opts).client, target);
   }
@@ -1622,8 +1622,8 @@ export async function runFixtureSeedStage(
   await verifyV1(opts);
   // Giving the names away comes last, so the state is proved as the corpus
   // declares it before the owner it declares stops being the one holding it.
-  if (opts.handoverTo) {
-    console.log(`fixture: handing the corpus to ${opts.handoverTo}`);
+  if (opts.fixtureHandoverTo) {
+    console.log(`fixture: handing the corpus to ${opts.fixtureHandoverTo}`);
     await handover(opts);
   }
 
@@ -1645,22 +1645,25 @@ function addCommon(command: Command): Command {
     .option("--deployment-network <name>", "V2 deployment namespace")
     .option("--v1-deployments-dir <path>", "V1 deployments root")
     .option("--v1-deployment-network <name>", "V1 deployment namespace")
-    .option("--private-key <key>", "Fixture operator private key")
+    .option("--fixture-private-key <key>", "Fixture operator private key")
     .option("--v1-owner <address>", "Canonical V1 owner address")
     .option(
       "--v1-owner-key <key>",
       "V1 owner / prior renewer owner private key",
     )
-    .option("--actor-mnemonic <mnemonic>", "Dedicated fixture actor mnemonic")
-    .option("--limit <count>", "Limit selected fixture instances")
-    .option("--tiers <tiers>", "Comma-separated popularity tiers")
     .option(
-      "--scenarios <scenarios>",
+      "--fixture-actor-mnemonic <mnemonic>",
+      "Dedicated fixture actor mnemonic",
+    )
+    .option("--fixture-limit <count>", "Limit selected fixture instances")
+    .option("--fixture-tiers <tiers>", "Comma-separated popularity tiers")
+    .option(
+      "--fixture-scenarios <scenarios>",
       "Comma-separated execution scenarios, e.g. live_now",
     )
-    .option("--ids <ids>", "Comma-separated fixture IDs")
+    .option("--fixture-ids <ids>", "Comma-separated fixture IDs")
     .option(
-      "--replicas-per-vector <count>",
+      "--fixture-replicas-per-vector <count>",
       "Keep at most N replicas of each source scenario",
     )
     .option(
@@ -1675,7 +1678,7 @@ function addCommon(command: Command): Command {
 /// select the recipient, which on `verify-v1` in particular would be a trap.
 function addHandoverOption(command: Command): Command {
   return command.option(
-    "--handover-to <address>",
+    "--fixture-handover-to <address>",
     "Give the seeded names to this wallet once their state is checked",
   );
 }
@@ -1753,7 +1756,7 @@ export function addFixtureSubcommands(program: Command): Command {
       // Asking for a handover asks for the checks that have to precede it: the
       // corpus declares which actor holds each name, so the shaped state is
       // proved as written before that owner stops being the one holding it.
-      if (opts.handoverTo) await runFixtureSeedStage(opts);
+      if (opts.fixtureHandoverTo) await runFixtureSeedStage(opts);
       else await seedV1(opts);
     }),
   );

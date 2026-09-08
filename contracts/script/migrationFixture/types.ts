@@ -175,18 +175,21 @@ export type CommonOptions = {
   deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  privateKey?: Hex;
   v1OwnerKey?: Hex;
   v1Owner?: Address;
-  actorMnemonic?: string;
-  limit?: string;
-  tiers?: string;
-  ids?: string;
-  replicasPerVector?: string;
-  scenarios?: string;
   rpcStateControls?: boolean;
+  /// Everything naming the corpus carries the `fixture` prefix its flag does,
+  /// so the standalone commands and the rehearsals that mirror them spell each
+  /// option exactly once.
+  fixturePrivateKey?: Hex;
+  fixtureActorMnemonic?: string;
+  fixtureLimit?: string;
+  fixtureTiers?: string;
+  fixtureIds?: string;
+  fixtureReplicasPerVector?: string;
+  fixtureScenarios?: string;
   /// Wallet the seeded names are given to once their state is checked.
-  handoverTo?: Address;
+  fixtureHandoverTo?: Address;
 };
 
 export type BatchCall = {

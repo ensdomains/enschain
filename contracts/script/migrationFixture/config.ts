@@ -161,9 +161,9 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
   const file = fixtureFile(opts);
   if (!existsSync(file)) throw new Error(`missing fixture file: ${file}`);
 
-  const tiers = splitList(opts.tiers);
-  const ids = splitList(opts.ids);
-  const scenarios = splitList(opts.scenarios);
+  const tiers = splitList(opts.fixtureTiers);
+  const ids = splitList(opts.fixtureIds);
+  const scenarios = splitList(opts.fixtureScenarios);
 
   let rows = readFileSync(file, "utf8")
     .split(/\r?\n/)
@@ -176,7 +176,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
     rows = rows.filter((r) => scenarios.has(r.scenario.execution.scenario));
   }
 
-  const perVector = parseNumber(opts.replicasPerVector, 0);
+  const perVector = parseNumber(opts.fixtureReplicasPerVector, 0);
   if (perVector > 0) {
     const seen = new Map<string, number>();
     rows = rows
@@ -194,7 +194,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
       });
   }
 
-  const limit = parseNumber(opts.limit, 0);
+  const limit = parseNumber(opts.fixtureLimit, 0);
   if (limit > 0) rows = rows.slice(0, limit);
 
   const seenIds = new Set<string>();
@@ -215,10 +215,10 @@ export function fixtureDigest(rows: FixtureEnvelope[]): Hex {
 /// maps to a fixed mnemonic index so `owner_b` is the same account everywhere.
 export function accounts(opts: CommonOptions): FixtureActor[] {
   const mnemonic =
-    opts.actorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
+    opts.fixtureActorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
   if (!mnemonic) {
     throw new Error(
-      "missing --actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC; use a dedicated fixture mnemonic",
+      "missing --fixture-actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC; use a dedicated fixture mnemonic",
     );
   }
   return ACTOR_ALIASES.map((alias, accountIndex) => ({
@@ -229,10 +229,12 @@ export function accounts(opts: CommonOptions): FixtureActor[] {
 
 export function requirePrivateKey(opts: CommonOptions): Hex {
   const key =
-    opts.privateKey ??
+    opts.fixturePrivateKey ??
     (process.env.MIGRATION_FIXTURE_PRIVATE_KEY as Hex | undefined);
   if (!key)
-    throw new Error("missing --private-key or MIGRATION_FIXTURE_PRIVATE_KEY");
+    throw new Error(
+      "missing --fixture-private-key or MIGRATION_FIXTURE_PRIVATE_KEY",
+    );
   return key;
 }
 
@@ -243,7 +245,7 @@ export function requirePrivateKey(opts: CommonOptions): Hex {
 /// away is irreversible, so the recipient is named on the command line every
 /// time rather than inherited from a shell.
 export function requireHandoverTarget(opts: CommonOptions): Address {
-  const value = opts.handoverTo ?? "";
+  const value = opts.fixtureHandoverTo ?? "";
   if (!isAddress(value)) {
     throw new Error(`missing or malformed handover recipient: "${value}"`);
   }

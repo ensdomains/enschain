@@ -455,11 +455,11 @@ is. Selection flags compose:
 
 | Flag | Effect |
 | --- | --- |
-| `--scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
-| `--replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
-| `--tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
-| `--ids <list>` | An explicit set, for reproducing one case. |
-| `--limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
+| `--fixture-scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
+| `--fixture-replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
+| `--fixture-tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
+| `--fixture-ids <list>` | An explicit set, for reproducing one case. |
+| `--fixture-limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
 Seeding refuses a selection whose scenarios it cannot establish, naming them: an expiry that needs a
 controlled clock, a v2 state that needs the name already registered there, or a lease below the v1
@@ -471,11 +471,11 @@ before a run starts. Every `live_now` scenario passes it.
 > only the last survives. Seeding reports the overlap. Nothing else the corpus shapes or checks
 > depends on it, and no migration route reads a reverse record.
 
-`--scenarios live_now --replicas-per-vector 4` is the recommended default: it covers every scenario
+`--fixture-scenarios live_now --fixture-replicas-per-vector 4` is the recommended default: it covers every scenario
 the public network can express, several times over, without the long tail of replicas that adds
 registration cost but no new behaviour.
 
-`--scenarios` filters on each scenario's `execution.scenario` — whether it can run on a public network
+`--fixture-scenarios` filters on each scenario's `execution.scenario` — whether it can run on a public network
 at all. That is a separate axis from the v2 state a scenario declares, which is what decides
 [whether its label gets reserved](#reserving-the-fixture-labels-on-v2); neither filters the other, so
 a `live_now` cohort still contains names meant to stay unreserved.
@@ -490,7 +490,7 @@ export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
 
 bun run migration -- fixture verify --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --scenarios live_now --replicas-per-vector 4
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4
 ```
 
 Planning is not a state check. It confirms every call can be *built*; whether the resulting state is
@@ -503,7 +503,7 @@ Requires `bun run compile` first, a funded operator key, and a dedicated actor m
 distributed across five named actors, which need funding because a large share of the state shaping
 must be signed by the holder rather than batched. Those actors hold the names because shaping demands
 it, not because they are meant to keep them: to put the cohort in a tester's wallet, add
-[`--handover-to`](#handing-the-corpus-to-a-tester).
+[`--fixture-handover-to`](#handing-the-corpus-to-a-tester).
 
 ```bash
 export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
@@ -513,7 +513,7 @@ bun run migration -- fixture fund-actors --network sepolia \
 
 bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --scenarios live_now --replicas-per-vector 4
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4
 ```
 
 `seed-v1` deploys a batching helper and the corpus's counterparty contracts, registers each name
@@ -566,10 +566,10 @@ not take can still be reshaped.
 >
 > 38 of the 761 distinct `live_now` vectors are affected; their ids all begin `3W-`, `FE-` or `PW-`
 > (most vectors under those prefixes are fine — the report names the exact ones). Because
-> `--replicas-per-vector` sorts by scenario id, `--limit` takes an alphabetical prefix that starts on
+> `--fixture-replicas-per-vector` sorts by scenario id, `--fixture-limit` takes an alphabetical prefix that starts on
 > an affected vector: ten of the first forty. Standalone this is a report you can read past;
 > [in a rehearsal it aborts the run](#in-a-rehearsal). Until the corpus is fixed, pin the cohort with
-> `--ids` from a list the affected vectors are excluded from.
+> `--fixture-ids` from a list the affected vectors are excluded from.
 
 ### Handing the corpus to a tester
 
@@ -579,11 +579,11 @@ wallet instead, so a tester holds the names on v1 and can drive the migration fr
 ```bash
 bun run migration -- fixture handover --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --scenarios live_now --replicas-per-vector 4 --handover-to 0x<tester>
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4 --fixture-handover-to 0x<tester>
 ```
 
-Passing `--handover-to` to `seed-v1` runs the same three steps in order — seed, check, hand over —
-and `fork full` and `clean-testnet` take it as `--fixture-handover-to`. However it is reached, the
+Passing `--fixture-handover-to` to `seed-v1` runs the same three steps in order — seed, check, hand
+over — and `fork full` and `clean-testnet` take the same flag. However it is reached, the
 handover runs **after** `verify-v1`: the corpus declares which actor holds each name, so the shaped
 state is proved as written before that owner stops being the one holding it. Afterwards `verify-v1`
 expects the recipient instead, which it reads back from the run state, so it can be re-run at any
@@ -684,12 +684,12 @@ bun run migration -- fork full --network sepolia \
   --fixture-scenarios live_now --fixture-replicas-per-vector 1 --fixture-limit 40
 ```
 
-The selection flags are the standalone ones under a `--fixture-` prefix
-(`--fixture-scenarios`, `--fixture-tiers`, `--fixture-ids`, `--fixture-limit`,
-`--fixture-replicas-per-vector`), and `--fixture-handover-to <address>`
+The fixture flags are spelled exactly as they are standalone — every one carries the `--fixture-`
+prefix, so a cohort selected on one is selected the same way on the other, and none of them can be
+mistaken for the rehearsal's own `--initial-limit`, `--finish-limit` or signer options. That includes
+`--fixture-handover-to <address>`, which
 [hands the seeded cohort to a tester](#handing-the-corpus-to-a-tester) once the state check passes.
-The prefix is what keeps them apart from the rehearsal's own `--initial-limit`, `--finish-limit` and
-signer options. Keep a rehearsal cohort small:
+Keep a rehearsal cohort small:
 every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
 costs far more wall-clock than the rest of the rehearsal put together.
 
@@ -932,7 +932,7 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
-| `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--private-key` is omitted |
+| `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--fixture-private-key` is omitted |
 | `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
 | `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
