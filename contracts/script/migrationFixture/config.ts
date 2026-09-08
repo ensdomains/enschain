@@ -210,9 +210,9 @@ export function fixtureDigest(rows: FixtureEnvelope[]): Hex {
   return keccak256(stringToHex(rows.map((r) => r.fixture_id).join("\n")));
 }
 
-/// The aliases the corpus ever names as a name's owner. Measured across all
-/// 7,104 scenarios, a terminal owner is only ever one of these three;
-/// `operator` and `attacker` appear solely as counterparties.
+/// The aliases the corpus ever names as a name's owner. Across every scenario a
+/// terminal owner is only ever one of these three; `operator` and `attacker`
+/// appear solely as counterparties.
 const OWNER_ALIASES = new Set(["owner_a", "owner_b", "owner_c"]);
 
 /// Builds the named actor set. Unlike the previous hash-derived scheme, an alias

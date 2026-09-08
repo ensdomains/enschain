@@ -12,7 +12,11 @@ import {
   accounts,
   fundingTargets,
 } from "../../script/migrationFixture/config.js";
-import { assertSeedable, refContext } from "../../script/migrationFixture.js";
+import {
+  assertSeedable,
+  refContext,
+  reportReverseClaimOverlap,
+} from "../../script/migrationFixture.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
 import type {
   FixtureEnvelope,
@@ -305,6 +309,62 @@ describe("the accounts a funding run tops up", () => {
     expect(fundingTargets(derived, FLOOR).flatMap((t) => t.aliases)).toEqual(
       derived.map((a) => a.alias),
     );
+  });
+});
+
+describe("the reverse claims a selection loses", () => {
+  const claim = (alias: string) =>
+    envelope({
+      v1: {
+        registration: { duration_seconds: 31536000 },
+        setup_steps: [
+          { action: "set_reverse_claim", address_actor: `actor.${alias}` },
+        ],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+  const warningFor = (
+    rows: FixtureEnvelope[],
+    opts: Record<string, unknown>,
+  ) => {
+    const original = console.warn;
+    let warned: string | undefined;
+    console.warn = (message: string) => {
+      warned = message;
+    };
+    try {
+      reportReverseClaimOverlap(rows, accounts(opts as never));
+    } finally {
+      console.warn = original;
+    }
+    return warned;
+  };
+
+  it("says nothing when each alias claims once and is its own account", () => {
+    expect(
+      warningFor([claim("owner_a"), claim("owner_b"), claim("owner_c")], {
+        fixtureActorMnemonic: MNEMONIC,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("counts claims from aliases the owner key collapsed as one account", () => {
+    // Three aliases, one wallet: every claim writes the same reverse node, so
+    // one account loses two claims rather than three accounts losing none.
+    const warned = warningFor(
+      [claim("owner_a"), claim("owner_b"), claim("owner_c")],
+      { fixtureActorMnemonic: MNEMONIC, fixtureOwnerKey: OWNER_KEY },
+    );
+    expect(warned).toContain("3 reverse claims share 1 ");
+    expect(warned).toContain("owner_a+owner_b+owner_c (3)");
+  });
+
+  it("still reports an alias colliding with itself", () => {
+    const warned = warningFor([claim("owner_a"), claim("owner_a")], {
+      fixtureActorMnemonic: MNEMONIC,
+    });
+    expect(warned).toContain("owner_a (2)");
   });
 });
 

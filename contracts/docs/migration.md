@@ -582,8 +582,8 @@ wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
 By default the corpus is owned by the five actor accounts the mnemonic derives, which is fine when
 nobody but the tooling needs to touch it. To put it in a tester's hands, nominate the wallet with
-`--fixture-owner-key` and every name is registered to it from the start. Both commands take the key,
-and both need it:
+`--fixture-owner-key` and seeding shapes every name into it rather than into a mnemonic account. Both
+commands take the key, and both need it:
 
 ```bash
 bun run migration -- fixture fund-actors --network sepolia \
@@ -601,7 +601,8 @@ Export `MIGRATION_FIXTURE_OWNER_KEY` instead if you would rather not repeat it; 
 `fork full` and `clean-testnet` take the same flag. It is a **key**, not an address, and that is the
 whole trick: shaping a name means signing as its owner — reverse claims, operator approvals, unwraps,
 records written after the name leaves the batcher — so an owner we can sign for can be the tester
-from the first block. Nothing is transferred afterwards, which means nothing can refuse to be: the
+from the moment the name leaves the batcher. Nothing is transferred once seeding is done with a name,
+which means nothing can refuse to be: the
 196 names carrying `CANNOT_TRANSFER`, which no transfer could ever have moved, are the tester's on
 the same terms as every other name. Subnames come with the name above them, so they can actually be
 migrated.
@@ -619,6 +620,12 @@ owner is *not*.
 
 The operator key (`--fixture-private-key`) is separate and still needed: it pays for the batcher and
 the registrations. Only ownership moves to the nominated wallet.
+
+> **Registration still goes through the batcher.** Every name is registered to the batching helper,
+> which does the commit/reveal in bulk, and moves to its owner while its state is being shaped — before
+> any fuse that would refuse a transfer is burned. The wallet therefore holds the name by the time
+> seeding finishes with it, with no handover afterwards. A run interrupted between the two leaves the
+> name on the batcher and part-shaped, which is the case the resume guard refuses above.
 
 > **Fund the nominated wallet, not the accounts it replaces.** On a live chain `fund-actors` is the
 > only thing that puts gas where seeding needs it. Give the key to `seed-v1` alone and funding tops up

@@ -528,28 +528,45 @@ export function assertSeedable(rows: FixtureEnvelope[]): void {
 
 /// Reports the reverse claims a selection cannot all express.
 ///
-/// A reverse node derives from the claimant, and each actor alias is one
-/// account, so every scenario claiming from the same alias writes the same node
-/// and only the last survives. Nothing reads a reverse record back, so this
-/// would otherwise be invisible; it is reported rather than refused because the
-/// overlap is inherent to a fixed actor pool and touches no other state the
-/// corpus shapes or checks.
-function reportReverseClaimOverlap(rows: FixtureEnvelope[]): void {
-  const byClaimant = new Map<string, number>();
+/// A reverse node derives from the claimant account, so every scenario claiming
+/// from the same account writes the same node and only the last survives.
+/// Claims are counted per resolved account rather than per alias: nominating an
+/// owner wallet puts several aliases on one account, and claims those aliases
+/// would have kept apart then collide. Nothing reads a reverse record back, so
+/// this would otherwise be invisible; it is reported rather than refused
+/// because the overlap is inherent to a fixed actor pool and touches no other
+/// state the corpus shapes or checks.
+export function reportReverseClaimOverlap(
+  rows: FixtureEnvelope[],
+  actors: FixtureActor[],
+): void {
+  const addressOf = new Map(
+    actors.map((a) => [a.alias, getAddress(a.account.address)]),
+  );
+  const byAccount = new Map<string, { aliases: string[]; claims: number }>();
   for (const row of rows) {
     for (const step of row.scenario.v1.setup_steps) {
       if (step.action !== "set_reverse_claim") continue;
-      const claimant = String(step.address_actor ?? "").replace("actor.", "");
-      byClaimant.set(claimant, (byClaimant.get(claimant) ?? 0) + 1);
+      const alias = String(step.address_actor ?? "").replace("actor.", "");
+      // An alias outside the actor set shares an account with nothing, so it
+      // is counted under its own name rather than folded in with the others.
+      const key = addressOf.get(alias) ?? `actor.${alias}`;
+      const entry = byAccount.get(key);
+      if (entry) {
+        if (!entry.aliases.includes(alias)) entry.aliases.push(alias);
+        entry.claims += 1;
+      } else {
+        byAccount.set(key, { aliases: [alias], claims: 1 });
+      }
     }
   }
-  const overlapping = [...byClaimant.entries()].filter(([, n]) => n > 1);
+  const overlapping = [...byAccount.values()].filter((e) => e.claims > 1);
   if (!overlapping.length) return;
   const detail = overlapping
-    .map(([claimant, n]) => `${claimant} (${n})`)
+    .map((e) => `${e.aliases.join("+")} (${e.claims})`)
     .join(", ");
   console.warn(
-    `warning: ${overlapping.reduce((a, [, n]) => a + n, 0)} reverse claims share ${overlapping.length} ` +
+    `warning: ${overlapping.reduce((a, e) => a + e.claims, 0)} reverse claims share ${overlapping.length} ` +
       `actor accounts, so only the last claim per account survives: ${detail}`,
   );
 }
@@ -558,7 +575,8 @@ async function verify(opts: CommonOptions): Promise<void> {
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
   assertSeedable(rows);
-  reportReverseClaimOverlap(rows);
+  const actors = accounts(opts);
+  reportReverseClaimOverlap(rows, actors);
 
   const ids = new Set<string>();
   const labels = new Set<string>();
@@ -581,9 +599,7 @@ async function verify(opts: CommonOptions): Promise<void> {
   const placeholder = (n: number) =>
     `0x${n.toString(16).padStart(40, "0")}` as Address;
   const ctx: PlanContext = {
-    actors: new Map(
-      accounts(opts).map((a, i) => [a.alias, placeholder(0x1000 + i)]),
-    ),
+    actors: new Map(actors.map((a, i) => [a.alias, placeholder(0x1000 + i)])),
     fixtureContracts: Object.fromEntries(
       FIXTURE_ARTIFACTS.map((f, i) => [f.name, placeholder(0x2000 + i)]),
     ),
@@ -698,9 +714,10 @@ export async function seedV1(
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
   assertSeedable(rows);
-  reportReverseClaimOverlap(rows);
 
   const actors = accounts(opts);
+  reportReverseClaimOverlap(rows, actors);
+
   const { chain, client, wallet } = clients(opts);
 
   // Checked before the controller re-enable, which is the run's first write.
