@@ -2,6 +2,7 @@
 pragma solidity >=0.8.24;
 
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
@@ -10,7 +11,7 @@ import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
 library LibRegistry {
-    /// @dev Find the resolver address for `name[offset:]`.
+    /// @dev Find the valid resolver address for `name[offset:]`.
     /// @param rootRegistry The root ENS registry.
     /// @param name The DNS-encoded name to search.
     /// @param offset The offset into `name` to begin the search.
@@ -23,13 +24,53 @@ library LibRegistry {
         view
         returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
     {
+        (exactRegistry, resolver, node, resolverOffset) = findResolverUnsafe(
+            rootRegistry,
+            name,
+            offset
+        );
+        resolver = validateResolver(resolver, resolverOffset == offset);
+    }
+
+    /// @dev Check resolver for validity.
+    /// @param resolver The resolver to check.
+    /// @param foundAtLeaf `true` if resolver was found for the complete name.
+    /// @return Same resolver or null if not valid.
+    function validateResolver(address resolver, bool foundAtLeaf) internal view returns (address) {
+        return
+            foundAtLeaf ||
+            ERC165Checker.supportsERC165InterfaceUnchecked(
+                resolver,
+                type(IExtendedResolver).interfaceId
+            )
+            ? resolver
+            : address(0);
+    }
+
+    /// @dev Find the resolver address for `name[offset:]`.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name to search.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return exactRegistry The exact registry or null if not exact.
+    /// @return resolver The resolver or null if not found.
+    /// @return node The namehash of `name[offset:]`.
+    /// @return resolverOffset The offset into `name` corresponding to `resolver`.
+    function findResolverUnsafe(IRegistry rootRegistry, bytes memory name, uint256 offset)
+        internal
+        view
+        returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
+    {
         (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         // supply <root> if end of name
         if (bytes(label).length == 0) {
             return (rootRegistry, address(0), bytes32(0), 0);
         }
         // lookup parent name
-        (exactRegistry, resolver, node, resolverOffset) = findResolver(rootRegistry, name, next);
+        (exactRegistry, resolver, node, resolverOffset) = findResolverUnsafe(
+            rootRegistry,
+            name,
+            next
+        );
         // if there was a parent registry...
         if (address(exactRegistry) != address(0)) {
             // remember the resolver (if it exists)

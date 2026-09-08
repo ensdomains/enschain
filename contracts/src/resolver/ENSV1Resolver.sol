@@ -6,6 +6,7 @@ import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
@@ -36,12 +37,8 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function _findResolver(bytes calldata name)
-        internal
-        view
-        override
-        returns (address resolver, uint256 offset)
-    {
-        (resolver, , offset) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+    function _findResolver(bytes calldata name) internal view override returns (address) {
+        (address resolver, , uint256 offset) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+        return LibRegistry.validateResolver(resolver, offset == 0);
     }
 }
