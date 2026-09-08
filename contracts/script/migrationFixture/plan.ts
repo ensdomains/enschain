@@ -28,6 +28,7 @@ import {
   type SetupStep,
 } from "./types.js";
 
+import { sameAddress } from "./config.js";
 import {
   BaseRegistrar,
   EnsRegistry,
@@ -969,9 +970,6 @@ export type HandoverPlan = {
   /// compare against, since it may not be the actor the corpus declares.
   nameHolder: Address;
 };
-
-const sameAddress = (a: Address, b: Address): boolean =>
-  a.toLowerCase() === b.toLowerCase();
 
 /// Mirrors `NameWrapper._beforeTransfer`: an emancipated name is frozen once it
 /// expires, and a live one is frozen by `CANNOT_TRANSFER`. Reproducing the rule

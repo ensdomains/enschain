@@ -643,6 +643,34 @@ describe("checking a handed-over name against its scenario", () => {
     expect(expectedFor(checks, "record addr(60)")).toBe(OWNER);
   });
 
+  it("treats an unknown origin as unknown, not as the recipient", () => {
+    // A name found already at the recipient records no origin: its history is
+    // gone. Reading that absence as "it came from the recipient" would refuse
+    // to relax and fail every later check against the actor it left.
+    const checks = buildV1Checks(
+      row(
+        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
+        ["unwrapped"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER },
+    );
+    expect(expectedFor(checks, "registry.owner")).toBe(TESTER);
+
+    // Recording the recipient as the origin is what must never happen.
+    const wrong = buildV1Checks(
+      row(
+        { registry_owner_ref: "owner_a", base_registrar_owner_ref: "owner_a" },
+        ["unwrapped"],
+      ),
+      refCtx,
+      V1,
+      { to: TESTER, from: TESTER },
+    );
+    expect(expectedFor(wrong, "registry.owner")).toBe(OWNER);
+  });
+
   it("keeps asserting the declared owner when the name moved off another holder", () => {
     const checks = buildV1Checks(
       row(

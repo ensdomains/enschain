@@ -244,6 +244,12 @@ export function requirePrivateKey(opts: CommonOptions): Hex {
 /// name moves. There is deliberately no environment fallback: giving the corpus
 /// away is irreversible, so the recipient is named on the command line every
 /// time rather than inherited from a shell.
+/// Case-insensitive address comparison, for the many places one address read
+/// off the chain has to be matched against another that was checksummed
+/// elsewhere.
+export const sameAddress = (a: Address, b: Address): boolean =>
+  a.toLowerCase() === b.toLowerCase();
+
 export function requireHandoverTarget(opts: CommonOptions): Address {
   const value = opts.fixtureHandoverTo ?? "";
   if (!isAddress(value)) {

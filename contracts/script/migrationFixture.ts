@@ -46,6 +46,7 @@ import {
   receipt,
   requireHandoverTarget,
   rpc,
+  sameAddress,
   runStatePath,
   v1Deployment,
   v2Deployment,
@@ -1409,20 +1410,38 @@ export async function handover(opts: CommonOptions): Promise<void> {
     v1.wrapper.address,
   ]);
 
-  // A name the plan asks nothing of is already the recipient's, so it can be
-  // recorded before any batch runs. Everything else is recorded as its calls
-  // land: the batches are all batcher-signed, so a name is only finished once
-  // the whole run is, and an interrupt leaves the rest to a rerun — which
-  // replans from the chain and is a no-op for whatever did land.
+  // Where a name came from is knowable now and never again: once it has moved,
+  // the chain only says it is the recipient's. So the origin is recorded before
+  // any batch runs, and never overwritten — a resumed run that finds a name
+  // already at the recipient must not conclude that is where it started.
+  //
+  // A name with no recorded origin and nothing left to move is one whose
+  // history we genuinely do not have. It stays unset, which reads as "unknown"
+  // rather than "came from the recipient", so its ownership check still relaxes.
+  //
+  // The destination is recorded as each name's calls land, except for a name
+  // the plan asks nothing of, which is already there.
   for (const row of selected) {
-    if (perName.has(row.fixture_id) || stayed.has(row.fixture_id)) continue;
-    byId.get(row.fixture_id)!.handedOverTo = target;
-    byId.get(row.fixture_id)!.handedOverFrom = nameHolder.get(row.fixture_id);
+    if (stayed.has(row.fixture_id)) continue;
+    const run = byId.get(row.fixture_id)!;
+    const holder = nameHolder.get(row.fixture_id);
+    if (
+      run.handedOverFrom === undefined &&
+      holder &&
+      !sameAddress(holder, target)
+    ) {
+      run.handedOverFrom = holder;
+    }
+    if (!perName.has(row.fixture_id)) run.handedOverTo = target;
   }
   saveRunState(opts, state);
 
   const reportPath = join(resolve(opts.workDir), "fixture-handover.json");
   const transactions = new Map<string, Hex[]>();
+  /// Names whose every call landed. A name arrives here only when the executor
+  /// says it is finished, so a run that stops partway reports what actually
+  /// moved rather than what it set out to move.
+  const landed = new Set<string>();
   let completed = false;
 
   // The report is the only durable record of which transactions moved what, so
@@ -1437,7 +1456,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
     const merged = new Map<string, Hex[]>(
       (previous.moved ?? []).map((m) => [m.fixtureId, m.transactions ?? []]),
     );
-    for (const fixtureId of movedIds) {
+    for (const fixtureId of landed) {
       merged.set(fixtureId, [
         ...new Set([
           ...(merged.get(fixtureId) ?? []),
@@ -1452,6 +1471,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
           target,
           selected: selected.length,
           completed,
+          planned: movedIds.length,
           moved: [...merged.entries()].map(([fixtureId, hashes]) => ({
             fixtureId,
             transactions: hashes,
@@ -1477,8 +1497,8 @@ export async function handover(opts: CommonOptions): Promise<void> {
       (fixtureId) => {
         const run = byId.get(fixtureId);
         if (run && !stayed.has(fixtureId)) {
+          landed.add(fixtureId);
           run.handedOverTo = target;
-          run.handedOverFrom = nameHolder.get(fixtureId);
         }
         saveRunState(opts, state);
       },
@@ -1497,7 +1517,7 @@ export async function handover(opts: CommonOptions): Promise<void> {
       {
         target,
         selected: selected.length,
-        moved: movedIds.length,
+        moved: landed.size,
         stayed: stayed.size,
         alreadyHeld,
         skipped: skipped.length,
