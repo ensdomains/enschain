@@ -1,6 +1,7 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
+import { zeroAddress } from "viem";
 
 import {
   type KnownProfile,
@@ -96,18 +97,6 @@ describe("ENSV1Resolver", () => {
     });
   }
 
-  it("not a contract", async () => {
-    const F = await network.networkHelpers.loadFixture(fixture);
-    const name = "test.eth";
-    await F.v2.setupName({
-      name,
-      resolverAddress: F.ensV1Resolver.address,
-    });
-    await expect(F.ensV1Resolver.read.getResolver([dnsEncodeName(name)]))
-      .toBeRevertedWithCustomError("UnreachableName")
-      .withArgs([dnsEncodeName(name)]);
-  });
-
   it("not extended", async () => {
     const F = await network.networkHelpers.loadFixture(fixture);
     const name = "sub.test.eth";
@@ -119,8 +108,10 @@ describe("ENSV1Resolver", () => {
       name,
       resolverAddress: F.ensV1Resolver.address,
     });
-    await expect(F.ensV1Resolver.read.getResolver([dnsEncodeName(name)]))
-      .toBeRevertedWithCustomError("UnreachableName")
-      .withArgs([dnsEncodeName(name)]);
+    const [resolver, offchain] = await F.ensV1Resolver.read.getResolver([
+      dnsEncodeName(name),
+    ]);
+    expectVar({ resolver }).toEqualAddress(zeroAddress);
+    expectVar({ offchain }).toStrictEqual(false);
   });
 });

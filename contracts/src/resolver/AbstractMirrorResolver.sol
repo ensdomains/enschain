@@ -77,6 +77,6 @@ abstract contract AbstractMirrorResolver is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @dev Find the resolver for `name`.
+    /// @dev Determine the resolver for `name`.
     function _findResolver(bytes calldata name) internal view virtual returns (address);
 }
