@@ -49,7 +49,7 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| F1 | *(optional)* Seed the ENSv1 test fixture corpus and check the shaped v1 state | `fixture seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
+| F1 | *(optional)* Seed the ENSv1 test fixture corpus and check the shaped v1 state | `fixture fund-actors` → `seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
@@ -350,9 +350,10 @@ prerequisites, and result:
    and replaying the resolver update and reverse-adapter grants via
    `phase execute-owner-txs --role v1Owner`.
    Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
-   `fixture seed-v1` → `fixture verify-v1`, passing `--fixture-owner-key` to `seed-v1` if the names
-   should belong to a tester. **This must sit after phase 1**, which deploys the `MigrationHelper`
-   the corpus approves, **and before phase 3**, which freezes v1 registration.
+   `fixture fund-actors` → `fixture seed-v1` → `fixture verify-v1`. If the names should belong to a
+   tester, pass `--fixture-owner-key` to *both* of the first two — it decides which accounts sign the
+   seeding, so the funding step has to see it as well. **This must sit after phase 1**, which deploys
+   the `MigrationHelper` the corpus approves, **and before phase 3**, which freezes v1 registration.
 2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
    Pass the fixture label CSV alongside the real export if the corpus was seeded.
 3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
@@ -504,7 +505,8 @@ distributed across five named actors, which need funding because a large share o
 must be signed by the holder rather than batched. Those actors hold the names because shaping demands
 it, not because they are meant to keep them — [nominate an owner
 wallet](#choosing-who-owns-the-seeded-names) with `--fixture-owner-key` and the names are registered
-to it instead.
+to it instead. `fund-actors` takes that key too, and needs it: it funds whichever accounts seeding
+will sign from, and nominating a wallet is what changes them.
 
 ```bash
 export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
@@ -580,14 +582,21 @@ wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
 By default the corpus is owned by the five actor accounts the mnemonic derives, which is fine when
 nobody but the tooling needs to touch it. To put it in a tester's hands, nominate the wallet with
-`--fixture-owner-key` and every name is registered to it from the start:
+`--fixture-owner-key` and every name is registered to it from the start. Both commands take the key,
+and both need it:
 
 ```bash
+bun run migration -- fixture fund-actors --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
+  --fixture-owner-key 0x<tester key>
+
 bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
   --fixture-scenarios live_now --fixture-replicas-per-vector 4 \
   --fixture-owner-key 0x<tester key>
 ```
+
+Export `MIGRATION_FIXTURE_OWNER_KEY` instead if you would rather not repeat it; both commands read it.
 
 `fork full` and `clean-testnet` take the same flag. It is a **key**, not an address, and that is the
 whole trick: shaping a name means signing as its owner — reverse claims, operator approvals, unwraps,
@@ -610,6 +619,13 @@ owner is *not*.
 
 The operator key (`--fixture-private-key`) is separate and still needed: it pays for the batcher and
 the registrations. Only ownership moves to the nominated wallet.
+
+> **Fund the nominated wallet, not the accounts it replaces.** On a live chain `fund-actors` is the
+> only thing that puts gas where seeding needs it. Give the key to `seed-v1` alone and funding tops up
+> three mnemonic accounts that will never sign anything, while the wallet that signs everything starts
+> empty: seeding then runs out of gas part-way through a name it has already registered, and that name
+> is part-shaped, which the resume guard refuses to replay. The wallet is funded to three times
+> `--floor` for the same reason — one account is now doing three actors' work.
 
 ### Reserving the fixture labels on v2
 
@@ -838,7 +854,7 @@ and idempotency rules.
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
-| `fixture fund-actors` | Top up the fixture actor accounts from the operator key |
+| `fixture fund-actors` | Top up the fixture actor accounts from the operator key. Takes the same `--fixture-owner-key` as `seed-v1`, so the wallet that will own the names is the one funded; `--floor` (default 0.5 ETH) is charged per alias, so an account carrying all three owner aliases is topped up to three floors |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
 | `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
 | `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
@@ -905,7 +921,7 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
 | `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--fixture-private-key` is omitted |
-| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted |
+| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted; read by `fixture fund-actors` and `fixture seed-v1` alike |
 | `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
 | `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |

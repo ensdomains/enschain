@@ -36,6 +36,7 @@ import {
   bufferedGas,
   clients,
   fixtureDigest,
+  fundingTargets,
   loadDotEnv,
   loadFixture,
   networkChain,
@@ -1109,9 +1110,15 @@ async function fundActorAccounts(
     },
     floor,
   );
-  for (const a of actors) {
-    const balance = await client.getBalance({ address: a.account.address });
-    console.log(`  ${a.alias} ${a.account.address} ${balance}`);
+  // Reported per account rather than per alias. Three identical rows under
+  // three alias names read as three funded accounts, which is the misreading a
+  // nominated owner wallet invites, and the requirement is no longer the same
+  // on every row.
+  for (const target of fundingTargets(actors, floor)) {
+    const balance = await client.getBalance({ address: target.address });
+    console.log(
+      `  ${target.aliases.join("+")} ${target.address} ${balance} (needs ${target.required})`,
+    );
   }
 }
 
@@ -1181,9 +1188,12 @@ function addCommon(command: Command): Command {
     );
 }
 
-/// Nominates the wallet that owns every seeded name. Only the command that
-/// registers names takes it: on any other it would read as a way to change who
-/// owns them, which nothing after seeding can do.
+/// Nominates the wallet that will own every seeded name. The commands up to and
+/// including registration take it: seeding registers to that wallet, and funding
+/// has to top up the accounts seeding will sign from, which once a wallet is
+/// nominated are that wallet rather than the mnemonic's owner accounts. Nothing
+/// after registration takes it, where it would instead read as a way to change
+/// who owns the names, which no command can do.
 function addOwnerKeyOption(command: Command): Command {
   return command.option(
     "--fixture-owner-key <key>",
@@ -1237,12 +1247,14 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action((raw) => verify(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(
-      new Command("fund-actors").description(
-        "Top up the fixture actor accounts",
+    addOwnerKeyOption(
+      addCommon(
+        new Command("fund-actors").description(
+          "Top up the fixture actor accounts",
+        ),
       ),
     )
-      .option("--floor <eth>", "Minimum balance per actor", "0.5")
+      .option("--floor <eth>", "Minimum balance per actor alias", "0.5")
       .action((raw) => fundActorAccounts(normalizeOptions(raw), raw.floor)),
   );
   program.addCommand(

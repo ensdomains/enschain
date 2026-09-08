@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { zeroAddress, type Address } from "viem";
+import { parseEther, zeroAddress, type Address } from "viem";
 
 import { isRetryableRpcRequest } from "../../script/migration.js";
 import {
@@ -8,7 +8,10 @@ import {
   recordValue,
   type PlanContext,
 } from "../../script/migrationFixture/plan.js";
-import { accounts } from "../../script/migrationFixture/config.js";
+import {
+  accounts,
+  fundingTargets,
+} from "../../script/migrationFixture/config.js";
 import { assertSeedable, refContext } from "../../script/migrationFixture.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
 import type {
@@ -256,11 +259,60 @@ describe("the wallet that owns the seeded names", () => {
   });
 });
 
+describe("the accounts a funding run tops up", () => {
+  const FLOOR = "0.5";
+  const floor = parseEther(FLOOR);
+
+  it("charges one floor per account when every alias has its own", () => {
+    const targets = fundingTargets(
+      accounts({ fixtureActorMnemonic: MNEMONIC } as never),
+      FLOOR,
+    );
+    expect(targets).toHaveLength(5);
+    for (const target of targets) {
+      expect(target.aliases).toHaveLength(1);
+      expect(target.required).toBe(floor);
+    }
+  });
+
+  it("charges the shared owner account every alias it carries", () => {
+    const targets = fundingTargets(
+      accounts({
+        fixtureActorMnemonic: MNEMONIC,
+        fixtureOwnerKey: OWNER_KEY,
+      } as never),
+      FLOOR,
+    );
+    // Five aliases, three accounts: the nominated wallet and two counterparties.
+    expect(targets).toHaveLength(3);
+
+    const owner = targets.find((t) => t.address === KEY_ADDRESS)!;
+    // Actor order, so the receipt label a run prints is stable.
+    expect(owner.aliases).toEqual(["owner_a", "owner_b", "owner_c"]);
+    expect(owner.required).toBe(floor * 3n);
+
+    for (const target of targets.filter((t) => t !== owner)) {
+      expect(target.aliases).toHaveLength(1);
+      expect(target.required).toBe(floor);
+    }
+  });
+
+  it("covers every actor exactly once", () => {
+    const derived = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: OWNER_KEY,
+    } as never);
+    expect(fundingTargets(derived, FLOOR).flatMap((t) => t.aliases)).toEqual(
+      derived.map((a) => a.alias),
+    );
+  });
+});
+
 describe("the actors a run is checked against", () => {
   it("resolves aliases from the addresses the run recorded", () => {
     const recorded = { owner_a: KEY_ADDRESS, operator: OWNER };
     // No mnemonic and no owner key: reading the state back must not depend on
-    // either, since the key is nominated on seed-v1 alone.
+    // either, since nothing after seeding nominates one.
     const ctx = refContext({} as never, {}, recorded);
     expect(ctx.actors.get("owner_a")).toBe(KEY_ADDRESS);
     expect(ctx.actors.get("operator")).toBe(OWNER);

@@ -7,6 +7,7 @@ import {
   defineChain,
   http,
   keccak256,
+  parseEther,
   stringToHex,
   type Address,
   type Chain,
@@ -239,6 +240,45 @@ export function accounts(opts: CommonOptions): FixtureActor[] {
         ? ownerAccount
         : mnemonicToAccount(mnemonic, { accountIndex }),
   }));
+}
+
+/// One account a funding run has to top up, and what it needs.
+export type FundingTarget = {
+  address: Address;
+  /// Every alias that resolved to this account, in actor order.
+  aliases: string[];
+  /// The floor, counted once per alias sharing the account.
+  required: bigint;
+};
+
+/// Groups the actors by the account each alias actually resolves to.
+///
+/// An alias is not an account. Nominating an owner wallet puts the three owner
+/// aliases on one address, and that address then signs all three aliases' share
+/// of the seeding traffic, so a single floor funds a third of what it is about
+/// to spend. Charging the floor per alias and topping the account up to their
+/// sum leaves the default case, where every alias is its own account, exactly
+/// where it was.
+export function fundingTargets(
+  actors: Iterable<FixtureActor>,
+  floorEth: string,
+): FundingTarget[] {
+  const floor = parseEther(floorEth);
+  const targets = new Map<string, FundingTarget>();
+  for (const actor of actors) {
+    const address = actor.account.address;
+    // Grouped case-insensitively: the addresses come from two derivation paths,
+    // and case is not part of what makes two of them the same account.
+    const key = address.toLowerCase();
+    const target = targets.get(key);
+    if (target) {
+      target.aliases.push(actor.alias);
+      target.required += floor;
+    } else {
+      targets.set(key, { address, aliases: [actor.alias], required: floor });
+    }
+  }
+  return [...targets.values()];
 }
 
 /// The wallet that owns every seeded name, when one is nominated.

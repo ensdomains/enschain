@@ -2,7 +2,6 @@ import {
   createWalletClient,
   encodeFunctionData,
   http,
-  parseEther,
   type Address,
   type Chain,
   type Hex,
@@ -12,6 +11,7 @@ import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationF
 
 import {
   bufferedGas,
+  fundingTargets,
   receipt,
   rpcAny,
   v1Deployment,
@@ -294,21 +294,24 @@ export async function assertStateControls(opts: CommonOptions): Promise<void> {
 /// Tops every fixture actor up to a floor balance from the operator key. Actor
 /// transactions are a large share of seeding, so they need funding before a run
 /// rather than failing part-way through.
+///
+/// Funding is per account, not per alias: aliases can share an account, and a
+/// shared one has to arrive holding every alias's floor. Topping up per alias
+/// would stop at the first, because the account already clears the check the
+/// others are measured against.
 export async function fundActors(
   ex: Executor,
   floorEth: string,
 ): Promise<void> {
-  const floor = parseEther(floorEth);
-  for (const [alias, actor] of ex.actors) {
+  for (const target of fundingTargets(ex.actors.values(), floorEth)) {
     const balance = (await ex.client.getBalance({
-      address: actor.account.address,
+      address: target.address,
     })) as bigint;
-    if (balance >= floor) continue;
-    const topUp = floor - balance;
+    if (balance >= target.required) continue;
     const hash = await ex.wallet.sendTransaction({
-      to: actor.account.address,
-      value: topUp,
+      to: target.address,
+      value: target.required - balance,
     });
-    await receipt(ex.client, hash, `fund ${alias}`);
+    await receipt(ex.client, hash, `fund ${target.aliases.join("+")}`);
   }
 }
