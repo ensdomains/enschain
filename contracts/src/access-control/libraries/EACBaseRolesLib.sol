@@ -35,6 +35,7 @@ library EACBaseRolesLib {
 
     /// @dev Derive roles bitmap from assignee counts.
     /// @param counts Packed role counts (0-15) as `uint4x64`.
+    /// @return Roles bitmap corresponding to role counts > 0.
     function fromCounts(uint256 counts) internal pure returns (uint256) {
         return (counts | (counts >> 1) | (counts >> 2) | (counts >> 3)) & ALL_ROLES;
     }
