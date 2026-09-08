@@ -1872,6 +1872,19 @@ async function verifyPreMigration(opts: {
       `pre-migration verification failed for ${errors.length} names`,
     );
   }
+  // A verification that examined nothing is not a pass. A header-only CSV, a wrong
+  // path, or a label column that moved all produce an empty scan, and reporting that
+  // as success is a green light over an unseeded registry.
+  if (labels.length === 0) {
+    throw new Error(
+      `pre-migration verification read no labels from ${opts.csvFile}; it verified nothing`,
+    );
+  }
+  if (verifiedActive + verifiedExpiredBonus === 0) {
+    throw new Error(
+      `pre-migration verification matched none of the ${labels.length} label(s) read from ${opts.csvFile}; it verified nothing`,
+    );
+  }
 }
 
 // The block a contract was deployed in, so a v2-side event scan starts there rather
@@ -2596,6 +2609,16 @@ const V1_HANDOFF_CONTROLLERS: Record<
 };
 
 const V1_HANDOFF_CONTROLLER_ENTRIES = Object.entries(V1_HANDOFF_CONTROLLERS);
+
+/// Handoff contracts every deployment carries, whatever the network. The testnet
+/// premigration helper is deliberately absent: it exists only where a testnet needs a
+/// permissionless v1 registrar, so its absence is not evidence of an incomplete set.
+const V1_REQUIRED_HANDOFF_CONTROLLER_NAMES = [
+  "ETHRenewerV1",
+  "Graveyard",
+  "ReverseRegistrarAdapter",
+  "DefaultReverseRegistrarAdapter",
+] as const;
 
 // Every handoff contract name once, so each namespace's artifact is read a single
 // time regardless of how many v1 surfaces it is authorized on.
@@ -3692,7 +3715,52 @@ export async function verifyV1RegistrarsDisabled(
     );
   }
 
+  // Everything above is driven by the audit, so it inherits whatever the candidate
+  // discovery missed: a registration controller the scan never surfaced is reported
+  // as neither enabled nor disabled, and an empty candidate set and a frozen v1 read
+  // the same. The named registration controllers are therefore asserted directly.
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+  const stillEnabled: string[] = [];
+  for (const name of V1_REGISTRATION_CONTROLLER_NAMES) {
+    const controller = loadV1Deployment(opts.network, name, opts);
+    if (!controller) continue;
+    const enabled = (await client.readContract({
+      address: baseRegistrar.address,
+      abi: baseRegistrar.abi,
+      functionName: "controllers",
+      args: [controller.address],
+    })) as boolean;
+    console.log(
+      `v1 registration controller ${name} ${controller.address}: ${enabled ? "ENABLED" : "disabled"}`,
+    );
+    if (enabled) stillEnabled.push(`${name} ${controller.address}`);
+  }
+  if (stillEnabled.length > 0) {
+    throw new Error(
+      `v1 registration controllers still enabled: ${stillEnabled.join(", ")}`,
+    );
+  }
+
   if (opts.requireActiveGrants) {
+    // Only a contract with an artifact ever becomes a candidate, so an absent
+    // artifact narrows the assertion to what happens to be on disk instead of
+    // failing. Checked first: a missing adapter would otherwise read as "disabled"
+    // and pass, and nothing else reports a reverse adapter that was never granted.
+    const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+    const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+    const absent = V1_REQUIRED_HANDOFF_CONTROLLER_NAMES.filter(
+      (name) => !maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+    );
+    if (absent.length > 0) {
+      throw new Error(
+        `cannot assert the active deployment's v1 authorizations: ${deploymentNetwork} has no artifact for ${absent.join(", ")}, so their grants would go unchecked`,
+      );
+    }
+
     const missing = v1ControllersMissing(audit);
     if (missing.length > 0) {
       throw new Error(
@@ -3940,6 +4008,16 @@ export async function verifyResolution(opts: {
       before.names.map((entry) => [entry.name, Object.keys(entry.records)]),
     ),
   });
+
+  // A snapshot in which nothing resolved compares equal to another in which nothing
+  // resolved, so an empty capture reports the cutover as unchanged having examined no
+  // record at all. The rehearsal already refuses this; the command an operator runs
+  // against mainnet has to as well.
+  if (!snapshotCarriesRecords(before)) {
+    throw new Error(
+      `${opts.snapshotFile} holds no resolved records, so comparing against it proves nothing about the cutover; re-take it against a resolver that answers`,
+    );
+  }
 
   const differences = diffResolutionSnapshots(before, after);
   console.log(
@@ -4693,6 +4771,14 @@ export async function verifyDeployment(opts: {
   if (problems.length > 0 && !opts.reportOnly) {
     throw new Error(
       `deployment verification failed for ${problems.length} contract(s)`,
+    );
+  }
+  // Every record skipped for want of comparable bytecode is a contract this did not
+  // check, so a namespace of adopted addresses verifies nothing and says so only in
+  // a count nobody reads.
+  if (matched === 0 && skipped > 0 && !opts.reportOnly) {
+    throw new Error(
+      `deployment verification compared no bytecode: all ${skipped} record(s) in ${deploymentNetwork} lack a deploy transaction to compare against`,
     );
   }
   return { matched, skipped, problems };

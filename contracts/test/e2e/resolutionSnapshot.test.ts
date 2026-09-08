@@ -13,9 +13,12 @@ import {
 import type { ResolutionSnapshot } from "../../script/resolutionSnapshot.js";
 import { idFromLabel } from "../utils/utils.js";
 
-// The devnet seeds this name with a full profile during setup, so it has records on
-// every axis the snapshot captures.
-const NAME = "ens.eth";
+// The devnet gives each named contract an address record under `ens.eth`, so this
+// name resolves to something. `ens.eth` itself carries no records: a snapshot of it
+// compares equal to any other empty one, which is the tautology `verifyResolution`
+// now refuses.
+const NAME = "renewer.ens.eth";
+const PARENT_LABEL = "ens";
 
 describe("resolution snapshot", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
@@ -103,7 +106,7 @@ describe("resolution snapshot", () => {
     // still resolves, but its answers are gone. A non-zero-address check would
     // not necessarily notice; a diff does.
     await env.v2.ETHRegistry.write.setResolver(
-      [idFromLabel("ens"), zeroAddress],
+      [idFromLabel(PARENT_LABEL), zeroAddress],
       { account: env.namedAccounts.owner },
     );
 

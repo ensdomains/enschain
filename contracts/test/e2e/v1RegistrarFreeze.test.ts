@@ -143,6 +143,11 @@ describe("v1 registrar freeze", () => {
         "DefaultReverseRegistrarAdapter",
         env.shared.DefaultReverseRegistrarAdapter,
       ],
+      // A real namespace carries every handoff contract, and
+      // `--require-active-grants` refuses to assert over one that does not: an
+      // absent artifact silently narrows the assertion to what is on disk.
+      ["ETHRenewerV1", env.v2.ETHRenewerV1],
+      ["Graveyard", env.v2.Graveyard],
     ] as const) {
       writeDeployment(deploymentsDir, activeNamespace, name, contract);
     }

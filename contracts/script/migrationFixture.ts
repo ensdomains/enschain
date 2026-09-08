@@ -1070,6 +1070,14 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       `${failingIds.size}/${result.names} seeded names do not match their declared pre-migration state`,
     );
   }
+  // A scenario with nothing declared, or a resolver that answers with the zero
+  // address, contributes no check at all. With none of the selected rows declaring
+  // anything, "all seeded names match" describes a comparison that never happened.
+  if (result.checks === 0) {
+    throw new Error(
+      `no pre-migration state was checked across ${result.names} seeded name(s): the selected scenarios declare none, so this verified nothing`,
+    );
+  }
   console.log("all seeded names match their declared pre-migration state");
 }
 
