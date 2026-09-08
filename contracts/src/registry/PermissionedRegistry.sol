@@ -5,10 +5,12 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {EnhancedAccessControl} from "../access-control/EnhancedAccessControl.sol";
 import {IEnhancedAccessControl} from "../access-control/interfaces/IEnhancedAccessControl.sol";
+import {EACBaseRolesLib} from "../access-control/libraries/EACBaseRolesLib.sol";
 import {ERC1155Singleton} from "../erc1155/ERC1155Singleton.sol";
 import {IERC1155Singleton} from "../erc1155/interfaces/IERC1155Singleton.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {ILabelStore} from "../utils/interfaces/ILabelStore.sol";
+import {IUnsafeTransferable} from "../utils/interfaces/IUnsafeTransferable.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {IOwnedRegistry} from "./interfaces/IOwnedRegistry.sol";
@@ -124,13 +126,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         returns (bool)
     {
         return
+            interfaceId == type(IRegistry).interfaceId ||
             interfaceId == type(IPermissionedRegistry).interfaceId ||
             interfaceId == type(IStandardRegistry).interfaceId ||
+            interfaceId == type(IUnsafeTransferable).interfaceId ||
+            interfaceId == type(IContractNamer).interfaceId ||
             interfaceId == type(ITokenizedRegistry).interfaceId ||
             interfaceId == type(ITemporalRegistry).interfaceId ||
             interfaceId == type(IOwnedRegistry).interfaceId ||
-            interfaceId == type(IRegistry).interfaceId ||
-            interfaceId == type(IContractNamer).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
@@ -173,6 +176,31 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         _parentRegistry = parent;
         _childLabel = label;
         emit ParentUpdated(parent, label, msg.sender);
+    }
+
+    /// @inheritdoc IUnsafeTransferable
+    function unsafeTransfer(address to, uint256 tokenId, bytes calldata data) public {
+        _checkReceiver(to);
+        address owner = ownerOf(tokenId);
+        _checkApproval(owner, msg.sender);
+        _updateOneWithAcceptanceCheck(owner, to, tokenId, 1, false, data);
+    }
+
+    /// @inheritdoc IUnsafeTransferable
+    function unsafeBatchTransfer(address to, uint256[] calldata tokenIds, bytes calldata data)
+        public
+    {
+        _checkReceiver(to);
+        if (tokenIds.length == 0) {
+            revert ERC1155InvalidSender(address(0));
+        }
+        address owner = ownerOf(tokenIds[0]);
+        _checkApproval(owner, msg.sender);
+        uint256[] memory amounts = new uint256[](tokenIds.length);
+        for (uint256 i; i < tokenIds.length; ++i) {
+            amounts[i] = 1;
+        }
+        _updateWithAcceptanceCheck(owner, to, tokenIds, amounts, false, data, true);
     }
 
     /// @inheritdoc IStandardRegistry
@@ -393,6 +421,14 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return super.getAssigneeCount(getResource(anyId), roleBitmap);
     }
 
+    /// @inheritdoc IPermissionedRegistry
+    function isEmancipated() public view virtual returns (bool) {
+        return
+            (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
+                EACBaseRolesLib.fromCounts(roleCount(ROOT_RESOURCE))) ==
+            0;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
@@ -470,20 +506,31 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @dev Override `ERC1155Singleton._update()` to transfer the roles to the new owner if the token is transferred.
-    function _update(address from, address to, uint256[] memory tokenIds, uint256[] memory amounts)
+    function _update(
+        address from,
+        address to,
+        uint256[] memory tokenIds,
+        uint256[] memory amounts,
+        bool safe
+    )
         internal
         override
     {
-        super._update(from, to, tokenIds, amounts); // ensures amounts[i] is 0 or 1
+        super._update(from, to, tokenIds, amounts, safe); // ensures amounts[i] is 0 or 1
         if (to != address(0) && from != address(0)) {
             // only transfers (skip mint and burn)
+            if (safe && !isEmancipated()) {
+                revert TransferUnsafeUntilRegistryIsEmancipated();
+            }
             for (uint256 i; i < tokenIds.length; ++i) {
                 uint256 tokenId = tokenIds[i];
                 uint256 resource = getResource(tokenId);
                 // only check ROLE_CAN_TRANSFER_ADMIN on original owner (from)
-                // ROLE_CAN_TRANSFER_ADMIN is technically a property of the token
+                // ROLE_CAN_TRANSFER_ADMIN is a property of the token (not grantable, ignored on root)
                 if ((_getRoles(resource, from) & RegistryRolesLib.ROLE_CAN_TRANSFER_ADMIN) == 0) {
                     revert TransferDisallowed(tokenId, from);
+                } else if (safe && !isOnlyAssignee(tokenId, EACBaseRolesLib.ALL_ROLES, from)) {
+                    revert TransferUnsafeWithMultipleAssignees(tokenId, from);
                 } else if (amounts[i] > 0) {
                     _transferRoles(resource, from, to, false);
                 }
@@ -563,10 +610,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
     }
 
     /// @inheritdoc EnhancedAccessControl
-    /// @dev Override for token-dependent logic:
-    ///
-    /// * if caller is approved by token owner, combine the caller's roles with the owner's roles
-    ///
+    /// @dev If caller is approved by token owner, combine the caller's roles with the owner's roles.
     function _getRoles(uint256 resource, address account)
         internal
         view

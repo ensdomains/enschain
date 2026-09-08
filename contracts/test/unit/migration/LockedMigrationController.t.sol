@@ -663,10 +663,26 @@ contract LockedMigrationControllerTest is MigrationControllerFixture {
         vm.prank(testOwner);
         registry.grantRootRoles(rootRoles, friend);
 
-        // transfer token
+        // owner can grant non-owner roles
+        vm.prank(testOwner);
+        ethRegistry.grantRoles(LibLabel.id(md.label), RegistryRolesLib.ROLE_SET_RESOLVER, friend);
+
         uint256 tokenId = ethRegistry.findTokenId(md.label);
+
+        // safe transfer rejected because of outstanding grants
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPermissionedRegistry.TransferUnsafeWithMultipleAssignees.selector,
+                tokenId,
+                testOwner
+            )
+        );
         vm.prank(testOwner);
         ethRegistry.safeTransferFrom(testOwner, friend, tokenId, 1, "");
+
+        // unsafe transfer is required
+        vm.prank(testOwner);
+        ethRegistry.unsafeTransfer(friend, tokenId, "");
 
         // effective roles have "transferred"
         assertEq(registry.roles(registry.ROOT_RESOURCE(), testOwner), 0, "after:owner");
