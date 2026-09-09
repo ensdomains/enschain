@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Command } from "commander";
-import { parseEther, zeroAddress, type Address } from "viem";
+import { parseEther, toHex, zeroAddress, type Address } from "viem";
+import { mnemonicToAccount } from "viem/accounts";
 
 import { isRetryableRpcRequest } from "../../script/migration.js";
 import {
@@ -11,8 +12,10 @@ import {
 } from "../../script/migrationFixture/plan.js";
 import {
   accounts,
+  ACTOR_ALIASES,
   fundingTargets,
 } from "../../script/migrationFixture/config.js";
+import { fundActors } from "../../script/migrationFixture/execute.js";
 import {
   addFixtureSubcommands,
   assertSeedable,
@@ -263,6 +266,26 @@ describe("the wallet that owns the seeded names", () => {
       } as never),
     ).toThrow(/fixture-owner-key/);
   });
+
+  // The corpus migrates as these two to prove they are turned away. Owning the
+  // names as one makes those calls authorised, and verification reads the same
+  // accounts, so nothing downstream would notice.
+  for (const alias of ["operator", "attacker"]) {
+    it(`refuses a key that is the ${alias}`, () => {
+      const index = ACTOR_ALIASES.indexOf(alias as never);
+      const key = toHex(
+        mnemonicToAccount(MNEMONIC, {
+          accountIndex: index,
+        }).getHdKey().privateKey!,
+      );
+      expect(() =>
+        accounts({
+          fixtureActorMnemonic: MNEMONIC,
+          fixtureOwnerKey: key,
+        } as never),
+      ).toThrow(new RegExp(`"${alias}"`));
+    });
+  }
 });
 
 describe("the accounts a funding run tops up", () => {
@@ -310,6 +333,95 @@ describe("the accounts a funding run tops up", () => {
     } as never);
     expect(fundingTargets(derived, FLOOR).flatMap((t) => t.aliases)).toEqual(
       derived.map((a) => a.alias),
+    );
+  });
+});
+
+describe("a funding run", () => {
+  const FLOOR = "0.5";
+  const floor = parseEther(FLOOR);
+  const STRANGER = "0x00000000000000000000000000000000000000f1" as Address;
+  /// The owner key of a run whose tester wallet also pays for the run.
+  const SHARED_KEY = toHex(mnemonicToAccount(MNEMONIC).getHdKey().privateKey!);
+  const SHARED = mnemonicToAccount(MNEMONIC).address;
+
+  /// A run against recorded balances. Nothing is signed, so the executor only
+  /// has to answer balances and collect what it was asked to send.
+  const run = (opts: {
+    funder: Address;
+    balances?: Record<Address, bigint>;
+    ownerKey?: string;
+  }) => {
+    const held = new Map(
+      Object.entries(opts.balances ?? {}).map(([a, v]) => [a.toLowerCase(), v]),
+    );
+    const sent: { to: Address; value: bigint }[] = [];
+    const actors = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: opts.ownerKey,
+    } as never);
+    const ex = {
+      opts: {},
+      client: {
+        getBalance: async ({ address }: { address: Address }) =>
+          held.get(address.toLowerCase()) ?? 0n,
+        waitForTransactionReceipt: async () => ({ status: "success" }),
+      },
+      wallet: {
+        account: { address: opts.funder },
+        sendTransaction: async (tx: { to: Address; value: bigint }) => {
+          sent.push(tx);
+          return "0x" as const;
+        },
+      },
+      actors: new Map(actors.map((a) => [a.alias, a])),
+    } as never;
+    return { ex, sent, targets: fundingTargets(actors, FLOOR) };
+  };
+
+  it("tops each account up to what its aliases need", async () => {
+    const { ex, sent, targets } = run({ funder: STRANGER });
+    await fundActors(ex, FLOOR);
+    expect(sent).toEqual(
+      targets.map((t) => ({ to: t.address, value: t.required })),
+    );
+  });
+
+  it("leaves an account already holding enough alone", async () => {
+    const { targets } = run({ funder: STRANGER });
+    const { ex, sent } = run({
+      funder: STRANGER,
+      balances: Object.fromEntries(
+        targets.map((t) => [t.address, t.required]),
+      ) as Record<Address, bigint>,
+    });
+    await fundActors(ex, FLOOR);
+    expect(sent).toEqual([]);
+  });
+
+  // An account cannot be paid from itself: a transfer out and back leaves it
+  // poorer by the gas. The shortfall is reported rather than sent.
+  it("refuses to send the funding account its own money", async () => {
+    const { ex, sent } = run({
+      funder: SHARED,
+      balances: { [SHARED]: floor },
+      ownerKey: SHARED_KEY,
+    });
+    await expect(fundActors(ex, FLOOR)).rejects.toThrow(
+      /is the funding account/,
+    );
+    expect(sent).toEqual([]);
+  });
+
+  it("funds the rest when the funding account already holds its share", async () => {
+    const { ex, sent, targets } = run({
+      funder: SHARED,
+      balances: { [SHARED]: floor * 3n },
+      ownerKey: SHARED_KEY,
+    });
+    await fundActors(ex, FLOOR);
+    expect(sent.map((s) => s.to)).toEqual(
+      targets.filter((t) => t.address !== SHARED).map((t) => t.address),
     );
   });
 });

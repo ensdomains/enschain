@@ -299,15 +299,30 @@ export async function assertStateControls(opts: CommonOptions): Promise<void> {
 /// shared one has to arrive holding every alias's floor. Topping up per alias
 /// would stop at the first, because the account already clears the check the
 /// others are measured against.
+///
+/// An alias can also resolve to the account paying for the top-ups, which a
+/// nominated owner wallet does when it holds the operator key too. Nothing can
+/// be sent to it: a transfer out of an account and back leaves it poorer by the
+/// gas. It is reported as a shortfall to fund elsewhere instead, which is the
+/// same promise the command makes for every other account — that what the run
+/// needs is there before the first name is registered.
 export async function fundActors(
   ex: Executor,
   floorEth: string,
 ): Promise<void> {
+  const funder = String(ex.wallet.account.address).toLowerCase();
   for (const target of fundingTargets(ex.actors.values(), floorEth)) {
     const balance = (await ex.client.getBalance({
       address: target.address,
     })) as bigint;
     if (balance >= target.required) continue;
+    if (target.address.toLowerCase() === funder) {
+      throw new Error(
+        `${target.aliases.join("+")} is the funding account ${target.address}, ` +
+          `which holds ${balance} of the ${target.required} wei this selection needs ` +
+          "of it; fund it from outside the run",
+      );
+    }
     const hash = await ex.wallet.sendTransaction({
       to: target.address,
       value: target.required - balance,

@@ -930,16 +930,14 @@ export function planSetupSteps(
     );
   }
 
-  // A subname's parent goes to its owner too. Creating the child needs the
-  // batcher to hold the parent, so the parent is wrapped to the batcher and
-  // would otherwise stay there — leaving a holder who can never migrate the
-  // subname, because `MigrationHelper` refuses one whose parent has not
-  // migrated and only the parent's owner can migrate the parent.
+  // A subname's parent goes to an owner too. Creating the child needs the
+  // batcher to hold the parent, so leaving it there would leave a holder who can
+  // never migrate the subname: `MigrationHelper` refuses a child whose parent
+  // has not migrated, and only the parent's owner can migrate the parent.
   //
-  // The corpus declares whose it should be and the planner has always ignored
-  // it, defaulting to the batcher; use the declared owner, falling back to the
-  // child's. The parent carries `CANNOT_UNWRAP` and never `CANNOT_TRANSFER`, so
-  // this always moves.
+  // The owner is the one the corpus declares for the parent, or the child's when
+  // it declares none. The parent carries `CANNOT_UNWRAP` and never
+  // `CANNOT_TRANSFER`, so this always moves.
   if (child) {
     const parentOwner = stripActorPrefix(
       scenario.v1.parent_fixture?.owner_actor ?? terminalOwner,

@@ -215,6 +215,29 @@ export function fixtureDigest(rows: FixtureEnvelope[]): Hex {
 /// appear solely as counterparties.
 const OWNER_ALIASES = new Set(["owner_a", "owner_b", "owner_c"]);
 
+/// Rejects an owner key that already belongs to a counterparty.
+///
+/// A counterparty is only ever meaningful as an address the owner is not: a
+/// tenth of the corpus migrates as the operator or the attacker precisely to
+/// prove that caller is refused. Nominating one of their keys as the owner makes
+/// those calls owner-authorised and the scenarios assert nothing, and since
+/// verification reads the same collapsed actor map, every one of them still
+/// passes. No run wants this, and nothing downstream would reveal it.
+function assertOwnerKeyIsNotCounterparty(
+  owner: Address,
+  mnemonic: string,
+): void {
+  for (const [accountIndex, alias] of ACTOR_ALIASES.entries()) {
+    if (OWNER_ALIASES.has(alias)) continue;
+    const counterparty = mnemonicToAccount(mnemonic, { accountIndex });
+    if (counterparty.address.toLowerCase() !== owner.toLowerCase()) continue;
+    throw new Error(
+      `--fixture-owner-key is the "${alias}" account ${owner}, which the corpus ` +
+        "needs as a non-owner; nominate a wallet outside the actor mnemonic",
+    );
+  }
+}
+
 /// Builds the named actor set. Unlike the previous hash-derived scheme, an alias
 /// maps to a fixed mnemonic index so `owner_b` is the same account everywhere.
 ///
@@ -233,6 +256,9 @@ export function accounts(opts: CommonOptions): FixtureActor[] {
   }
   const owner = optionalOwnerKey(opts);
   const ownerAccount = owner ? privateKeyToAccount(owner) : null;
+  if (ownerAccount) {
+    assertOwnerKeyIsNotCounterparty(ownerAccount.address, mnemonic);
+  }
   return ACTOR_ALIASES.map((alias, accountIndex) => ({
     alias,
     account:
