@@ -1251,7 +1251,10 @@ export function addFixtureSubcommands(program: Command): Command {
 }
 
 export async function main(argv = process.argv): Promise<void> {
-  loadDotEnv(resolve(".env"));
+  // Anchored to `contracts/`, like the migration CLI. Resolving against the working
+  // directory means the fixture commands silently pick up no configuration unless the
+  // operator happens to be standing in the right place.
+  loadDotEnv(resolve(import.meta.dirname, "../../.env"));
   const program = addFixtureSubcommands(
     new Command("migration-fixture").description(
       "Seed the weighted ENSv1 migration fixture and carry it through pre-migration.",

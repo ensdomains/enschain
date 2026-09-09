@@ -125,17 +125,19 @@ export const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
 // Anchored to this file rather than to the process working directory. A cwd-relative
 // root resolves differently depending on where a command was launched from, so the
 // same artifacts are found by one entry point and missed by another.
-export const DEFAULT_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../deployments",
-);
+/// `contracts/`, from this file. Every root below hangs off it, so a file move
+/// changes one path rather than three — the previous form resolved each separately
+/// and pointed all of them one directory too deep when this module moved.
+const CONTRACTS_DIR = resolve(import.meta.dirname, "../..");
+
+export const DEFAULT_DEPLOYMENTS_DIR = resolve(CONTRACTS_DIR, "deployments");
 export const BUNDLED_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../lib/ens-contracts/deployments",
+  CONTRACTS_DIR,
+  "lib/ens-contracts/deployments",
 );
 export const LOCAL_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../deployments/v1",
+  CONTRACTS_DIR,
+  "deployments/v1",
 );
 
 ////////////////////////////////////////////////////////////////////////
