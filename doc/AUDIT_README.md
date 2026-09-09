@@ -5,7 +5,6 @@
 - Audit fix commit (6th May 2026): [ffe4a731c5489a2cc032639b205f36341d7ac660](https://github.com/ensdomains/contracts-v2/commit/ffe4a731c5489a2cc032639b205f36341d7ac660). 14 files touched in `contracts/src/**.sol` (1 added, 13 modified) and +370 LoC additions/modifications (`cloc --diff`, code-only). [diff](https://github.com/ensdomains/contracts-v2/compare/41b67f10d8a62151e67649d98b92bc2317fa56a8...ffe4a731c5489a2cc032639b205f36341d7ac660)
 - Initial audit commit (16th March 2026): [41b67f10d8a62151e67649d98b92bc2317fa56a8](https://github.com/ensdomains/contracts-v2/commit/41b67f10d8a62151e67649d98b92bc2317fa56a8)
 
-
 ## 1. Project Overview
 
 ENSv2 is the next-generation Ethereum Name Service, transitioning from a flat registry to a hierarchical system with cross-chain support.
@@ -27,15 +26,15 @@ See the [contracts README](../contracts/README.md) for detailed architecture doc
 
 ### External Dependencies
 
-| Dependency | Usage |
-|------------|-------|
-| [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) | ERC1155, ERC165, UUPS, access control base |
-| [OpenZeppelin Contracts v4](https://github.com/OpenZeppelin/openzeppelin-contracts) | Used by vendored ENSv1 contracts |
-| [ENSv1 contracts](https://github.com/ensdomains/ens-contracts) | V1 registry, NameWrapper, BaseRegistrar (for migration) |
-| [ENS metadata service](https://github.com/ensdomains/ens-metadata-service) | ENS metadata service |
-| [Rhinestone ENS Modules](https://github.com/rhinestone-external/ens-modules) | Custom HCA (Hierarchical Context Authority) module and cross-chain intent for registration/renewal (**separate audit scope**) |
-| [Verifiable Factory](https://github.com/ensdomains/verifiable-factory) | Deterministic deployment with verification (**in scope**, see below) |
-| [Unruggable Gateways](https://github.com/unruggable-eth/unruggable-gateways) | CCIP-Read gateway support |
+| Dependency                                                                          | Usage                                                                                                                         |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)    | ERC1155, ERC165, UUPS, access control base                                                                                    |
+| [OpenZeppelin Contracts v4](https://github.com/OpenZeppelin/openzeppelin-contracts) | Used by vendored ENSv1 contracts                                                                                              |
+| [ENSv1 contracts](https://github.com/ensdomains/ens-contracts)                      | V1 registry, NameWrapper, BaseRegistrar (for migration)                                                                       |
+| [ENS metadata service](https://github.com/ensdomains/ens-metadata-service)          | ENS metadata service                                                                                                          |
+| [Rhinestone ENS Modules](https://github.com/rhinestone-external/ens-modules)        | Custom HCA (Hierarchical Context Authority) module and cross-chain intent for registration/renewal (**separate audit scope**) |
+| [Verifiable Factory](https://github.com/ensdomains/verifiable-factory)              | Deterministic deployment with verification (**in scope**, see below)                                                          |
+| [Unruggable Gateways](https://github.com/unruggable-eth/unruggable-gateways)        | CCIP-Read gateway support                                                                                                     |
 
 ## 3. Contracts in Scope
 
@@ -66,7 +65,6 @@ LoC differences between each audit interval are measured using `cloc --diff` on 
 
 ## 4. Open PRs Pending Merge
 
-
 ## 5. Key Areas of Concern
 
 Areas where the team particularly welcomes auditor scrutiny, listed in recommended reading order:
@@ -86,6 +84,7 @@ Areas where the team particularly welcomes auditor scrutiny, listed in recommend
 The following invariants have been verified in the source code:
 
 **Ownership & Access Control:**
+
 - Each ERC1155 token ID has at most one owner (`ERC1155Singleton`)
 - Each token resource has at most one admin (the token owner). Admin roles can never be directly granted via external EAC methods — only revoked from oneself, or swapped to a new owner through transfer.
 - This grant restriction also applies to the root resource, which means that as long as root permissions do not overlap with token-level permissions, the token owner is the sole controller of their name. See the [Static Deployment Permissions](../contracts/README.md#static-deployment-permissions) table in the contracts README for the exact role assignments per contract, which demonstrates the orthogonal separation between root-level and token-level roles (the ENSv2 equivalent of NameWrapper's `PARENT_CANNOT_CONTROL`).
@@ -93,21 +92,24 @@ The following invariants have been verified in the source code:
 - On transfer, the new owner receives all admin roles; the previous owner retains none
 
 **Registration & Expiry:**
+
 - A name cannot be registered while it is not expired — reverts with `NameAlreadyRegistered` (`PermissionedRegistry.sol`)
 - Renewal cannot shorten a name's expiry — reverts with `CannotReduceExpiration` (`PermissionedRegistry.sol`)
 - Commit-reveal: registration requires a commitment aged between `MIN_COMMITMENT_AGE` and `MAX_COMMITMENT_AGE` (`ETHRegistrar.sol`)
 - Payment amount cannot round to zero — enforced via ceiling rounding and zero-unit checks (`StandardRentPriceOracle.sol`)
 
 **Migration:**
+
 - A name cannot be migrated twice — `register()` reverts with `NameAlreadyRegistered` on the second attempt
 
 **UUPS Proxies:**
+
 - Only accounts with `ROLE_UPGRADE` on the root resource can upgrade proxy implementations (`UserRegistry.sol`)
 - Implementation contracts have initializers disabled via `_disableInitializers()`
 
 ### Known Design Decisions
 
-- **Circular subregistries are permitted**: The contracts do not prevent circular parent/subregistry references. Cycle detection is intentionally deferred to the indexer/off-chain layer rather than enforced on-chain. On-chain resolution (`LibRegistry.findCanonicalName`) relies on gas limits as a natural bound rather than explicit depth checks.
+- **Circular subregistries are permitted**: The contracts do not prevent circular parent/subregistry references. Cycle detection is intentionally deferred to the indexer/off-chain layer rather than enforced on-chain. On-chain resolution (`LibResolution.findCanonicalName`) relies on gas limits as a natural bound rather than explicit depth checks.
 - **Migration allows V1 owner to specify a different V2 owner**: The `LibMigration.Data` struct includes an `owner` field chosen by the caller. The contracts do not verify that `md.owner` matches the V1 token owner. This is safe because only the V1 owner (or approved operator) can initiate the transfer via `safeTransferFrom`, and specifying a different V2 address is a valid use case (e.g., migrating to a different wallet).
 
 ## 7. Trust Assumptions & Privileged Roles
@@ -171,4 +173,3 @@ Previously disclosed vulnerabilities on ENSv1:
 - [GHSA-8f9f-pc5v-9r5h](https://github.com/ensdomains/ens/security/advisories/GHSA-8f9f-pc5v-9r5h) (Jan 2020, Critical): Malicious takeover of previously owned ENS names (CVE-2020-5232)
 - [GHSA-rrxv-q8m4-wch3](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-rrxv-q8m4-wch3) (Aug 2023, Medium): .eth registrar controller can shorten the duration of registered names
 - [GHSA-c6rr-7pmc-73wc](https://github.com/ensdomains/ens-contracts/security/advisories/GHSA-c6rr-7pmc-73wc) (Feb 2025, Low): RSA Signature Forgery via Missing PKCS#1 v1.5 Padding Validation in ENS DNSSEC Oracle
-
