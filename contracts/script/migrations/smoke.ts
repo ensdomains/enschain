@@ -281,6 +281,84 @@ export async function assertV2State({
   }
 }
 
+/// The client, wallet and v1 contracts both migration paths need.
+///
+/// Deliberately stops short of reading the resolver or encoding the migration data.
+/// The two paths do those at different points — the unwrapped path before it writes
+/// anything, the wrapped path only after the wrap has moved the token — and folding
+/// them in here would move a chain read across a state-changing transaction.
+async function prepareV1Migration(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chain: Chain;
+  provider?: RpcProvider;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  privateKey?: `0x${string}`;
+  account?: Address;
+  impersonateAccount?: Address;
+}) {
+  const client = publicClient(opts.rpcUrl, opts.chain, opts.provider);
+  if (opts.impersonateAccount)
+    await impersonate(client, opts.impersonateAccount);
+  const wallet = walletClient({
+    rpcUrl: opts.rpcUrl,
+    chain: opts.chain,
+    privateKey: opts.privateKey,
+    account: opts.account ?? opts.impersonateAccount,
+    provider: opts.provider,
+  });
+  const v1Deployments = {
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork,
+  };
+  return {
+    client,
+    wallet,
+    v1Deployments,
+    registry: requireV1Deployment(opts.network, "ENSRegistry", v1Deployments),
+    baseRegistrar: requireV1Deployment(
+      opts.network,
+      V1_BASE_REGISTRAR_NAME,
+      v1Deployments,
+    ),
+  };
+}
+
+/// The resolver v1 currently answers with for a name, which the migration carries
+/// across so the name resolves the same afterwards.
+async function readV1Resolver(
+  client: ReturnType<typeof publicClient>,
+  registry: JsonDeployment,
+  label: string,
+): Promise<Address> {
+  return (await client.readContract({
+    address: registry.address,
+    abi: registry.abi,
+    functionName: "resolver",
+    args: [namehash(`${label}.eth`)],
+  })) as Address;
+}
+
+/// The tuple a migration controller decodes from the token transfer.
+function encodeMigrationData(opts: {
+  label: string;
+  owner: Address;
+  resolver: Address;
+}): Hex {
+  return encodeAbiParameters(
+    [{ type: "tuple", components: migrationDataComponents }],
+    [
+      {
+        label: opts.label,
+        owner: opts.owner,
+        subregistry: zeroAddress,
+        resolver: opts.resolver,
+      },
+    ],
+  );
+}
+
 export async function migrateUnwrappedV1Name({
   network,
   rpcUrl,
@@ -308,32 +386,19 @@ export async function migrateUnwrappedV1Name({
   impersonateAccount?: Address;
   migrationController: JsonDeployment;
 }) {
-  const client = publicClient(rpcUrl, chain, provider);
-  if (impersonateAccount) await impersonate(client, impersonateAccount);
-  const wallet = walletClient({
+  const { client, wallet, registry, baseRegistrar } = await prepareV1Migration({
+    network,
     rpcUrl,
     chain,
-    privateKey,
-    account: account ?? impersonateAccount,
     provider,
+    v1DeploymentsDir,
+    v1DeploymentNetwork,
+    privateKey,
+    account,
+    impersonateAccount,
   });
-  const v1Deployments = { v1DeploymentsDir, v1DeploymentNetwork };
-  const registry = requireV1Deployment(network, "ENSRegistry", v1Deployments);
-  const baseRegistrar = requireV1Deployment(
-    network,
-    V1_BASE_REGISTRAR_NAME,
-    v1Deployments,
-  );
-  const resolver = (await client.readContract({
-    address: registry.address,
-    abi: registry.abi,
-    functionName: "resolver",
-    args: [namehash(`${label}.eth`)],
-  })) as Address;
-  const data = encodeAbiParameters(
-    [{ type: "tuple", components: migrationDataComponents }],
-    [{ label, owner, subregistry: zeroAddress, resolver }],
-  );
+  const resolver = await readV1Resolver(client, registry, label);
+  const data = encodeMigrationData({ label, owner, resolver });
   const hash = await wallet.writeContract({
     address: baseRegistrar.address,
     abi: baseRegistrar.abi,
@@ -379,22 +444,18 @@ export async function migrateWrappedV1Name({
   migrationController: JsonDeployment;
   fuses?: number;
 }) {
-  const client = publicClient(rpcUrl, chain, provider);
-  if (impersonateAccount) await impersonate(client, impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl,
-    chain,
-    privateKey,
-    account: account ?? impersonateAccount,
-    provider,
-  });
-  const v1Deployments = { v1DeploymentsDir, v1DeploymentNetwork };
-  const registry = requireV1Deployment(network, "ENSRegistry", v1Deployments);
-  const baseRegistrar = requireV1Deployment(
-    network,
-    V1_BASE_REGISTRAR_NAME,
-    v1Deployments,
-  );
+  const { client, wallet, v1Deployments, registry, baseRegistrar } =
+    await prepareV1Migration({
+      network,
+      rpcUrl,
+      chain,
+      provider,
+      v1DeploymentsDir,
+      v1DeploymentNetwork,
+      privateKey,
+      account,
+      impersonateAccount,
+    });
   const nameWrapper = requireV1Deployment(
     network,
     "NameWrapper",
@@ -423,16 +484,9 @@ export async function migrateWrappedV1Name({
   });
   await waitForSuccessfulReceipt(client, hash, `wrap ${label}.eth`);
 
-  const resolver = (await client.readContract({
-    address: registry.address,
-    abi: registry.abi,
-    functionName: "resolver",
-    args: [namehash(`${label}.eth`)],
-  })) as Address;
-  const data = encodeAbiParameters(
-    [{ type: "tuple", components: migrationDataComponents }],
-    [{ label, owner, subregistry: zeroAddress, resolver }],
-  );
+  // Read only now: the wrap above may have changed what the registry answers with.
+  const resolver = await readV1Resolver(client, registry, label);
+  const data = encodeMigrationData({ label, owner, resolver });
 
   // NameWrapper ids are namehashes, unlike the registrar's labelhash ids.
   hash = await wallet.writeContract({

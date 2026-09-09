@@ -338,23 +338,18 @@ function countClaimableCsvRows(
   csvFile: string,
   chainNow: bigint,
 ): { count: number; filtered: boolean; unknownExpiry: number } {
-  const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
-  if (lines.length === 0 || !lines[0]) {
+  const { header, rows, labelIndex } = openLabelCsv(csvFile);
+  if (labelIndex < 0) {
     return { count: 0, filtered: false, unknownExpiry: 0 };
   }
-  const fieldsOfHeader = parseCSVLine(lines[0]);
-  const labelIndex = csvLabelColumnIndex(fieldsOfHeader);
-  const expiryIndex = fieldsOfHeader
+  const expiryIndex = header
     .map((field) => field.trim().toLowerCase())
     .indexOf("expirydate");
-  if (labelIndex < 0) {
-    throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
-  }
 
   let labelled = 0;
   let expired = 0;
   let dated = 0;
-  for (const line of lines.slice(1)) {
+  for (const line of rows) {
     const fields = parseCSVLine(line);
     if (!fields[labelIndex]?.trim()) continue;
     labelled++;
@@ -388,16 +383,34 @@ function csvLabelColumnIndex(header: string[]): number {
   return normalized.indexOf("label");
 }
 
-function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
+/// A label CSV opened for reading: its rows, its header fields, and where the label
+/// column sits.
+///
+/// Every reader needs the same three things and had derived them for itself, with
+/// three slightly different messages for the same missing column. `rows` excludes the
+/// header.
+function openLabelCsv(csvFile: string): {
+  header: string[];
+  rows: string[];
+  labelIndex: number;
+} {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
-  if (lines.length === 0 || !lines[0]) return [];
+  if (lines.length === 0 || !lines[0]) {
+    return { header: [], rows: [], labelIndex: -1 };
+  }
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
     throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
   }
+  return { header, rows: lines.slice(1), labelIndex };
+}
+
+function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
+  const { rows, labelIndex } = openLabelCsv(csvFile);
+  if (labelIndex < 0) return [];
   const labels: string[] = [];
-  for (const line of lines.slice(1)) {
+  for (const line of rows) {
     if (limit !== undefined && labels.length >= limit) break;
     const label = parseCSVLine(line)[labelIndex]?.trim();
     if (label) labels.push(label);
@@ -409,19 +422,11 @@ function transformCsvForPreMigration(
   sourcePath: string,
   targetPath: string,
 ): number {
-  const lines = readFileSync(sourcePath, "utf-8").trim().split(/\r?\n/);
-  if (lines.length === 0) throw new Error(`CSV is empty: ${sourcePath}`);
-
-  const sourceHeader = parseCSVLine(lines[0]);
-  const labelIndex = csvLabelColumnIndex(sourceHeader);
-  if (labelIndex < 0) {
-    throw new Error(
-      `CSV must contain either a labelName or label column: ${sourcePath}`,
-    );
-  }
+  const { rows, labelIndex } = openLabelCsv(sourcePath);
+  if (labelIndex < 0) throw new Error(`CSV is empty: ${sourcePath}`);
 
   const output = [PREMIGRATION_CSV_HEADER];
-  for (const line of lines.slice(1)) {
+  for (const line of rows) {
     const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
     if (label) output.push(premigrationCsvRow(label));
@@ -4353,17 +4358,33 @@ async function holdsAnyRegistrarRole(
   return false;
 }
 
-async function enableV2Registrar(opts: {
+/// Where a contract's registrar roles are being taken, and how to tell it arrived.
+///
+/// Granting and revoking are the same operation in opposite directions, but they are
+/// not asking the same question of the result. A grant has landed when the account
+/// holds *every* role; a revocation only when it holds *none*. `hasRootRoles` answers
+/// the first, so using it for both reports a half-revoked account as disabled.
+type RegistrarRolesTarget = {
+  deployment: string;
+  address?: Address;
+  /// True to grant the roles, false to revoke them.
+  grant: boolean;
+  label: string;
+};
+
+type RegistrarRolesOptions = {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
   registry?: Address;
-  ethRegistrar?: Address;
   deploymentsDir?: string;
   deploymentNetwork?: string;
-  privateKey?: `0x${string}`;
-  impersonateAccount?: Address;
-}) {
+};
+
+function resolveRegistrarRolesTarget(
+  opts: RegistrarRolesOptions,
+  target: RegistrarRolesTarget,
+) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
@@ -4373,127 +4394,113 @@ async function enableV2Registrar(opts: {
     deploymentsDir,
     deploymentNetwork,
   });
-  const ethRegistrar = resolveDeploymentAddress(
-    opts.ethRegistrar,
+  const account = resolveDeploymentAddress(
+    target.address,
     deploymentsDir,
     deploymentNetwork,
-    "ETHRegistrar",
+    target.deployment,
   );
-  const beforeEnabled = await holdsAllRegistrarRoles(
-    client,
-    registry,
-    ethRegistrar,
-  );
-  console.log(`v2 registrar already enabled: ${beforeEnabled}`);
-  if (beforeEnabled) return;
+  const holds = target.grant ? holdsAllRegistrarRoles : holdsAnyRegistrarRole;
+  return { chain, client, registry, account, holds };
+}
+
+async function setRegistrarRoles(
+  opts: RegistrarRolesOptions & {
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+  target: RegistrarRolesTarget,
+) {
+  const { chain, client, registry, account, holds } =
+    resolveRegistrarRolesTarget(opts, target);
+
+  const before = await holds(client, registry, account);
+  console.log(`${target.label} before phase: ${before}`);
+  // Already where it is being taken. Read in the direction of travel, so a partial
+  // grant is not mistaken for a complete one, nor a partial revocation for none.
+  if (before === target.grant) return;
 
   await sendAdminWrite({
     client,
     chain,
     rpcUrl: opts.rpcUrl,
     target: registry,
-    functionName: "grantRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar],
-    receiptLabel: "enable v2 registrar",
+    functionName: target.grant ? "grantRootRoles" : "revokeRootRoles",
+    args: [REGISTRAR_ROLES, account],
+    receiptLabel: `${target.grant ? "enable" : "disable"} ${target.deployment} ${account}`,
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await holdsAllRegistrarRoles(
-    client,
-    registry,
-    ethRegistrar,
-  );
-  console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
-  if (!afterEnabled) {
+
+  const after = await holds(client, registry, account);
+  console.log(`${target.label} after phase: ${after}`);
+  if (after !== target.grant) {
     throw new Error(
-      `v2 registrar ${ethRegistrar} does not hold registrar/renew roles after the grant`,
+      target.grant
+        ? `${target.deployment} ${account} does not hold registrar/renew roles after the grant`
+        : `${target.deployment} ${account} still has registrar/renew roles`,
     );
   }
 }
 
-async function disableBatchRegistrar(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  registry?: Address;
-  batchRegistrar?: Address;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-  privateKey?: `0x${string}`;
-  impersonateAccount?: Address;
-}) {
-  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
-    deploymentsDir,
-    deploymentNetwork,
-  });
-  const batchRegistrar = resolveDeploymentAddress(
-    opts.batchRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "BatchRegistrar",
+async function verifyRegistrarRoles(
+  opts: RegistrarRolesOptions,
+  target: RegistrarRolesTarget,
+) {
+  const { client, registry, account, holds } = resolveRegistrarRolesTarget(
+    opts,
+    target,
   );
-  const beforeEnabled = await holdsAnyRegistrarRole(
-    client,
-    registry,
-    batchRegistrar,
-  );
-  console.log(`batch registrar enabled before phase: ${beforeEnabled}`);
-  if (!beforeEnabled) return;
-
-  await sendAdminWrite({
-    client,
-    chain,
-    rpcUrl: opts.rpcUrl,
-    target: registry,
-    functionName: "revokeRootRoles",
-    args: [REGISTRAR_ROLES, batchRegistrar],
-    receiptLabel: `disable batch registrar ${batchRegistrar}`,
-    privateKey: opts.privateKey,
-    impersonateAccount: opts.impersonateAccount,
-  });
-  const afterEnabled = await holdsAnyRegistrarRole(
-    client,
-    registry,
-    batchRegistrar,
-  );
-  console.log(`batch registrar enabled after phase: ${afterEnabled}`);
-  if (afterEnabled)
-    throw new Error("batch registrar still has registrar/renew roles");
+  const held = await holds(client, registry, account);
+  console.log(`${target.label}: ${held}`);
+  if (held !== target.grant) {
+    throw new Error(
+      target.grant
+        ? `${target.deployment} ${account} does not hold registrar/renew roles`
+        : `${target.deployment} ${account} still has registrar/renew roles`,
+    );
+  }
 }
 
-async function verifyBatchRegistrarDisabled(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  registry?: Address;
-  batchRegistrar?: Address;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-}) {
-  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
-    deploymentsDir,
-    deploymentNetwork,
+async function enableV2Registrar(
+  opts: RegistrarRolesOptions & {
+    ethRegistrar?: Address;
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+) {
+  await setRegistrarRoles(opts, {
+    deployment: "ETHRegistrar",
+    address: opts.ethRegistrar,
+    grant: true,
+    label: "v2 registrar enabled",
   });
-  const batchRegistrar = resolveDeploymentAddress(
-    opts.batchRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "BatchRegistrar",
-  );
-  const enabled = await holdsAnyRegistrarRole(client, registry, batchRegistrar);
-  console.log(`batch registrar enabled: ${enabled}`);
-  if (enabled)
-    throw new Error("batch registrar still has registrar/renew roles");
+}
+
+async function disableBatchRegistrar(
+  opts: RegistrarRolesOptions & {
+    batchRegistrar?: Address;
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+) {
+  await setRegistrarRoles(opts, {
+    deployment: "BatchRegistrar",
+    address: opts.batchRegistrar,
+    grant: false,
+    label: "batch registrar enabled",
+  });
+}
+
+async function verifyBatchRegistrarDisabled(
+  opts: RegistrarRolesOptions & { batchRegistrar?: Address },
+) {
+  await verifyRegistrarRoles(opts, {
+    deployment: "BatchRegistrar",
+    address: opts.batchRegistrar,
+    grant: false,
+    label: "batch registrar enabled",
+  });
 }
 
 export async function checkBatchRegistrarOwner(opts: {
@@ -4566,33 +4573,15 @@ function adminSigner(account: Address): {
     : { impersonateAccount: account };
 }
 
-async function verifyV2Registrar(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  registry?: Address;
-  ethRegistrar?: Address;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-}) {
-  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
-    deploymentsDir,
-    deploymentNetwork,
+async function verifyV2Registrar(
+  opts: RegistrarRolesOptions & { ethRegistrar?: Address },
+) {
+  await verifyRegistrarRoles(opts, {
+    deployment: "ETHRegistrar",
+    address: opts.ethRegistrar,
+    grant: true,
+    label: "v2 registrar enabled",
   });
-  const ethRegistrar = resolveDeploymentAddress(
-    opts.ethRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "ETHRegistrar",
-  );
-  const enabled = await holdsAllRegistrarRoles(client, registry, ethRegistrar);
-  console.log(`v2 registrar enabled: ${enabled}`);
-  if (!enabled) throw new Error("v2 registrar is not enabled");
 }
 
 // Asserts the state a renewal through `ETHRenewerV1` actually needs, which is more
