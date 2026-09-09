@@ -28,6 +28,7 @@ import {
 import {Execution} from "nexus/types/DataTypes.sol";
 import {ERC1271_MAGICVALUE} from "nexus/types/Constants.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -49,6 +50,8 @@ import {StandaloneSingleOwnerHCA} from "~src/hca/StandaloneSingleOwnerHCA.sol";
 import {IStandaloneHCAFactory} from "~src/hca/interfaces/IStandaloneHCAFactory.sol";
 import {IStandaloneHCAOwner} from "~src/hca/interfaces/IStandaloneHCAOwner.sol";
 import {IRentPriceOracle} from "~src/registrar/interfaces/IRentPriceOracle.sol";
+import {IETHRegistrar} from "~src/registrar/interfaces/IETHRegistrar.sol";
+import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {IRentPriceOracleProvider} from "~src/registrar/interfaces/IRentPriceOracleProvider.sol";
 import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegistry.sol";
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
@@ -117,7 +120,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     address dai = makeAddr("dai");
     address resolver = makeAddr("resolver");
     address otherResolver = makeAddr("other-resolver");
-    address subregistry = makeAddr("subregistry");
+    address subregistry;
     address entryPoint = makeAddr("entry-point");
     address intentExecutor = makeAddr("intent-executor");
     address gasRefundPaymaster = makeAddr("gas-refund-paymaster");
@@ -140,7 +143,11 @@ contract StandaloneSingleOwnerHCATest is Test {
         ethRegistry = IPermissionedRegistry(
             deployCode(
                 PERMISSIONED_REGISTRY_ARTIFACT,
-                abi.encode(address(0), address(this), RegistryRolesLib.ROLE_REGISTRAR_ADMIN)
+                abi.encode(
+                    deployCode("src/utils/LabelStore.sol:LabelStore", abi.encode(address(0))),
+                    address(this),
+                    RegistryRolesLib.ROLE_REGISTRAR_ADMIN
+                )
             )
         );
         ethRegistrar = _deployRegistrarWithOracle(_defaultPaymentTokens());
@@ -373,6 +380,61 @@ contract StandaloneSingleOwnerHCATest is Test {
         vm.prank(owner);
         account.executeByOwner(executions);
         assertEq(firstTarget.value(), 7);
+    }
+
+    function test_standaloneSingleOwnerHCA_ownerRegistersWithNonzeroSubregistry() public {
+        subregistry = makeAddr("subregistry");
+        StandaloneSingleOwnerHCA implementation =
+            _newOwnerValidatedAccount(new MockExecutorModule());
+        StandaloneSingleOwnerHCA account =
+            StandaloneSingleOwnerHCA(
+                payable(
+                    VerifiableFactory(verifiableFactory).deployProxy(
+                        address(implementation),
+                        2,
+                        abi.encodeCall(
+                            StandaloneSingleOwnerHCA.initializeAccount,
+                            (abi.encode(owner))
+                        )
+                    )
+                )
+            );
+        IETHRegistrar registrar = IETHRegistrar(ethRegistrar);
+        bytes32 commitment =
+            registrar.makeCommitment(
+                "alice",
+                owner,
+                bytes32("secret"),
+                IRegistry(subregistry),
+                resolver,
+                uint64(365 days),
+                bytes32(0)
+            );
+        vm.warp(365 days);
+        Execution[] memory executions = new Execution[](1);
+        executions[0] = Execution({target: ethRegistrar, value: 0, callData: abi.encodeCall(
+            IETHRegistrar.commit,
+            (commitment)
+        )});
+        vm.prank(owner);
+        account.executeByOwner(executions);
+
+        vm.warp(block.timestamp + 1 minutes);
+        vm.mockCall(
+            address(IRentPriceOracleProvider(ethRegistrar).rentPriceOracle()),
+            abi.encodeWithSelector(IRentPriceOracle.getRegisterPrice.selector),
+            abi.encode(uint256(0), uint256(0))
+        );
+        vm.mockCall(
+            usdc,
+            abi.encodeCall(IERC20.transferFrom, (address(account), address(this), 0)),
+            abi.encode(true)
+        );
+        executions[0].callData = _registerCallData(owner, resolver);
+        vm.prank(owner);
+        account.executeByOwner(executions);
+
+        assertEq(address(ethRegistry.getSubregistry("alice")), subregistry);
     }
 
     function test_standaloneSingleOwnerHCA_rejectsNftReceivers() public {
@@ -1208,6 +1270,24 @@ contract StandaloneSingleOwnerHCATest is Test {
             owner,
             address(0),
             executions
+        );
+    }
+
+    function test_validator_acceptsRegistrationWithZeroSubregistry() public view {
+        validatorHarness.checkRegistrationPolicyHarness(
+            address(hca),
+            owner,
+            resolver,
+            _registrationOperationData(owner, resolver)
+        );
+    }
+
+    function test_validator_rejectsRegistrationWithNonzeroSubregistry() public {
+        subregistry = makeAddr("subregistry");
+        _expectValidationRevert(
+            _registrationOperationData(owner, resolver),
+            resolver,
+            HCAOwnerAndSessionValidator.PolicyRuleFailed.selector
         );
     }
 
