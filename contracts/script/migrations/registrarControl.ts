@@ -1,6 +1,7 @@
 import { getAddress, type Address } from "viem";
 
 import type { JsonDeployment } from "./fixture/types.js";
+import { sameAddress } from "./plumbing.js";
 
 export type RegistrarControlRoute = {
   // Contract the owner-gated write targets, and whose owner() gates it.
@@ -40,7 +41,7 @@ export async function resolveRegistrarControlRoute(opts: {
         abi: baseRegistrar.abi,
         functionName: "owner",
       })) as Address);
-    if (getAddress(owner) === getAddress(registrarSecurityController.address)) {
+    if (sameAddress(owner, registrarSecurityController.address)) {
       return {
         target: registrarSecurityController,
         addFunctionName: "addRegistrarController",

@@ -45,6 +45,7 @@ import {
   type JsonDeployment,
   type MigrationNetwork,
   type RpcProvider,
+  sameAddress,
 } from "./plumbing.js";
 import { impersonate, walletClient } from "./rpc.js";
 import { V1_GRACE_PERIOD_SECONDS } from "../preMigration.js";
@@ -175,7 +176,7 @@ export async function assertV1Owner({
     v1DeploymentNetwork,
     label,
   });
-  if (getAddress(actualOwner) !== getAddress(owner)) {
+  if (!sameAddress(actualOwner, owner)) {
     throw new Error(`unexpected v1 owner for ${label}.eth: ${actualOwner}`);
   }
 }
@@ -274,7 +275,7 @@ export async function assertV2State({
   if (Number(state.status) !== status) {
     throw new Error(`unexpected v2 status for ${label}.eth: ${state.status}`);
   }
-  if (owner && getAddress(state.latestOwner) !== getAddress(owner)) {
+  if (owner && !sameAddress(state.latestOwner, owner)) {
     throw new Error(
       `unexpected v2 owner for ${label}.eth: ${state.latestOwner}`,
     );

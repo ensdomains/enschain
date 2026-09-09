@@ -282,6 +282,28 @@ export function parseNumber(
   return parsed;
 }
 
+/// Whether two addresses are the same, whatever case they arrived in.
+///
+/// Addresses reach this tooling from three places that disagree on casing — chain
+/// reads, deployment artifacts and CLI flags — so every comparison has to normalise
+/// both sides. Saying that once removes the doubled call from the ~36 sites that
+/// compare, without touching what any of them report when they differ.
+export function sameAddress(a: Address, b: Address): boolean {
+  return getAddress(a) === getAddress(b);
+}
+
+export function envValue(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return undefined;
+}
+
+export function envPrivateKey(...names: string[]): `0x${string}` | undefined {
+  return envValue(...names) as `0x${string}` | undefined;
+}
+
 export function parseMigrationNetwork(
   value: string | undefined,
 ): MigrationNetwork {

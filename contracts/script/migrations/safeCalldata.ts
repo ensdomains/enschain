@@ -8,6 +8,7 @@
 // signs, it executes. This turns "someone eyeballed it" into a comparison.
 
 import { decodeFunctionData, getAddress, type Abi, type Hex } from "viem";
+import { sameAddress } from "./plumbing.js";
 
 export type PreparedCall = {
   to: string;
@@ -35,7 +36,7 @@ export function compareCalldata(
   expected: PreparedCall,
   actual: PreparedCall,
 ): CalldataVerdict {
-  if (getAddress(expected.to as Hex) !== getAddress(actual.to as Hex)) {
+  if (!sameAddress(expected.to as Hex, actual.to as Hex)) {
     return {
       kind: "target-mismatch",
       expected: getAddress(expected.to as Hex),

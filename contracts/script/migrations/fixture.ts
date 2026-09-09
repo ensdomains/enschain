@@ -79,6 +79,7 @@ import {
   impersonateAccount,
   type Executor,
 } from "./fixture/execute.js";
+import { sameAddress } from "./plumbing.js";
 import {
   type CommonOptions,
   type FixtureEnvelope,
@@ -190,7 +191,7 @@ async function ownerWallet(opts: CommonOptions, owner: Address) {
     (process.env.V1_OWNER_KEY as Hex | undefined);
   if (key) {
     const account = privateKeyToAccount(key);
-    if (getAddress(account.address) === getAddress(owner)) {
+    if (sameAddress(account.address, owner)) {
       return createWalletClient({
         chain,
         account,
@@ -391,7 +392,7 @@ function assertRunStateCompatible(
     mismatches.push(`corpus ${state.fixtureRoot}, now ${fixtureRoot}`);
   for (const actor of actors) {
     const recorded = state.actorAddresses[actor.alias];
-    if (recorded && getAddress(recorded) !== getAddress(actor.account.address))
+    if (recorded && !sameAddress(recorded, actor.account.address))
       mismatches.push(
         `actor ${actor.alias} ${recorded}, now ${actor.account.address}`,
       );

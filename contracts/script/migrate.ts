@@ -81,6 +81,13 @@ import {
 import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
 import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
 import {
+  executePreparedOwnerTransactions,
+  preparedOwnerTransactionLabel,
+  printPreparedCall,
+  readPreparedOwnerTransactions,
+  type PreparedOwnerTransaction,
+} from "./migrations/ownerTx.js";
+import {
   assertRejected,
   assertV1Owner,
   assertV2State,
@@ -138,7 +145,10 @@ import {
   parseNumber,
   publicClient,
   requireV1Deployment,
+  envPrivateKey,
+  envValue,
   resolveDeploymentAddress,
+  sameAddress,
   type RpcProvider,
   type V1DeploymentOptions,
 } from "./migrations/plumbing.js";
@@ -248,19 +258,6 @@ type PrivateKeyOptions = {
   urManagerPrivateKey?: `0x${string}`;
 };
 
-type PreparedOwnerTransaction = {
-  account?: string;
-  role?: string;
-  from?: Address;
-  to: Address;
-  value?: string;
-  data: `0x${string}`;
-  phase?: string;
-  label?: string;
-  functionName?: string;
-  deployment?: string;
-};
-
 function loadDotEnv(filePath: string): void {
   if (!existsSync(filePath)) return;
   for (const line of readFileSync(filePath, "utf-8").split(/\r?\n/)) {
@@ -303,18 +300,6 @@ function loadDeploymentFromRoot(
   const path = join(root, environment, `${name}.json`);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf-8")) as JsonDeployment;
-}
-
-function envValue(...names: string[]): string | undefined {
-  for (const name of names) {
-    const value = process.env[name];
-    if (value) return value;
-  }
-  return undefined;
-}
-
-function envPrivateKey(...names: string[]): `0x${string}` | undefined {
-  return envValue(...names) as `0x${string}` | undefined;
 }
 
 function parseResumeFromPhase(value: string | undefined): 2 | undefined {
@@ -506,341 +491,6 @@ async function describeSimulatedEndpoint(
 /// Deep enough that an ordinary reorg does not invalidate a good pass, shallow enough
 /// that it still lands inside a fork's own history.
 const PHASE_GATE_HEAD_CONFIRMATIONS = 12n;
-
-function printPreparedCall(
-  label: string,
-  target: Address,
-  data: `0x${string}`,
-): void {
-  console.log(`${label}`);
-  console.log(`  to:   ${target}`);
-  console.log(`  data: ${data}`);
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function parsePreparedOwnerTransaction(
-  value: unknown,
-  lineNumber: number,
-): PreparedOwnerTransaction {
-  if (typeof value !== "object" || value === null) {
-    throw new Error(`Invalid owner tx on line ${lineNumber}: expected object`);
-  }
-  const input = value as Record<string, unknown>;
-  const to = optionalString(input.to);
-  const data = optionalString(input.data);
-  if (!to)
-    throw new Error(`Invalid owner tx on line ${lineNumber}: missing to`);
-  if (!data?.startsWith("0x")) {
-    throw new Error(`Invalid owner tx on line ${lineNumber}: missing calldata`);
-  }
-
-  const rawValue = input.value;
-  return {
-    account: optionalString(input.account),
-    role: optionalString(input.role),
-    from: input.from ? getAddress(String(input.from)) : undefined,
-    to: getAddress(to),
-    value: rawValue === undefined ? undefined : String(rawValue),
-    data: data as `0x${string}`,
-    phase: optionalString(input.phase),
-    label: optionalString(input.label),
-    functionName: optionalString(input.functionName),
-    deployment: optionalString(input.deployment),
-  };
-}
-
-function readPreparedOwnerTransactions(
-  file: string,
-  role?: string,
-): PreparedOwnerTransaction[] {
-  const roleFilter = role?.toLowerCase();
-  return readFileSync(resolve(file), "utf-8")
-    .split(/\r?\n/)
-    .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
-    .filter(({ line }) => line.length > 0)
-    .map(({ line, lineNumber }) =>
-      parsePreparedOwnerTransaction(JSON.parse(line), lineNumber),
-    )
-    .filter((tx) => {
-      if (!roleFilter) return true;
-      return [tx.role, tx.account]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase() === roleFilter);
-    });
-}
-
-function preparedOwnerTransactionRole(tx: PreparedOwnerTransaction): string {
-  return tx.role ?? tx.account ?? "owner";
-}
-
-function preparedOwnerTransactionLabel(tx: PreparedOwnerTransaction): string {
-  const action = tx.label ?? tx.functionName ?? tx.deployment ?? "transaction";
-  return [tx.phase, action].filter(Boolean).join(": ");
-}
-
-// Role-specific env-var prefixes for prepared owner transactions. Roles not listed
-// here fall back to OWNER_TX_ENV_DEFAULT_PREFIXES. Role names are matched after
-// lowercasing and stripping dashes (e.g. "v1-owner" -> "v1owner").
-const OWNER_TX_ENV_PREFIXES: Record<string, readonly string[]> = {
-  v1owner: ["SEPOLIA_V1_OWNER", "V1_OWNER"],
-  sepoliatopurpowner: ["SEPOLIA_TOP_URP_OWNER", "TOP_URP_OWNER"],
-};
-
-const OWNER_TX_ENV_DEFAULT_PREFIXES = [
-  "OWNER_TX",
-  "SEPOLIA_V1_OWNER",
-  "V1_OWNER",
-  "SEPOLIA_TOP_URP_OWNER",
-  "TOP_URP_OWNER",
-] as const;
-
-function normalizeOwnerTransactionRole(role: string | undefined): string {
-  return role?.toLowerCase().replace(/-/g, "") ?? "";
-}
-
-function ownerTransactionEnv(
-  role: string | undefined,
-  suffix: string,
-): string | undefined {
-  const prefixes =
-    OWNER_TX_ENV_PREFIXES[normalizeOwnerTransactionRole(role)] ??
-    OWNER_TX_ENV_DEFAULT_PREFIXES;
-  return envValue(...prefixes.map((prefix) => `${prefix}${suffix}`));
-}
-
-function ownerTransactionPrivateKey(
-  role: string | undefined,
-  privateKey: `0x${string}` | undefined,
-): `0x${string}` | undefined {
-  if (privateKey) return privateKey;
-  if (normalizeOwnerTransactionRole(role) === "deployer") {
-    return envPrivateKey("DEPLOYER_KEY");
-  }
-  return ownerTransactionEnv(role, "_KEY") as `0x${string}` | undefined;
-}
-
-function ownerTransactionMnemonic(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC");
-}
-
-function ownerTransactionMnemonicPath(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC_PATH");
-}
-
-function ownerTransactionMnemonicPassphrase(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC_PASSPHRASE");
-}
-
-function ownerTransactionMnemonicIndex(role: string | undefined): number {
-  return parseNumber(ownerTransactionEnv(role, "_MNEMONIC_INDEX"), 0);
-}
-
-function ownerTransactionSigner(
-  role: string | undefined,
-  privateKey: `0x${string}` | undefined,
-): WalletAccount | undefined {
-  const resolvedPrivateKey = ownerTransactionPrivateKey(role, privateKey);
-  if (resolvedPrivateKey) return privateKeyToAccount(resolvedPrivateKey);
-
-  const mnemonic = ownerTransactionMnemonic(role);
-  if (!mnemonic) return undefined;
-
-  const path = ownerTransactionMnemonicPath(role);
-  const passphrase = ownerTransactionMnemonicPassphrase(role);
-  return mnemonicToAccount(
-    mnemonic,
-    (path
-      ? { path, passphrase }
-      : {
-          addressIndex: ownerTransactionMnemonicIndex(role),
-          passphrase,
-        }) as never,
-  );
-}
-
-// Identity of a prepared transaction, independent of its position in the file, so a
-// re-run recognises one it has already sent even if the file was regenerated or
-// filtered differently.
-function preparedOwnerTransactionId(tx: PreparedOwnerTransaction): string {
-  return keccak256(
-    stringToHex(
-      [
-        normalizeOwnerTransactionRole(tx.role),
-        getAddress(tx.to),
-        tx.data,
-        BigInt(tx.value ?? "0").toString(),
-      ].join("|"),
-    ),
-  );
-}
-
-type OwnerTransactionJournal = Record<
-  string,
-  {
-    label: string;
-    hash: string;
-    // Recorded so a journal left over from a fork rehearsal cannot suppress the same
-    // transaction on a different chain. Chain id alone does not settle it — a
-    // mainnet fork answers 1 — so the block the transaction landed in is recorded
-    // too, and re-checked against the connected chain before anything is skipped.
-    chainId: number;
-    blockNumber: string;
-    blockHash: string;
-    executedAt: string;
-  }
->;
-
-function ownerTransactionJournalPath(file: string, explicit?: string): string {
-  return explicit ?? `${file}.executed.json`;
-}
-
-// Whether a journalled transaction is still where the journal says it is. An absent
-// receipt means it never landed here; a reverted one means it landed and did nothing;
-// a different block hash means the branch it was in is no longer canonical.
-async function journalledTransactionStillLanded(
-  client: ReturnType<typeof publicClient>,
-  entry: OwnerTransactionJournal[string],
-): Promise<boolean> {
-  if (!entry.blockHash) return false;
-  try {
-    const receipt = await client.getTransactionReceipt({
-      hash: entry.hash as `0x${string}`,
-    });
-    return (
-      receipt.status === "success" &&
-      receipt.blockHash.toLowerCase() === entry.blockHash.toLowerCase()
-    );
-  } catch {
-    return false;
-  }
-}
-
-function readOwnerTransactionJournal(path: string): OwnerTransactionJournal {
-  if (!existsSync(path)) return {};
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as OwnerTransactionJournal;
-  } catch {
-    return {};
-  }
-}
-
-export async function executePreparedOwnerTransactions(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  file: string;
-  role?: string;
-  privateKey?: `0x${string}`;
-  dryRun?: boolean;
-  journalFile?: string;
-  // Re-send transactions the journal already records as executed.
-  force?: boolean;
-}) {
-  const transactions = readPreparedOwnerTransactions(opts.file, opts.role);
-  if (transactions.length === 0) {
-    throw new Error(`No prepared owner transactions found in ${opts.file}`);
-  }
-
-  const account = ownerTransactionSigner(opts.role, opts.privateKey);
-  if (!account && !opts.dryRun) {
-    throw new Error(
-      "Missing --private-key, owner key env var, or owner mnemonic env var for prepared owner transactions",
-    );
-  }
-
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const wallet = account
-    ? walletClient({ rpcUrl: opts.rpcUrl, chain, account })
-    : null;
-
-  // These are owner-gated writes against live v1 contracts. Re-running the file
-  // after a partial failure must not re-send what already landed, so each success is
-  // journalled and skipped on a later run.
-  const journalPath = ownerTransactionJournalPath(opts.file, opts.journalFile);
-  const journal = readOwnerTransactionJournal(journalPath);
-  let executed = 0;
-  let skipped = 0;
-
-  for (const tx of transactions) {
-    const label = preparedOwnerTransactionLabel(tx);
-    const role = preparedOwnerTransactionRole(tx);
-    const id = preparedOwnerTransactionId(tx);
-    const previous = journal[id];
-
-    // A journal entry is only evidence if the transaction it names is still on this
-    // chain. A rehearsal on a mainnet fork writes entries claiming chain 1, and a
-    // reorg can take a real one back out; skipping on either would leave an
-    // owner-gated write unsent while the run reports it as already done.
-    const alreadyExecuted =
-      previous?.chainId === chain.id &&
-      (await journalledTransactionStillLanded(client, previous));
-    if (previous && !alreadyExecuted && !opts.dryRun) {
-      console.log(
-        `journalled ${role}: ${label} (tx ${previous.hash}) is not on this chain — re-sending`,
-      );
-    }
-    if (alreadyExecuted && !opts.force && !opts.dryRun) {
-      skipped++;
-      console.log(
-        `already executed ${role}: ${label} (tx ${previous.hash}, block ${previous.blockNumber}) — skipping; pass --force to re-send`,
-      );
-      continue;
-    }
-
-    console.log(`${opts.dryRun ? "prepared" : "executing"} ${role}: ${label}`);
-    console.log(`  to:   ${tx.to}`);
-    console.log(`  data: ${tx.data}`);
-    if (alreadyExecuted && opts.dryRun) {
-      console.log(`  note: already executed as ${previous.hash}`);
-    }
-
-    if (
-      account &&
-      tx.from &&
-      getAddress(account.address) !== getAddress(tx.from)
-    ) {
-      throw new Error(
-        `Signer ${account.address} does not match prepared tx sender ${tx.from} for ${label}`,
-      );
-    }
-    if (opts.dryRun) continue;
-
-    const hash = await wallet!.sendTransaction({
-      to: tx.to,
-      data: tx.data,
-      value: BigInt(tx.value ?? "0"),
-    });
-    const receipt = await waitForSuccessfulReceipt(client, hash, label);
-    console.log(`  tx:   ${hash}`);
-
-    journal[id] = {
-      label,
-      hash,
-      chainId: chain.id,
-      blockNumber: receipt.blockNumber.toString(),
-      blockHash: receipt.blockHash,
-      executedAt: new Date().toISOString(),
-    };
-    writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`, "utf8");
-    executed++;
-  }
-
-  if (!opts.dryRun) {
-    console.log(
-      `owner transactions: ${executed} executed, ${skipped} already executed (journal ${journalPath})`,
-    );
-  }
-}
 
 async function runFetchData(opts: {
   thegraphApiKey?: string;
@@ -1194,7 +844,7 @@ async function verifyPreMigration(opts: {
           continue;
         }
         const actualResolver = result.result as Address;
-        if (getAddress(actualResolver) !== getAddress(resolverToCheck)) {
+        if (!sameAddress(actualResolver, resolverToCheck)) {
           errors.push(`${label}.eth resolver mismatch: ${actualResolver}`);
           continue;
         }
@@ -2245,7 +1895,7 @@ async function filterHandoffControllersByBackReference(
           abi,
           functionName: getterName,
         })) as Address;
-        return getAddress(backReference) === getAddress(surface.address);
+        return sameAddress(backReference, surface.address);
       } catch (error) {
         if (!isContractProbeRejection(error)) throw error;
         return false;
@@ -2847,7 +2497,7 @@ async function reclaimV1RegistrarOwnership(opts: {
     abi: baseRegistrar.abi,
     functionName: "owner",
   })) as Address;
-  if (getAddress(currentOwner) === getAddress(opts.v1Owner)) return;
+  if (sameAddress(currentOwner, opts.v1Owner)) return;
 
   const code = await client.getCode({ address: currentOwner });
   if (!code || code === "0x") {
@@ -2868,7 +2518,7 @@ async function reclaimV1RegistrarOwnership(opts: {
   );
   if (
     registrarSecurityController &&
-    getAddress(currentOwner) === getAddress(registrarSecurityController.address)
+    sameAddress(currentOwner, registrarSecurityController.address)
   ) {
     console.log(
       `v1 BaseRegistrar owner ${currentOwner} is the RegistrarSecurityController, not a prior renewer; skipping reclaim`,
@@ -2907,7 +2557,7 @@ async function reclaimV1RegistrarOwnership(opts: {
     abi: baseRegistrar.abi,
     functionName: "owner",
   })) as Address;
-  if (getAddress(updatedOwner) !== getAddress(opts.v1Owner)) {
+  if (!sameAddress(updatedOwner, opts.v1Owner)) {
     throw new Error(
       `v1 BaseRegistrar ownership reclaim failed; owner is ${updatedOwner}`,
     );
@@ -2981,7 +2631,7 @@ export async function activateV1RenewerAndTransferOwnership(opts: {
     functionName: "owner",
   })) as Address;
   console.log(`v1 BaseRegistrar owner: ${currentOwner}`);
-  if (getAddress(currentOwner) === getAddress(ethRenewerV1)) return;
+  if (sameAddress(currentOwner, ethRenewerV1)) return;
 
   const route = await resolveRegistrarControlRoute({
     client,
@@ -3012,7 +2662,7 @@ export async function activateV1RenewerAndTransferOwnership(opts: {
     functionName: "owner",
   })) as Address;
   console.log(`v1 BaseRegistrar owner after phase: ${updatedOwner}`);
-  if (getAddress(updatedOwner) !== getAddress(ethRenewerV1)) {
+  if (!sameAddress(updatedOwner, ethRenewerV1)) {
     throw new Error(`unexpected v1 BaseRegistrar owner: ${updatedOwner}`);
   }
 }
@@ -3833,7 +3483,7 @@ export async function verifyRegistrarEconomics(opts: {
     functionName: "rentPriceOracle",
   })) as Address;
   console.log(`ETHRegistrar rent price oracle: ${oracle}`);
-  if (getAddress(oracle) === getAddress(zeroAddress)) {
+  if (sameAddress(oracle, zeroAddress)) {
     problems.push("rent price oracle is the zero address");
   } else if ((await client.getCode({ address: oracle })) === undefined) {
     problems.push(`rent price oracle ${oracle} has no code`);
@@ -3847,14 +3497,14 @@ export async function verifyRegistrarEconomics(opts: {
   console.log(`ETHRegistrar beneficiary: ${beneficiary}`);
   // Registration fees are transferred here. A zero beneficiary means every payment
   // is burned, which no other check would notice.
-  if (getAddress(beneficiary) === getAddress(zeroAddress)) {
+  if (sameAddress(beneficiary, zeroAddress)) {
     problems.push(
       "beneficiary is the zero address; registration fees would be burnt",
     );
   }
   if (
     opts.expectedBeneficiary &&
-    getAddress(beneficiary) !== getAddress(opts.expectedBeneficiary)
+    !sameAddress(beneficiary, opts.expectedBeneficiary)
   ) {
     problems.push(
       `beneficiary is ${beneficiary}, expected ${opts.expectedBeneficiary}`,
@@ -4195,7 +3845,7 @@ export async function verifyReverseAdapters(opts: {
         ],
         functionName: pair.backReference,
       })) as Address;
-      if (getAddress(target) !== getAddress(registrar.address)) {
+      if (!sameAddress(target, registrar.address)) {
         problems.push(
           `${pair.adapterName} forwards to ${target}, not ${pair.registrarName} ${registrar.address}`,
         );
@@ -4255,7 +3905,7 @@ export async function setV1ReverseDefaultResolver(opts: {
     functionName: "defaultResolver",
   })) as Address;
   console.log(`v1 reverse registrar default resolver: ${currentResolver}`);
-  if (getAddress(currentResolver) === getAddress(publicResolver.address)) {
+  if (sameAddress(currentResolver, publicResolver.address)) {
     return;
   }
 
@@ -4287,7 +3937,7 @@ export async function setV1ReverseDefaultResolver(opts: {
   console.log(
     `v1 reverse registrar default resolver after update: ${updatedResolver}`,
   );
-  if (getAddress(updatedResolver) !== getAddress(publicResolver.address)) {
+  if (!sameAddress(updatedResolver, publicResolver.address)) {
     throw new Error(
       `unexpected v1 reverse default resolver: ${updatedResolver}`,
     );
@@ -4532,7 +4182,7 @@ export async function checkBatchRegistrarOwner(opts: {
   console.log(`batch registrar owner: ${owner}`);
   if (
     opts.expectedOwner !== undefined &&
-    getAddress(owner) !== getAddress(opts.expectedOwner)
+    !sameAddress(owner, opts.expectedOwner)
   ) {
     throw new Error(
       `unexpected BatchRegistrar owner: expected ${opts.expectedOwner}, got ${owner}`,
@@ -4559,7 +4209,7 @@ function preMigrationSigner(account: Address): {
   privateKey?: `0x${string}`;
   account?: Address;
 } {
-  return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
+  return sameAddress(account, DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { account };
 }
@@ -4568,7 +4218,7 @@ function adminSigner(account: Address): {
   privateKey?: `0x${string}`;
   impersonateAccount?: Address;
 } {
-  return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
+  return sameAddress(account, DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { impersonateAccount: account };
 }
@@ -4634,7 +4284,7 @@ export async function verifyV1Renewer(opts: {
     functionName: "owner",
   })) as Address;
   console.log(`v1 BaseRegistrar owner: ${registrarOwner}`);
-  if (getAddress(registrarOwner) !== getAddress(ethRenewerV1)) {
+  if (!sameAddress(registrarOwner, ethRenewerV1)) {
     throw new Error(
       `v1 BaseRegistrar is owned by ${registrarOwner}, not ETHRenewerV1 ${ethRenewerV1}; renewals would revert in syncWrapper`,
     );
@@ -4688,7 +4338,7 @@ async function verifyUrp(opts: {
 
   if (
     opts.expectedTopImplementation &&
-    getAddress(topImplementation) !== getAddress(opts.expectedTopImplementation)
+    !sameAddress(topImplementation, opts.expectedTopImplementation)
   ) {
     throw new Error("top URP implementation does not match expected address");
   }
@@ -4734,7 +4384,7 @@ async function switchTopUrpToManaged(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "implementation",
   })) as Address;
-  if (getAddress(currentTopImplementation) === getAddress(managedUrp)) {
+  if (sameAddress(currentTopImplementation, managedUrp)) {
     console.log(`top URP already fronts managed URP: ${managedUrp}`);
     return;
   }
@@ -4762,7 +4412,7 @@ async function switchTopUrpToManaged(opts: {
     client,
   });
   const actualImplementation = (await top.read.implementation()) as Address;
-  if (getAddress(actualImplementation) !== getAddress(managedUrp)) {
+  if (!sameAddress(actualImplementation, managedUrp)) {
     throw new Error(`top URP implementation mismatch: ${actualImplementation}`);
   }
   console.log(`top URP implementation: ${actualImplementation}`);
@@ -4805,7 +4455,7 @@ async function upgradeManagedUrp(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "implementation",
   })) as Address;
-  if (getAddress(currentImplementation) === getAddress(implementation)) {
+  if (sameAddress(currentImplementation, implementation)) {
     console.log(`managed URP already at implementation: ${implementation}`);
     return;
   }
@@ -4833,7 +4483,7 @@ async function upgradeManagedUrp(opts: {
     client,
   });
   const actualImplementation = (await managed.read.implementation()) as Address;
-  if (getAddress(actualImplementation) !== getAddress(implementation)) {
+  if (!sameAddress(actualImplementation, implementation)) {
     throw new Error(
       `managed URP implementation mismatch: ${actualImplementation}`,
     );
@@ -5029,9 +4679,8 @@ function signerKeyForAccount(
 ): `0x${string}` | undefined {
   const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
   if (!target) return keys[0];
-  return keys.find(
-    (key) =>
-      getAddress(privateKeyToAccount(key).address) === getAddress(target),
+  return keys.find((key) =>
+    sameAddress(privateKeyToAccount(key).address, target),
   );
 }
 
@@ -5948,7 +5597,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await impersonate(client, urManager);
     } else if (
       useRpcStateControls &&
-      getAddress(deployer) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      !sameAddress(deployer, DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, deployer);
     }
@@ -6182,7 +5831,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     console.log(`batch registrar owner: ${batchRegistrarOwner}`);
     if (
       useRpcStateControls &&
-      getAddress(batchRegistrarOwner) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      !sameAddress(batchRegistrarOwner, DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, batchRegistrarOwner);
     }
@@ -6236,8 +5885,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
       abi: Artifact_UpgradableUniversalResolverProxy.abi,
       functionName: "implementation",
     })) as Address;
-    const topAlreadyFrontsManaged =
-      getAddress(baselineImplementation) === getAddress(managedUrp.address);
+    const topAlreadyFrontsManaged = sameAddress(
+      baselineImplementation,
+      managedUrp.address,
+    );
     await verifyUrp({
       network: opts.network,
       rpcUrl,
@@ -6821,7 +6472,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         abi: Artifact_UpgradableUniversalResolverProxy.abi,
         functionName: "admin",
       })) as Address;
-      if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
+      if (sameAddress(topUrpAdmin, zeroAddress)) {
         throw new Error(
           "top URP admin is address(0); cannot impersonate admin for fork switch",
         );
@@ -6856,8 +6507,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       abi: Artifact_UpgradableUniversalResolverProxy.abi,
       functionName: "admin",
     })) as Address;
-    const urManagerIsAdmin =
-      getAddress(managedUrpAdmin) === getAddress(urManager);
+    const urManagerIsAdmin = sameAddress(managedUrpAdmin, urManager);
     if (!urManagerIsAdmin) {
       console.log(
         `managed URP admin is ${managedUrpAdmin}, not the configured ur-manager ${urManager}`,
@@ -9053,3 +8703,5 @@ export {
   renewViaEthRenewerV1,
   runV2RegistrarSmoke,
 } from "./migrations/smoke.js";
+
+export { executePreparedOwnerTransactions } from "./migrations/ownerTx.js";
