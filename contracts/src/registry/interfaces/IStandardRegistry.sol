@@ -29,10 +29,6 @@ interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     /// @dev Error selector: `0xf1d446c3`
     error CannotSetPastExpiry(uint64 expiry);
 
-    /// @notice Transfer is not allowed due to missing transfer admin role.
-    /// @dev Error selector: `0xe58f6d5a`
-    error TransferDisallowed(uint256 tokenId, address from);
-
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////

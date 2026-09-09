@@ -21,7 +21,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 /// @dev DNS resource-record class for the Internet (`IN`), as defined in RFC 1035 section 3.2.4.
@@ -354,7 +354,7 @@ contract DNSTLDResolver is
             }
         }
         bytes memory name = NameCoder.encode(string(v));
-        (, address r, , ) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, address r, , ) = LibResolution.findResolver(ROOT_REGISTRY, name, 0);
         if (r != address(0)) {
             // in ENSv1, this was immediate only, but now supports IExtendedResolver
             // does not support offchain

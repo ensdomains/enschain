@@ -40,7 +40,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
     PermissionedAddressSet publicResolverSet;
 
     string testLabel = "test";
-    address testResolver = makeAddr("resolver");
+    address testResolver;
     IRegistry testRegistry = IRegistry(makeAddr("registry"));
     address premigrationController = makeAddr("premigrationController");
     uint64 premigrationBonusPeriod = StandardRegistrar.BONUS_PERIOD;
@@ -75,6 +75,7 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         dummy721 = new MockERC721();
         dummy1155 = new MockERC1155();
+        testResolver = address(new MockResolver());
     }
 
     /// @dev Ensure premigration has occurred.
@@ -154,3 +155,6 @@ contract MockERC1155 is ERC1155 {
         return _id++;
     }
 }
+
+
+contract MockResolver {}

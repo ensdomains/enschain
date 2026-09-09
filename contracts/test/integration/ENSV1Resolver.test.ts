@@ -1,6 +1,7 @@
 import { shouldSupportInterfaces } from "@ensdomains/hardhat-chai-matchers-viem/behaviour";
 import hre from "hardhat";
 import { describe, it } from "vitest";
+import { zeroAddress } from "viem";
 
 import {
   type KnownProfile,
@@ -8,7 +9,7 @@ import {
   makeResolutions,
 } from "../utils/resolutions.js";
 import { shouldSupportFeatures } from "../utils/supportsFeatures.js";
-import { dnsEncodeName, COIN_TYPE_ETH } from "../utils/utils.js";
+import { dnsEncodeName, COIN_TYPE_ETH, getParentName } from "../utils/utils.js";
 import { deployV1Fixture } from "./fixtures/deployV1Fixture.js";
 import { deployV2Fixture } from "./fixtures/deployV2Fixture.js";
 import { expectVar } from "../utils/expectVar.js";
@@ -18,12 +19,15 @@ const network = await hre.network.connect();
 async function fixture() {
   const v1 = await deployV1Fixture(network, true);
   const v2 = await deployV2Fixture(network, true);
+  const ssResolver = await network.viem.deployContract(
+    "DummyShapeshiftResolver",
+  );
   const ensV1Resolver = await network.viem.deployContract("ENSV1Resolver", [
     v1.batchGatewayProvider.address,
     v2.contractNamer.address,
     v1.ensRegistry.address,
   ]);
-  return { v1, v2, ensV1Resolver };
+  return { v1, v2, ssResolver, ensV1Resolver };
 }
 
 describe("ENSV1Resolver", () => {
@@ -92,4 +96,22 @@ describe("ENSV1Resolver", () => {
       }
     });
   }
+
+  it("not extended", async () => {
+    const F = await network.networkHelpers.loadFixture(fixture);
+    const name = "sub.test.eth";
+    await F.v1.setupName({
+      name: getParentName(name),
+      resolverAddress: F.ssResolver.address,
+    });
+    await F.v2.setupName({
+      name,
+      resolverAddress: F.ensV1Resolver.address,
+    });
+    const [resolver, offchain] = await F.ensV1Resolver.read.getResolver([
+      dnsEncodeName(name),
+    ]);
+    expectVar({ resolver }).toEqualAddress(zeroAddress);
+    expectVar({ offchain }).toStrictEqual(false);
+  });
 });

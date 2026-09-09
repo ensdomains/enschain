@@ -8,7 +8,7 @@ import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {AbstractNormalizedUniversalResolver} from "./AbstractNormalizedUniversalResolver.sol";
-import {LibRegistry} from "./libraries/LibRegistry.sol";
+import {LibResolution} from "./libraries/LibResolution.sol";
 
 /// @notice Universal Resolver for ENSv2.
 contract UniversalResolverV2 is AbstractNormalizedUniversalResolver, DelegatedContractNamer {
@@ -59,7 +59,7 @@ contract UniversalResolverV2 is AbstractNormalizedUniversalResolver, DelegatedCo
         override
         returns (address resolver, bytes32 node, uint256 offset)
     {
-        (, resolver, node, offset) = LibRegistry.findResolver(ROOT_REGISTRY, name, 0);
+        (, resolver, node, offset) = LibResolution.findUnvalidatedResolver(ROOT_REGISTRY, name, 0);
     }
 
     /// @inheritdoc AbstractNormalizedUniversalResolver

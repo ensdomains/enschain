@@ -75,10 +75,8 @@ import {
 /// The pre-migration checks batch theirs through multicall, where a full
 /// artifact ABI costs the type checker its inference.
 const NAME_EXPIRES_ABI = BaseRegistrarFragments.nameExpires;
-const REGISTRY_STATE_ABI = [
-  ...PermissionedRegistryFragments.getState,
-  ...PermissionedRegistryFragments.getResolver,
-] as const;
+const REGISTRY_STATE_ABI = PermissionedRegistryFragments.getState;
+const REGISTRY_RESOLVER_ABI = PermissionedRegistryFragments.getResolver;
 const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
@@ -1426,7 +1424,6 @@ async function verifyPreMigration(opts: {
       const label = validBatch[index];
       const expiryResult = expiryResults[index];
       const stateResult = stateResults[index];
-
       if (expiryResult.status === "failure") {
         errors.push(
           `${label}.eth v1 expiry lookup failed: ${expiryResult.error}`,
@@ -1439,8 +1436,9 @@ async function verifyPreMigration(opts: {
         );
         continue;
       }
+      const state = stateResult.result;
+      const expiry = expiryResult.result;
 
-      const expiry = expiryResult.result as bigint;
       const v1IsClaimable =
         expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > v1Now;
       if (!v1IsClaimable) {
@@ -1450,12 +1448,7 @@ async function verifyPreMigration(opts: {
 
       eligible++;
       const expectedExpiry = expiry + bonusPeriodSeconds;
-      const state = stateResult.result as unknown as {
-        status: number;
-        expiry: bigint | number;
-        latestOwner: Address;
-      };
-      if (BigInt(state.expiry) !== expectedExpiry) {
+      if (state.expiry !== expectedExpiry) {
         errors.push(
           `${label}.eth expiry mismatch: v2=${state.expiry} expected=${expectedExpiry} v1=${expiry}`,
         );
@@ -1467,22 +1460,22 @@ async function verifyPreMigration(opts: {
         continue;
       }
 
-      const status = Number(state.status);
       const statusOk =
         expectedStatus === "reserved"
-          ? status === STATUS.RESERVED
+          ? state.status === STATUS.RESERVED
           : expectedStatus === "registered"
-            ? status === STATUS.REGISTERED
-            : status === STATUS.RESERVED || status === STATUS.REGISTERED;
+            ? state.status === STATUS.REGISTERED
+            : state.status === STATUS.RESERVED ||
+              state.status === STATUS.REGISTERED;
       if (!statusOk) {
-        errors.push(`${label}.eth has status ${status}`);
+        errors.push(`${label}.eth has status ${state.status}`);
         continue;
       }
       // The premigration fallback resolver is only asserted for names that remain
       // RESERVED. A REGISTERED name has already been migrated and carries the
       // resolver from its migration data (custom or zero), not the fallback, so
       // asserting the fallback here would fail legitimate migrated names.
-      if (expectedResolver && status === STATUS.RESERVED) {
+      if (expectedResolver && state.status === STATUS.RESERVED) {
         resolverChecks.push(label);
       } else {
         verifiedActive++;
@@ -1495,7 +1488,7 @@ async function verifyPreMigration(opts: {
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
-          abi: REGISTRY_STATE_ABI,
+          abi: REGISTRY_RESOLVER_ABI,
           functionName: "getResolver",
           args: [label],
         })),
@@ -1507,7 +1500,7 @@ async function verifyPreMigration(opts: {
           errors.push(`${label}.eth resolver lookup failed: ${result.error}`);
           continue;
         }
-        const actualResolver = result.result as Address;
+        const actualResolver = result.result;
         if (getAddress(actualResolver) !== getAddress(resolverToCheck)) {
           errors.push(`${label}.eth resolver mismatch: ${actualResolver}`);
           continue;
