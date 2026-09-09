@@ -2895,15 +2895,35 @@ const RESOLUTION_SAMPLE_SIZE = 5;
 // to compare. Candidates are probed with the address lookups alone rather than the
 // full record set, keeping the cost proportional to the pool size rather than to the
 // records per name.
+//
+// A name past v1's grace period is excluded even when it still resolves. Its records
+// survive on v1 until someone re-registers it, but pre-migration will not reserve it
+// — it is not claimable — so after the cutover it has no v2 entry and resolves to
+// nothing. That is the migration working, not a regression, and sampling such a name
+// puts an expected change into the one report whose whole purpose is to show that
+// nothing changed.
 async function selectResolvableNames(opts: {
   client: ReturnType<typeof publicClient>;
   universalResolver: Address;
   candidates: string[];
   limit: number;
+  v1Client: ReturnType<typeof publicClient>;
+  v1BaseRegistrar: JsonDeployment;
+  v1Now: bigint;
 }): Promise<string[]> {
   const chosen: string[] = [];
   for (const name of opts.candidates) {
     if (chosen.length >= opts.limit) break;
+    const label = name.replace(/\.eth$/, "");
+    const expiry = (await opts.v1Client.readContract({
+      address: opts.v1BaseRegistrar.address,
+      abi: opts.v1BaseRegistrar.abi,
+      functionName: "nameExpires",
+      args: [labelId(label)],
+    })) as bigint;
+    if (expiry === 0n || expiry + V1_GRACE_PERIOD_SECONDS <= opts.v1Now) {
+      continue;
+    }
     const probe = await captureResolutionSnapshot({
       client: opts.client,
       universalResolver: opts.universalResolver,
@@ -6438,6 +6458,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
         RESOLUTION_CANDIDATE_POOL,
       ).map((label) => `${label}.eth`),
       limit: RESOLUTION_SAMPLE_SIZE,
+      v1Client: client,
+      v1BaseRegistrar,
+      // Chain time, for the same reason pre-migration uses it: on a fork the wall
+      // clock disagrees, and the two must judge claimability alike or the sample
+      // includes exactly the names pre-migration will drop.
+      v1Now: BigInt((await client.getBlock()).timestamp),
     });
     const resolutionNames = [
       ...new Set(
