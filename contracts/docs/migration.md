@@ -467,10 +467,13 @@ controlled clock, a v2 state that needs the name already registered there, or a 
 controller's minimum. `fixture verify` applies the same check offline, so a cohort can be tested
 before a run starts. Every `live_now` scenario passes it.
 
-> **Reverse records are shared.** A reverse node derives from the account that claims it, and each
-> actor alias is one account, so scenarios claiming from the same alias all write the same node and
-> only the last survives. Seeding reports the overlap. Nothing else the corpus shapes or checks
-> depends on it, and no migration route reads a reverse record.
+> **Reverse records are shared.** A reverse node derives from the account that claims it, so
+> scenarios claiming from the same account all write the same node and only the last survives. Which
+> claims collide therefore depends on the layout: by default an alias is an account; with a
+> [nominated wallet](#choosing-who-owns-the-seeded-names) the three owner aliases are one account, so
+> claims that were distinct now overwrite each other. Both `verify` and seeding report the overlap,
+> counted per account. Nothing else the corpus shapes or checks depends on it, and no migration route
+> reads a reverse record.
 
 `--fixture-scenarios live_now --fixture-replicas-per-vector 4` is the recommended default: it covers every scenario
 the public network can express, several times over, without the long tail of replicas that adds
@@ -493,6 +496,13 @@ bun run migration -- fixture verify --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
   --fixture-scenarios live_now --fixture-replicas-per-vector 4
 ```
+
+**Dry-run the layout you intend to seed.** `verify` takes `--fixture-owner-key` for the same reason
+`fund-actors` does: nominating a wallet decides which accounts the owner aliases resolve to, and so
+which plan there is to preview. Pass it and the preview is the run you are about to make. Omit it and
+the preview is the [default three-owner layout](#choosing-who-owns-the-seeded-names), whatever key
+seeding is later given. The reported `owner` is the wallet the plan registers to, and `null` when no
+wallet is nominated.
 
 Planning is not a state check. It confirms every call can be *built*; whether the resulting state is
 reachable on-chain is what [`verify-v1`](#checking-the-shaped-state) answers, after seeding.
@@ -582,10 +592,17 @@ wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
 
 By default the corpus is owned by the five actor accounts the mnemonic derives, which is fine when
 nobody but the tooling needs to touch it. To put it in a tester's hands, nominate the wallet with
-`--fixture-owner-key` and seeding shapes every name into it rather than into a mnemonic account. Both
-commands take the key, and both need it:
+`--fixture-owner-key` and seeding shapes every name into it rather than into a mnemonic account.
+Every command up to and including registration takes the key, and each needs it: the dry run to
+preview this layout rather than the default one, funding to top up the wallet that will sign, and
+seeding to register to it.
 
 ```bash
+bun run migration -- fixture verify --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4 \
+  --fixture-owner-key 0x<tester key>
+
 bun run migration -- fixture fund-actors --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
   --fixture-owner-key 0x<tester key>
@@ -596,7 +613,9 @@ bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-owner-key 0x<tester key>
 ```
 
-Export `MIGRATION_FIXTURE_OWNER_KEY` instead if you would rather not repeat it; both commands read it.
+Export `MIGRATION_FIXTURE_OWNER_KEY` instead if you would rather not repeat it; all three read it.
+Nothing after registration takes it: `verify-v1` resolves each alias against the addresses the
+seeding run recorded, and no command can change who owns a name once it is seeded.
 
 `fork full` and `clean-testnet` take the same flag. It is a **key**, not an address, and that is the
 whole trick: shaping a name means signing as its owner — reverse claims, operator approvals, unwraps,
@@ -860,7 +879,7 @@ and idempotency rules.
 | `premigration resume` | Resume pre-migration from the checkpoint |
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
-| `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
+| `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls. Takes the same `--fixture-owner-key` as `seed-v1`, so the previewed plan is the one seeding will execute |
 | `fixture fund-actors` | Top up the fixture actor accounts from the operator key. Takes the same `--fixture-owner-key` as `seed-v1`, so the wallet that will own the names is the one funded; `--floor` (default 0.5 ETH) is charged per alias, so an account carrying all three owner aliases is topped up to three floors |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
 | `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
@@ -928,7 +947,7 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
 | `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--fixture-private-key` is omitted |
-| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted; read by `fixture fund-actors` and `fixture seed-v1` alike |
+| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted; read by `fixture verify`, `fixture fund-actors` and `fixture seed-v1` alike |
 | `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
 | `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
