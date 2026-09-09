@@ -161,7 +161,7 @@ import {
   main as preMigrationMain,
   parseCSVLine,
   bonusAdjustedExpiry,
-  V1_GRACE_PERIOD_SECONDS,
+  isClaimableOnV1,
 } from "./preMigration.js";
 import {
   compareCalldata,
@@ -350,7 +350,7 @@ function countClaimableCsvRows(
       continue;
     }
     dated++;
-    if (expiry + V1_GRACE_PERIOD_SECONDS <= chainNow) expired++;
+    if (!isClaimableOnV1(expiry, chainNow)) expired++;
   }
 
   // A row whose expiry the CSV does not carry is of unknown claimability, not
@@ -781,9 +781,7 @@ async function verifyPreMigration(opts: {
       const state = stateResult.result;
       const expiry = expiryResult.result;
 
-      const v1IsClaimable =
-        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > v1Now;
-      if (!v1IsClaimable) {
+      if (!isClaimableOnV1(expiry, v1Now)) {
         skipped++;
         continue;
       }
@@ -1045,8 +1043,7 @@ export async function reconcilePreMigration(opts: {
 
   const claimable: Array<{ id: string; expiry: bigint }> = [];
   for (const [id, expiry] of index.expiries) {
-    if (expiry + V1_GRACE_PERIOD_SECONDS > v1Now)
-      claimable.push({ id, expiry });
+    if (isClaimableOnV1(expiry, v1Now)) claimable.push({ id, expiry });
   }
 
   const result: ReconcileResult = {
@@ -2900,7 +2897,7 @@ const RESOLUTION_SAMPLE_SIZE = 5;
 // nothing. That is the migration working, not a regression, and sampling such a name
 // puts an expected change into the one report whose whole purpose is to show that
 // nothing changed.
-async function selectResolvableNames(opts: {
+export async function selectResolvableNames(opts: {
   client: ReturnType<typeof publicClient>;
   universalResolver: Address;
   candidates: string[];
@@ -2919,9 +2916,7 @@ async function selectResolvableNames(opts: {
       functionName: "nameExpires",
       args: [labelId(label)],
     })) as bigint;
-    if (expiry === 0n || expiry + V1_GRACE_PERIOD_SECONDS <= opts.v1Now) {
-      continue;
-    }
+    if (!isClaimableOnV1(expiry, opts.v1Now)) continue;
     const probe = await captureResolutionSnapshot({
       client: opts.client,
       universalResolver: opts.universalResolver,

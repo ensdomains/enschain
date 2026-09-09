@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { formatExpiry, MAX_UINT64 } from "../../script/preMigration.js";
+import {
+  formatExpiry,
+  isClaimableOnV1,
+  MAX_UINT64,
+  V1_GRACE_PERIOD_SECONDS,
+} from "../../script/preMigration.js";
 
 describe("formatExpiry", () => {
   it("renders an ordinary expiry as a date", () => {
@@ -48,5 +53,30 @@ describe("expiry capping", () => {
     const raw = observed + bonus;
     expect(raw).toBeLessThanOrEqual(MAX_UINT64);
     expect(raw > MAX_UINT64 ? MAX_UINT64 : raw).toBe(raw);
+  });
+});
+
+describe("isClaimableOnV1", () => {
+  const now = 1_800_000_000n;
+
+  it("accepts a name whose registration has not run out", () => {
+    expect(isClaimableOnV1(now + 1n, now)).toBe(true);
+  });
+
+  it("accepts an expired name whose owner can still renew it", () => {
+    expect(isClaimableOnV1(now - V1_GRACE_PERIOD_SECONDS + 1n, now)).toBe(true);
+  });
+
+  it("rejects a name the instant its grace period runs out", () => {
+    // The boundary the migration turns on: from here the name is released, so
+    // pre-migration will not reserve it and nothing downstream may carry it over.
+    expect(isClaimableOnV1(now - V1_GRACE_PERIOD_SECONDS, now)).toBe(false);
+  });
+
+  it("rejects a name that was never registered", () => {
+    // Grace added to a zero expiry still lands in the past on any real chain, but
+    // the rule says so outright rather than relying on that arithmetic.
+    expect(isClaimableOnV1(0n, now)).toBe(false);
+    expect(isClaimableOnV1(0n, 0n)).toBe(false);
   });
 });

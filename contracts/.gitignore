@@ -32,6 +32,9 @@ deployments/devnet-*/
 deployments/v1/*
 !deployments/v1/sepolia/
 deployments/devnet*/
+# Phase-gate records are per-run operational state, and the devnet e2e suite
+# writes them into the namespace it borrows.
+deployments/*/.verifications.json
 
 # pre-migration
 preMigration.log

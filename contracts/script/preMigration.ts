@@ -157,6 +157,15 @@ const BASE_REGISTRAR_ADDRESS =
 export const V1_GRACE_PERIOD_DAYS = 90n;
 export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
+/// Whether a v1 name is still claimable, and so within the migration's remit. A
+/// name that was never registered, or whose grace period has elapsed, is not:
+/// pre-migration will not reserve it, and nothing downstream may treat it as
+/// something the migration carries over. Judge against chain time — on a fork the
+/// wall clock disagrees, and a wall-clock now admits names the chain has released.
+export function isClaimableOnV1(expiry: bigint, now: bigint): boolean {
+  return expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > now;
+}
+
 export function createFreshCheckpoint(): Checkpoint {
   return {
     lastProcessedLineNumber: -1,
@@ -947,8 +956,7 @@ export async function batchVerifyRegistrations(
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
       v2Expiry: BigInt((v2.result as any).expiry ?? 0),
-      v1IsClaimable:
-        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
+      v1IsClaimable: isClaimableOnV1(expiry, currentTimestamp),
       v1Expiry: expiry,
     };
   });
