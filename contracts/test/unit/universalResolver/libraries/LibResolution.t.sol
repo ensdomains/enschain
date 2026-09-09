@@ -31,7 +31,7 @@ contract LibResolutionTest is Test, ERC1155Holder {
 
     function _expectFind(
         bytes memory name,
-        uint256 resolverOffset,
+        uint256 expectedOffset,
         address parentRegistry,
         IRegistry[] memory registries,
         bytes memory canonicalName
@@ -39,8 +39,8 @@ contract LibResolutionTest is Test, ERC1155Holder {
         internal
         view
     {
-        (IRegistry registry, address resolver, bytes32 node, uint256 resolverOffset_) =
-            LibResolution.findResolverUnvalidated(rootRegistry, name, 0);
+        (IRegistry registry, address resolver, bytes32 node, uint256 foundOffset) =
+            LibResolution.findUnvalidatedResolver(rootRegistry, name, 0);
         assertEq(
             address(LibResolution.findExactRegistry(rootRegistry, name, 0)),
             address(registry),
@@ -48,7 +48,7 @@ contract LibResolutionTest is Test, ERC1155Holder {
         );
         assertEq(resolver, resolverAddress, "resolver");
         assertEq(node, NameCoder.namehash(name, 0), "node");
-        assertEq(resolverOffset_, resolverOffset, "offset");
+        assertEq(foundOffset, expectedOffset, "offset");
         assertEq(
             address(LibResolution.findParentRegistry(rootRegistry, name, 0)),
             parentRegistry,

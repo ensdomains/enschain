@@ -18,18 +18,18 @@ library LibResolution {
     /// @return exactRegistry The exact registry or null if not exact.
     /// @return resolver The resolver or null if not found.
     /// @return node The namehash of `name[offset:]`.
-    /// @return resolverOffset The offset into `name` corresponding to `resolver`.
+    /// @return foundOffset The offset into `name` corresponding to `resolver`.
     function findResolver(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
-        returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
+        returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 foundOffset)
     {
-        (exactRegistry, resolver, node, resolverOffset) = findResolverUnvalidated(
+        (exactRegistry, resolver, node, foundOffset) = findUnvalidatedResolver(
             rootRegistry,
             name,
             offset
         );
-        resolver = validateResolver(resolver, resolverOffset == offset);
+        resolver = validateResolver(resolver, foundOffset == offset);
     }
 
     /// @dev Check resolver for validity according to ENSIP-10.
@@ -54,11 +54,11 @@ library LibResolution {
     /// @return exactRegistry The exact registry or null if not exact.
     /// @return resolver The resolver or null if not found.
     /// @return node The namehash of `name[offset:]`.
-    /// @return resolverOffset The offset into `name` corresponding to `resolver`.
-    function findResolverUnvalidated(IRegistry rootRegistry, bytes memory name, uint256 offset)
+    /// @return foundOffset The offset into `name` corresponding to `resolver`.
+    function findUnvalidatedResolver(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
-        returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 resolverOffset)
+        returns (IRegistry exactRegistry, address resolver, bytes32 node, uint256 foundOffset)
     {
         (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         // supply <root> if end of name
@@ -66,7 +66,7 @@ library LibResolution {
             return (rootRegistry, address(0), bytes32(0), 0);
         }
         // lookup parent name
-        (exactRegistry, resolver, node, resolverOffset) = findResolverUnvalidated(
+        (exactRegistry, resolver, node, foundOffset) = findUnvalidatedResolver(
             rootRegistry,
             name,
             next
@@ -77,7 +77,7 @@ library LibResolution {
             address res = exactRegistry.getResolver(label);
             if (res != address(0)) {
                 resolver = res;
-                resolverOffset = offset;
+                foundOffset = offset;
             }
             exactRegistry = exactRegistry.getSubregistry(label);
         }
@@ -94,8 +94,8 @@ library LibResolution {
         view
         returns (address)
     {
-        (, address owner, uint256 ownerOffset) = _findNearestOwner(rootRegistry, name, offset);
-        return ownerOffset == offset ? owner : address(0);
+        (, address owner, uint256 foundOffset) = _findNearestOwner(rootRegistry, name, offset);
+        return foundOffset == offset ? owner : address(0);
     }
 
     /// @dev Find the nearest owner for `name[offset:]`.
@@ -103,13 +103,13 @@ library LibResolution {
     /// @param name The DNS-encoded name to search.
     /// @param offset The offset into `name` to begin the search.
     /// @return owner The nearest owner or null if not found.
-    /// @return ownerOffset The offset into `name` such that `findExactOwner(name, ownerOffset) == owner`.
+    /// @return foundOffset The offset into `name` such that `findExactOwner(name, foundOffset) == owner`.
     function findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
         internal
         view
-        returns (address owner, uint256 ownerOffset)
+        returns (address owner, uint256 foundOffset)
     {
-        (, owner, ownerOffset) = _findNearestOwner(rootRegistry, name, offset);
+        (, owner, foundOffset) = _findNearestOwner(rootRegistry, name, offset);
     }
 
     /// @dev Construct the canonical name for `registry`.
@@ -236,20 +236,20 @@ library LibResolution {
     function _findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
         private
         view
-        returns (IRegistry parent, address owner, uint256 ownerOffset)
+        returns (IRegistry parent, address owner, uint256 foundOffset)
     {
         (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         if (bytes(label).length == 0) {
             return (rootRegistry, address(0), offset);
         }
-        (parent, owner, ownerOffset) = _findNearestOwner(rootRegistry, name, next);
+        (parent, owner, foundOffset) = _findNearestOwner(rootRegistry, name, next);
         if (address(parent) != address(0)) {
             if (ERC165Checker.supportsInterface(address(parent), type(IOwnedRegistry).interfaceId)) {
                 address child = IOwnedRegistry(address(parent)).findOwner(label);
                 // if registry exists and has child owner
                 if (child != address(0)) {
                     owner = child; // remember
-                    ownerOffset = offset;
+                    foundOffset = offset;
                 }
             }
             parent = parent.getSubregistry(label); // always get child

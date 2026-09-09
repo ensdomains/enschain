@@ -59,7 +59,7 @@ contract UniversalResolverV2 is AbstractNormalizedUniversalResolver, DelegatedCo
         override
         returns (address resolver, bytes32 node, uint256 offset)
     {
-        (, resolver, node, offset) = LibResolution.findResolverUnvalidated(ROOT_REGISTRY, name, 0);
+        (, resolver, node, offset) = LibResolution.findUnvalidatedResolver(ROOT_REGISTRY, name, 0);
     }
 
     /// @inheritdoc AbstractNormalizedUniversalResolver
