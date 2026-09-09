@@ -37,23 +37,35 @@ if (codecov.exitCode !== 0) {
   codecovPath = "codecov";
 }
 
-const baseCmd = [
-  codecovPath,
-  "upload-coverage",
+const globalOpts = [
   `-t ${process.env.CC_TOKEN}`,
   ...(process.env.CC_GIT_SERVICE
     ? [`--git-service ${process.env.CC_GIT_SERVICE}`]
     : []),
   ...(process.env.CC_SHA ? [`--sha ${process.env.CC_SHA}`] : []),
-  ...(process.env.CC_PR ? [`--pr ${process.env.CC_PR}`] : []),
 ];
 
-const coverageFiles = readdirSync(coverageDir).filter(
-  (file) => file.startsWith(PREFIX) && file.endsWith(SUFFIX),
-);
+// release the queued reports once every job has finished uploading
+if (process.argv.includes("--notify")) {
+  await $`bash -c "${[codecovPath, "send-notifications", ...globalOpts].join(" ")}"`;
+} else {
+  const uploadCmd = [
+    codecovPath,
+    "upload-coverage",
+    ...globalOpts,
+    ...(process.env.CC_PR ? [`--pr ${process.env.CC_PR}`] : []),
+    // an explicit file is additive to whatever the search finds, so turn the
+    // search off to keep each flag scoped to its own report
+    "--disable-search",
+  ];
 
-for (const file of coverageFiles) {
-  const flagName = basename(file, SUFFIX).replace(PREFIX, "");
-  const filePath = join(coverageDir.pathname, file);
-  await $`bash -c "${baseCmd.join(" ")} --flag ${flagName} --file ${filePath}"`;
+  const coverageFiles = readdirSync(coverageDir).filter(
+    (file) => file.startsWith(PREFIX) && file.endsWith(SUFFIX),
+  );
+
+  for (const file of coverageFiles) {
+    const flagName = basename(file, SUFFIX).replace(PREFIX, "");
+    const filePath = join(coverageDir.pathname, file);
+    await $`bash -c "${uploadCmd.join(" ")} --flag ${flagName} --file ${filePath}"`;
+  }
 }

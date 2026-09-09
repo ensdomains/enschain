@@ -102,6 +102,23 @@ jobs:
           CC_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           CC_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
 
+  notify-coverage:
+    name: Notify Coverage
+    needs: [forge-tests, hardhat-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: ".bun-version"
+
+      - name: Release coverage report
+        run: cd contracts && bun run coverage:notify
+        env:
+          CC_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CC_GIT_SERVICE: github
+          CC_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
   lint:
     name: Lint and Format
     runs-on: ubuntu-latest

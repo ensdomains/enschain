@@ -60,6 +60,7 @@
     "coverage:hardhat": "hardhat compile --coverage && COVERAGE=1 vitest run",
     "coverage:reports": "bun ./script/coverage.ts",
     "coverage:upload": "bun ./script/uploadCoverage.ts",
+    "coverage:notify": "bun ./script/uploadCoverage.ts --notify",
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
