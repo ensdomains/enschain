@@ -1,12 +1,27 @@
 import { describe, expect, it } from "bun:test";
-import { zeroAddress, type Address } from "viem";
+import { Command } from "commander";
+import { parseEther, toHex, zeroAddress, type Address } from "viem";
+import { mnemonicToAccount } from "viem/accounts";
 
 import { isRetryableRpcRequest } from "../../script/migration.js";
 import {
   clearedRecord,
+  planSetupSteps,
   recordValue,
+  type PlanContext,
 } from "../../script/migrationFixture/plan.js";
-import { assertSeedable } from "../../script/migrationFixture.js";
+import {
+  accounts,
+  ACTOR_ALIASES,
+  fundingTargets,
+} from "../../script/migrationFixture/config.js";
+import { fundActors } from "../../script/migrationFixture/execute.js";
+import {
+  addFixtureSubcommands,
+  assertSeedable,
+  refContext,
+  reportReverseClaimOverlap,
+} from "../../script/migrationFixture.js";
 import type { RefContext } from "../../script/migrationFixture/scenario.js";
 import type {
   FixtureEnvelope,
@@ -197,5 +212,485 @@ describe("retryable rpc requests", () => {
     expect(isRetryableRpcRequest([{ method: "eth_call" }])).toBe(false);
     expect(isRetryableRpcRequest(null)).toBe(false);
     expect(isRetryableRpcRequest({})).toBe(false);
+  });
+});
+
+const OWNER_KEY =
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
+const KEY_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
+const MNEMONIC = "test test test test test test test test test test test junk";
+
+describe("the wallet that owns the seeded names", () => {
+  it("derives every actor from the mnemonic when no owner is nominated", () => {
+    const derived = accounts({ fixtureActorMnemonic: MNEMONIC } as never);
+    expect(derived.map((a) => a.alias)).toEqual([
+      "owner_a",
+      "owner_b",
+      "owner_c",
+      "operator",
+      "attacker",
+    ]);
+    // Five accounts, five addresses.
+    expect(new Set(derived.map((a) => a.account.address)).size).toBe(5);
+  });
+
+  it("puts the three owner aliases on the nominated key", () => {
+    const derived = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: OWNER_KEY,
+    } as never);
+    const address = (alias: string) =>
+      derived.find((a) => a.alias === alias)!.account.address;
+
+    for (const alias of ["owner_a", "owner_b", "owner_c"]) {
+      expect(address(alias)).toBe(KEY_ADDRESS);
+    }
+    // The counterparties stay separate: an operator or an attacker means
+    // nothing if it is the owner.
+    expect(address("operator")).not.toBe(KEY_ADDRESS);
+    expect(address("attacker")).not.toBe(KEY_ADDRESS);
+    expect(address("operator")).not.toBe(address("attacker"));
+  });
+
+  it("still needs the mnemonic, which the counterparties come from", () => {
+    expect(() => accounts({ fixtureOwnerKey: OWNER_KEY } as never)).toThrow(
+      /fixture-actor-mnemonic/,
+    );
+  });
+
+  it("refuses a key that is not one", () => {
+    expect(() =>
+      accounts({
+        fixtureActorMnemonic: MNEMONIC,
+        fixtureOwnerKey: "0xnope",
+      } as never),
+    ).toThrow(/fixture-owner-key/);
+  });
+
+  // The corpus migrates as these two to prove they are turned away. Owning the
+  // names as one makes those calls authorised, and verification reads the same
+  // accounts, so nothing downstream would notice.
+  for (const alias of ["operator", "attacker"]) {
+    it(`refuses a key that is the ${alias}`, () => {
+      const index = ACTOR_ALIASES.indexOf(alias as never);
+      const key = toHex(
+        mnemonicToAccount(MNEMONIC, {
+          accountIndex: index,
+        }).getHdKey().privateKey!,
+      );
+      expect(() =>
+        accounts({
+          fixtureActorMnemonic: MNEMONIC,
+          fixtureOwnerKey: key,
+        } as never),
+      ).toThrow(new RegExp(`"${alias}"`));
+    });
+  }
+});
+
+describe("the accounts a funding run tops up", () => {
+  const FLOOR = "0.5";
+  const floor = parseEther(FLOOR);
+
+  it("charges one floor per account when every alias has its own", () => {
+    const targets = fundingTargets(
+      accounts({ fixtureActorMnemonic: MNEMONIC } as never),
+      FLOOR,
+    );
+    expect(targets).toHaveLength(5);
+    for (const target of targets) {
+      expect(target.aliases).toHaveLength(1);
+      expect(target.required).toBe(floor);
+    }
+  });
+
+  it("charges the shared owner account every alias it carries", () => {
+    const targets = fundingTargets(
+      accounts({
+        fixtureActorMnemonic: MNEMONIC,
+        fixtureOwnerKey: OWNER_KEY,
+      } as never),
+      FLOOR,
+    );
+    // Five aliases, three accounts: the nominated wallet and two counterparties.
+    expect(targets).toHaveLength(3);
+
+    const owner = targets.find((t) => t.address === KEY_ADDRESS)!;
+    // Actor order, so the receipt label a run prints is stable.
+    expect(owner.aliases).toEqual(["owner_a", "owner_b", "owner_c"]);
+    expect(owner.required).toBe(floor * 3n);
+
+    for (const target of targets.filter((t) => t !== owner)) {
+      expect(target.aliases).toHaveLength(1);
+      expect(target.required).toBe(floor);
+    }
+  });
+
+  it("covers every actor exactly once", () => {
+    const derived = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: OWNER_KEY,
+    } as never);
+    expect(fundingTargets(derived, FLOOR).flatMap((t) => t.aliases)).toEqual(
+      derived.map((a) => a.alias),
+    );
+  });
+});
+
+describe("a funding run", () => {
+  const FLOOR = "0.5";
+  const floor = parseEther(FLOOR);
+  const STRANGER = "0x00000000000000000000000000000000000000f1" as Address;
+  /// The owner key of a run whose tester wallet also pays for the run.
+  const SHARED_KEY = toHex(mnemonicToAccount(MNEMONIC).getHdKey().privateKey!);
+  const SHARED = mnemonicToAccount(MNEMONIC).address;
+
+  /// A run against recorded balances. Nothing is signed, so the executor only
+  /// has to answer balances and collect what it was asked to send.
+  const run = (opts: {
+    funder: Address;
+    balances?: Record<Address, bigint>;
+    ownerKey?: string;
+  }) => {
+    const held = new Map(
+      Object.entries(opts.balances ?? {}).map(([a, v]) => [a.toLowerCase(), v]),
+    );
+    const sent: { to: Address; value: bigint }[] = [];
+    const actors = accounts({
+      fixtureActorMnemonic: MNEMONIC,
+      fixtureOwnerKey: opts.ownerKey,
+    } as never);
+    const ex = {
+      opts: {},
+      client: {
+        getBalance: async ({ address }: { address: Address }) =>
+          held.get(address.toLowerCase()) ?? 0n,
+        waitForTransactionReceipt: async () => ({ status: "success" }),
+      },
+      wallet: {
+        account: { address: opts.funder },
+        sendTransaction: async (tx: { to: Address; value: bigint }) => {
+          sent.push(tx);
+          return "0x" as const;
+        },
+      },
+      actors: new Map(actors.map((a) => [a.alias, a])),
+    } as never;
+    return { ex, sent, targets: fundingTargets(actors, FLOOR) };
+  };
+
+  it("tops each account up to what its aliases need", async () => {
+    const { ex, sent, targets } = run({ funder: STRANGER });
+    await fundActors(ex, FLOOR);
+    expect(sent).toEqual(
+      targets.map((t) => ({ to: t.address, value: t.required })),
+    );
+  });
+
+  it("leaves an account already holding enough alone", async () => {
+    const { targets } = run({ funder: STRANGER });
+    const { ex, sent } = run({
+      funder: STRANGER,
+      balances: Object.fromEntries(
+        targets.map((t) => [t.address, t.required]),
+      ) as Record<Address, bigint>,
+    });
+    await fundActors(ex, FLOOR);
+    expect(sent).toEqual([]);
+  });
+
+  // An account cannot be paid from itself: a transfer out and back leaves it
+  // poorer by the gas. The shortfall is reported rather than sent.
+  it("refuses to send the funding account its own money", async () => {
+    const { ex, sent } = run({
+      funder: SHARED,
+      balances: { [SHARED]: floor },
+      ownerKey: SHARED_KEY,
+    });
+    await expect(fundActors(ex, FLOOR)).rejects.toThrow(
+      /is the funding account/,
+    );
+    expect(sent).toEqual([]);
+  });
+
+  it("funds the rest when the funding account already holds its share", async () => {
+    const { ex, sent, targets } = run({
+      funder: SHARED,
+      balances: { [SHARED]: floor * 3n },
+      ownerKey: SHARED_KEY,
+    });
+    await fundActors(ex, FLOOR);
+    expect(sent.map((s) => s.to)).toEqual(
+      targets.filter((t) => t.address !== SHARED).map((t) => t.address),
+    );
+  });
+});
+
+describe("the reverse claims a selection loses", () => {
+  const claim = (alias: string) =>
+    envelope({
+      v1: {
+        registration: { duration_seconds: 31536000 },
+        setup_steps: [
+          { action: "set_reverse_claim", address_actor: `actor.${alias}` },
+        ],
+        expected_pre_migration: { expiry_cohort: "long" },
+      },
+    });
+
+  const warningFor = (
+    rows: FixtureEnvelope[],
+    opts: Record<string, unknown>,
+  ) => {
+    const original = console.warn;
+    let warned: string | undefined;
+    console.warn = (message: string) => {
+      warned = message;
+    };
+    try {
+      reportReverseClaimOverlap(rows, accounts(opts as never));
+    } finally {
+      console.warn = original;
+    }
+    return warned;
+  };
+
+  it("says nothing when each alias claims once and is its own account", () => {
+    expect(
+      warningFor([claim("owner_a"), claim("owner_b"), claim("owner_c")], {
+        fixtureActorMnemonic: MNEMONIC,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("counts claims from aliases the owner key collapsed as one account", () => {
+    // Three aliases, one wallet: every claim writes the same reverse node, so
+    // one account loses two claims rather than three accounts losing none.
+    const warned = warningFor(
+      [claim("owner_a"), claim("owner_b"), claim("owner_c")],
+      { fixtureActorMnemonic: MNEMONIC, fixtureOwnerKey: OWNER_KEY },
+    );
+    expect(warned).toContain("3 reverse claims share 1 ");
+    expect(warned).toContain("owner_a+owner_b+owner_c (3)");
+  });
+
+  it("still reports an alias colliding with itself", () => {
+    const warned = warningFor([claim("owner_a"), claim("owner_a")], {
+      fixtureActorMnemonic: MNEMONIC,
+    });
+    expect(warned).toContain("owner_a (2)");
+  });
+});
+
+describe("the actors a run is checked against", () => {
+  it("resolves aliases from the addresses the run recorded", () => {
+    const recorded = { owner_a: KEY_ADDRESS, operator: OWNER };
+    // No mnemonic and no owner key: reading the state back must not depend on
+    // either, since nothing after seeding nominates one.
+    const ctx = refContext({} as never, {}, recorded);
+    expect(ctx.actors.get("owner_a")).toBe(KEY_ADDRESS);
+    expect(ctx.actors.get("operator")).toBe(OWNER);
+  });
+
+  it("derives them when nothing was recorded", () => {
+    const ctx = refContext({ fixtureActorMnemonic: MNEMONIC } as never, {});
+    const derived = accounts({ fixtureActorMnemonic: MNEMONIC } as never);
+    for (const actor of derived) {
+      expect(ctx.actors.get(actor.alias)).toBe(actor.account.address);
+    }
+  });
+});
+
+const PLAN_BATCHER = "0x00000000000000000000000000000000000000b3" as Address;
+const PLAN_WRAPPER = "0x00000000000000000000000000000000000000b2" as Address;
+const PARENT_OWNER = "0x00000000000000000000000000000000000000a2" as Address;
+
+const planCtx = {
+  actors: new Map([
+    ["owner_a", OWNER],
+    ["owner_b", PARENT_OWNER],
+  ]),
+  fixtureContracts: {},
+  v1Address: (name: string) => {
+    if (name === "PublicResolver")
+      return "0x00000000000000000000000000000000000000b6";
+    throw new Error(`unexpected v1 lookup: ${name}`);
+  },
+  v2Address: (name: string) => {
+    throw new Error(`unexpected v2 lookup: ${name}`);
+  },
+  batcher: PLAN_BATCHER,
+  addresses: {
+    baseRegistrar: "0x00000000000000000000000000000000000000b1",
+    registry: "0x00000000000000000000000000000000000000b4",
+    wrapper: PLAN_WRAPPER,
+    controller: "0x00000000000000000000000000000000000000b5",
+    publicResolver: "0x00000000000000000000000000000000000000b6",
+    reverseRegistrar: "0x00000000000000000000000000000000000000b7",
+    defaultReverseRegistrar: "0x00000000000000000000000000000000000000b8",
+  },
+} as unknown as PlanContext;
+
+const childRow = (parentOwner?: string): FixtureEnvelope =>
+  ({
+    fixture_id: "FX-C01",
+    source_scenario_id: "FX-C",
+    label: "fxc",
+    name: "sub.fxc.eth",
+    scenario: {
+      scenario_id: "FX-C01",
+      name: "sub.fxc.eth",
+      top_level_label: "fxc",
+      child_label: "sub",
+      tags: ["locked_child"],
+      execution: { scenario: "live_now", expected_result: "success" },
+      actors: { pre_migration_owner: "owner_a" },
+      v1: {
+        registration: { label: "fxc", owner_actor: "owner_a" },
+        parent_fixture: parentOwner ? { owner_actor: parentOwner } : null,
+        setup_steps: [
+          {
+            action: "ensure_wrapped_parent_and_child",
+            wrapped_owner_actor: "owner_a",
+          },
+        ],
+        expected_pre_migration: {},
+      },
+    },
+  }) as unknown as FixtureEnvelope;
+
+describe("a subname's parent", () => {
+  const parentTransfer = (row: FixtureEnvelope) =>
+    planSetupSteps(row, planCtx).filter((c) =>
+      c.label.includes("parent owner transfer"),
+    );
+
+  it("goes to the owner the corpus declares for it", () => {
+    // Creating the child needs the batcher to hold the parent, so seeding wraps
+    // it there. Left there, the holder of the subname could never migrate it.
+    const calls = parentTransfer(childRow("owner_b"));
+    expect(calls).toHaveLength(1);
+    expect(calls[0].signer).toEqual({ kind: "batcher" });
+    expect(calls[0].target).toBe(PLAN_WRAPPER);
+  });
+
+  it("falls back to the child's owner when none is declared", () => {
+    expect(parentTransfer(childRow())).toHaveLength(1);
+  });
+
+  it("is not emitted for a name that has no parent", () => {
+    const flat = {
+      ...childRow(),
+      name: "fxc.eth",
+      scenario: {
+        ...childRow().scenario,
+        name: "fxc.eth",
+        child_label: null,
+        tags: ["unwrapped"],
+        v1: { ...childRow().scenario.v1, setup_steps: [] },
+      },
+    } as unknown as FixtureEnvelope;
+    expect(parentTransfer(flat)).toEqual([]);
+  });
+});
+
+describe("the fixture command line", () => {
+  /// Parses one command line the way the CLI does, and hands back the options
+  /// the command would have run with.
+  ///
+  /// The parse is the real one — an unregistered option throws here exactly as
+  /// it does for an operator — with only the action replaced, so a dry run does
+  /// not go looking for a corpus or an RPC. `exitOverride` turns a parse error
+  /// into a thrown error rather than an exit that would take the runner with it.
+  const run = async (argv: string[]): Promise<Record<string, unknown>> => {
+    const program = addFixtureSubcommands(new Command("migration-fixture"));
+    const silent = { writeErr: () => {}, writeOut: () => {} };
+    let parsed: Record<string, unknown> | undefined;
+    program.exitOverride().configureOutput(silent);
+    for (const command of program.commands) {
+      command
+        .exitOverride()
+        .configureOutput(silent)
+        .action((raw: Record<string, unknown>) => {
+          parsed = raw;
+        });
+    }
+    await program.parseAsync(argv, { from: "user" });
+    if (!parsed) throw new Error("no fixture command ran");
+    return parsed;
+  };
+
+  const argvFor = (command: string, ...rest: string[]) => [
+    command,
+    "--network",
+    "sepolia",
+    "--rpc-url",
+    "http://127.0.0.1:8545",
+    "--fixture-root",
+    "csv-data/migration-fixture",
+    "--work-dir",
+    ".dev/fixture",
+    "--fixture-actor-mnemonic",
+    MNEMONIC,
+    ...rest,
+  ];
+
+  const optionsOf = (command: string) => {
+    const program = addFixtureSubcommands(new Command("migration-fixture"));
+    const found = program.commands.find((c) => c.name() === command);
+    if (!found) throw new Error(`no such fixture command: ${command}`);
+    return found.options.map((o) => o.long);
+  };
+
+  it("carries the owner key from the dry run's argv through to the actors", async () => {
+    // The whole point of the dry run: the cohort it plans is the cohort seeding
+    // will register, down to which account each owner alias is.
+    const parsed = await run(
+      argvFor("verify", "--fixture-owner-key", OWNER_KEY),
+    );
+    expect(parsed.fixtureOwnerKey).toBe(OWNER_KEY);
+
+    const derived = accounts(parsed as never);
+    const address = (alias: string) =>
+      derived.find((a) => a.alias === alias)!.account.address;
+    for (const alias of ["owner_a", "owner_b", "owner_c"]) {
+      expect(address(alias)).toBe(KEY_ADDRESS);
+    }
+  });
+
+  it("plans the default three-owner layout when no wallet is nominated", async () => {
+    const parsed = await run(argvFor("verify"));
+    expect(parsed.fixtureOwnerKey).toBeUndefined();
+    // Five aliases, five accounts: the layout the dry run has always planned.
+    const derived = accounts(parsed as never);
+    expect(new Set(derived.map((a) => a.account.address)).size).toBe(5);
+  });
+
+  it("lets the dry run take every option the run it previews takes", () => {
+    // A plan is worth previewing only if it is the plan that will run. An
+    // option seeding accepts and the dry run rejects makes the two diverge with
+    // nothing to show for it, which is how --fixture-owner-key came to be
+    // previewable through its environment variable alone.
+    for (const long of optionsOf("seed-v1")) {
+      expect(optionsOf("verify")).toContain(long);
+    }
+  });
+
+  it("takes the owner key everywhere the owner aliases are resolved", async () => {
+    for (const command of ["verify", "fund-actors", "seed-v1"]) {
+      const parsed = await run(
+        argvFor(command, "--fixture-owner-key", OWNER_KEY),
+      );
+      expect(parsed.fixtureOwnerKey).toBe(OWNER_KEY);
+    }
+  });
+
+  it("refuses the owner key once the names exist, whose owner it cannot change", async () => {
+    // verify-v1 resolves each alias against the addresses the seeding run
+    // recorded, so a key here could only contradict them. Its refusal is also
+    // what proves this harness sees an unregistered option at all.
+    await expect(
+      run(argvFor("verify-v1", "--fixture-owner-key", OWNER_KEY)),
+    ).rejects.toThrow(/unknown option/);
   });
 });

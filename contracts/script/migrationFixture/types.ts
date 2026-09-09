@@ -1,5 +1,5 @@
 import type { Address, Hex } from "viem";
-import type { HDAccount } from "viem/accounts";
+import type { LocalAccount } from "viem/accounts";
 
 export const DAY = 86_400n;
 
@@ -119,7 +119,10 @@ export type FixtureEnvelope = {
   scenario: Scenario;
 };
 
-export type FixtureActor = { alias: string; account: HDAccount };
+/// An actor and the account that signs for it. The account is any local signer
+/// rather than specifically a derived one, because the owner aliases resolve to
+/// a supplied key when a run nominates an owner wallet.
+export type FixtureActor = { alias: string; account: LocalAccount };
 
 export type FixtureRunName = {
   fixtureId: string;
@@ -166,16 +169,22 @@ export type CommonOptions = {
   deploymentNetwork?: string;
   v1DeploymentsDir?: string;
   v1DeploymentNetwork?: string;
-  privateKey?: Hex;
   v1OwnerKey?: Hex;
   v1Owner?: Address;
-  actorMnemonic?: string;
-  limit?: string;
-  tiers?: string;
-  fixtureIds?: string;
-  replicasPerVector?: string;
-  scenarios?: string;
   rpcStateControls?: boolean;
+  /// Everything naming the corpus carries the `fixture` prefix its flag does,
+  /// so the standalone commands and the rehearsals that mirror them spell each
+  /// option exactly once.
+  fixturePrivateKey?: Hex;
+  fixtureActorMnemonic?: string;
+  fixtureLimit?: string;
+  fixtureTiers?: string;
+  fixtureIds?: string;
+  fixtureReplicasPerVector?: string;
+  fixtureScenarios?: string;
+  /// Key for the wallet that owns every seeded name. Collapses the three owner
+  /// aliases onto one account, so a tester owns the corpus from registration.
+  fixtureOwnerKey?: Hex;
 };
 
 export type BatchCall = {

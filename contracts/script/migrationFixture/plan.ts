@@ -28,218 +28,46 @@ import {
   type SetupStep,
 } from "./types.js";
 
-/// Minimal explicit ABIs. The deployed PublicResolver exposes overloaded
-/// `setAddr`, which viem cannot disambiguate from a full artifact ABI, so the
-/// two arities are declared separately.
+import {
+  BaseRegistrar,
+  EnsRegistry,
+  EthRegistrarController,
+  NameWrapper,
+  PublicResolver,
+  ReverseRegistrar,
+} from "../abis.js";
+
+/// The v1 surfaces this planner writes through, each as narrow as the calls it
+/// makes. `setAddr` is overloaded, so the two arities stay apart: viem cannot
+/// pick between them from a single ABI.
 const RESOLVER_ABI = [
-  {
-    type: "function",
-    name: "setAddr",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "a", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setText",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "key", type: "string" },
-      { name: "value", type: "string" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setContenthash",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "hash", type: "bytes" },
-    ],
-    outputs: [],
-  },
+  ...PublicResolver.setAddr,
+  ...PublicResolver.setText,
+  ...PublicResolver.setContenthash,
 ] as const;
-
-const RESOLVER_MULTICOIN_ABI = [
-  {
-    type: "function",
-    name: "setAddr",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "coinType", type: "uint256" },
-      { name: "a", type: "bytes" },
-    ],
-    outputs: [],
-  },
-] as const;
-
+const RESOLVER_MULTICOIN_ABI = PublicResolver.setAddrMulticoin;
 const REGISTRY_ABI = [
-  {
-    type: "function",
-    name: "setResolver",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setTTL",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ttl", type: "uint64" },
-    ],
-    outputs: [],
-  },
+  ...EnsRegistry.setResolver,
+  ...EnsRegistry.setTTL,
 ] as const;
-
 const WRAPPER_ABI = [
-  {
-    type: "function",
-    name: "wrapETH2LD",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "label", type: "string" },
-      { name: "wrappedOwner", type: "address" },
-      { name: "ownerControlledFuses", type: "uint16" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "unwrapETH2LD",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "labelhash", type: "bytes32" },
-      { name: "registrant", type: "address" },
-      { name: "controller", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setSubnodeRecord",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "parentNode", type: "bytes32" },
-      { name: "label", type: "string" },
-      { name: "owner", type: "address" },
-      { name: "resolver", type: "address" },
-      { name: "ttl", type: "uint64" },
-      { name: "fuses", type: "uint32" },
-      { name: "expiry", type: "uint64" },
-    ],
-    outputs: [{ name: "node", type: "bytes32" }],
-  },
-  {
-    type: "function",
-    name: "setFuses",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ownerControlledFuses", type: "uint16" },
-    ],
-    outputs: [{ name: "", type: "uint32" }],
-  },
-  {
-    type: "function",
-    name: "setResolver",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "resolver", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setTTL",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "ttl", type: "uint64" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
+  ...NameWrapper.wrapETH2LD,
+  ...NameWrapper.unwrapETH2LD,
+  ...NameWrapper.setSubnodeRecord,
+  ...NameWrapper.setFuses,
+  ...NameWrapper.setResolver,
+  ...NameWrapper.setTTL,
+  ...NameWrapper.approve,
 ] as const;
-
 const ERC721_ABI = [
-  {
-    type: "function",
-    name: "safeTransferFrom",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "tokenId", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "reclaim",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "id", type: "uint256" },
-      { name: "owner", type: "address" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "setApprovalForAll",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "operator", type: "address" },
-      { name: "approved", type: "bool" },
-    ],
-    outputs: [],
-  },
+  ...BaseRegistrar.safeTransferFrom,
+  ...BaseRegistrar.transferFrom,
+  ...BaseRegistrar.reclaim,
+  ...BaseRegistrar.setApprovalForAll,
 ] as const;
-
-const REVERSE_REGISTRAR_ABI = [
-  {
-    type: "function",
-    name: "setName",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "name", type: "string" }],
-    outputs: [{ name: "", type: "bytes32" }],
-  },
-] as const;
-
-const CONTROLLER_RENEW_ABI = [
-  {
-    type: "function",
-    name: "renew",
-    stateMutability: "payable",
-    inputs: [
-      { name: "name", type: "string" },
-      { name: "duration", type: "uint256" },
-      { name: "referrer", type: "bytes32" },
-    ],
-    outputs: [],
-  },
-] as const;
+const ERC1155_ABI = NameWrapper.safeTransferFrom;
+const REVERSE_REGISTRAR_ABI = ReverseRegistrar.setName;
+const CONTROLLER_RENEW_ABI = EthRegistrarController.renew;
 
 /// Who must sign a planned call. `batcher` means the MigrationFixtureBatcher,
 /// which can be aggregated; an actor alias means a direct wallet transaction
@@ -284,6 +112,78 @@ export function labelhashOf(label: string): Hex {
 
 export function tokenIdOf(label: string): bigint {
   return BigInt(labelhashOf(label));
+}
+
+/// Calls that move a v1 name to a new holder.
+///
+/// An unwrapped name lives in two places: the ERC-721 registration and the
+/// registry record the registrar can rewrite. The reclaim runs first, while the
+/// sender is still authorised over the token, so it can point the registry at
+/// the recipient itself; reclaiming after the transfer would need a signature
+/// from the recipient, which a handover to an address we hold no key for cannot
+/// produce. A wrapped name carries both in its ERC-1155 balance, so one
+/// transfer is the whole move.
+///
+/// The ERC-721 move is the plain transfer rather than the safe one: the receipt
+/// hook adds nothing for the accounts the corpus hands names to, and refusing a
+/// recipient is the job of the one check made before any name moves.
+///
+/// `signer` and `from` are separate because an approved operator may send on
+/// the holder's behalf, which is how a whole cohort moves in batches instead of
+/// one transaction per name.
+function transferNameCalls(args: {
+  wrapped: boolean;
+  signer: Signer;
+  from: Address;
+  to: Address;
+  tokenId: bigint;
+  node: Hex;
+  addresses: PlanContext["addresses"];
+  label: string;
+}): PlannedCall[] {
+  const { wrapped, signer, from, to, tokenId, node, addresses, label } = args;
+  const call = (target: Address, suffix: string, data: Hex): PlannedCall => ({
+    signer,
+    target,
+    value: 0n,
+    allowFailure: false,
+    label: `${label} ${suffix}`,
+    data,
+  });
+
+  if (wrapped) {
+    return [
+      call(
+        addresses.wrapper,
+        "wrapper transfer",
+        encodeFunctionData({
+          abi: ERC1155_ABI,
+          functionName: "safeTransferFrom",
+          args: [from, to, BigInt(node), 1n, "0x"],
+        }),
+      ),
+    ];
+  }
+  return [
+    call(
+      addresses.baseRegistrar,
+      "reclaim",
+      encodeFunctionData({
+        abi: ERC721_ABI,
+        functionName: "reclaim",
+        args: [tokenId, to],
+      }),
+    ),
+    call(
+      addresses.baseRegistrar,
+      "transfer",
+      encodeFunctionData({
+        abi: ERC721_ABI,
+        functionName: "transferFrom",
+        args: [from, to, tokenId],
+      }),
+    ),
+  ];
 }
 
 /// Ownership of a fixture name over the course of its setup. Names are
@@ -1016,31 +916,44 @@ export function planSetupSteps(
   // Hand the name to its terminal pre-migration owner if setup never moved it.
   const terminalOwner = preMigrationOwnerAlias(scenario);
   if (heldByBatcher && !child) {
-    const terminalAddress = resolveRef(terminalOwner, ctx);
-    calls.push({
-      signer: BATCHER,
-      target: ctx.addresses.baseRegistrar,
-      value: 0n,
-      allowFailure: false,
-      label: `${row.fixture_id} handover transfer`,
-      data: encodeFunctionData({
-        abi: ERC721_ABI,
-        functionName: "safeTransferFrom",
-        args: [ctx.batcher, terminalAddress, tokenId],
+    calls.push(
+      ...transferNameCalls({
+        wrapped: false,
+        signer: BATCHER,
+        from: ctx.batcher,
+        to: resolveRef(terminalOwner, ctx),
+        tokenId,
+        node,
+        addresses: ctx.addresses,
+        label: `${row.fixture_id} owner transfer`,
       }),
-    });
-    calls.push({
-      signer: actorSigner(terminalOwner),
-      target: ctx.addresses.baseRegistrar,
-      value: 0n,
-      allowFailure: false,
-      label: `${row.fixture_id} handover reclaim`,
-      data: encodeFunctionData({
-        abi: ERC721_ABI,
-        functionName: "reclaim",
-        args: [tokenId, terminalAddress],
+    );
+  }
+
+  // A subname's parent goes to an owner too. Creating the child needs the
+  // batcher to hold the parent, so leaving it there would leave a holder who can
+  // never migrate the subname: `MigrationHelper` refuses a child whose parent
+  // has not migrated, and only the parent's owner can migrate the parent.
+  //
+  // The owner is the one the corpus declares for the parent, or the child's when
+  // it declares none. The parent carries `CANNOT_UNWRAP` and never
+  // `CANNOT_TRANSFER`, so this always moves.
+  if (child) {
+    const parentOwner = stripActorPrefix(
+      scenario.v1.parent_fixture?.owner_actor ?? terminalOwner,
+    );
+    calls.push(
+      ...transferNameCalls({
+        wrapped: true,
+        signer: BATCHER,
+        from: ctx.batcher,
+        to: resolveRef(parentOwner, ctx),
+        tokenId,
+        node: topNode,
+        addresses: ctx.addresses,
+        label: `${row.fixture_id} parent owner transfer`,
       }),
-    });
+    );
   }
 
   return calls;

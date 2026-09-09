@@ -7,7 +7,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: .git
-        key: git-folder
+        key: git-folder-${{ github.sha }}
+        restore-keys: git-folder-
 
     - name: Checkout repo
       uses: actions/checkout@v5

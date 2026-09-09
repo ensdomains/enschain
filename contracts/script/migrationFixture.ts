@@ -13,7 +13,6 @@ import {
   getAddress,
   http,
   keccak256,
-  namehash,
   stringToHex,
   zeroAddress,
   zeroHash,
@@ -37,10 +36,12 @@ import {
   bufferedGas,
   clients,
   fixtureDigest,
+  fundingTargets,
   loadDotEnv,
   loadFixture,
   networkChain,
   optionalV1Deployment,
+  ownerAddress,
   parseNumber,
   readJson,
   receipt,
@@ -79,6 +80,11 @@ import {
   impersonateAccount,
   type Executor,
 } from "./migrationFixture/execute.js";
+
+import { BaseRegistrar, NameWrapper, RegistrarOwnershipAbi } from "./abis.js";
+
+/// The registrar-ownership surface the v1 controller check walks.
+const PRIOR_RENEWER_ABI = RegistrarOwnershipAbi;
 import {
   type CommonOptions,
   type FixtureEnvelope,
@@ -126,12 +132,22 @@ function v1Addresses(opts: CommonOptions) {
   };
 }
 
-function refContext(
+/// Resolves the symbolic names the corpus is written in.
+///
+/// Actor identities are taken from `actorAddresses` when the caller holds the
+/// record a seeded run leaves behind. Nominating an owner wallet collapses the
+/// owner aliases onto that one account, so deriving them from the mnemonic
+/// again afterwards would resolve every owner reference to an address the run
+/// never used.
+export function refContext(
   opts: CommonOptions,
   fixtureContracts: Record<string, Address>,
+  actorAddresses?: Record<string, Address>,
 ): RefContext {
   return {
-    actors: new Map(accounts(opts).map((a) => [a.alias, a.account.address])),
+    actors: actorAddresses
+      ? new Map(Object.entries(actorAddresses))
+      : new Map(accounts(opts).map((a) => [a.alias, a.account.address])),
     fixtureContracts,
     v1Address: (name) => v1Deployment(opts, name).address,
     v2Address: (name) => v2Deployment(opts, name).address,
@@ -159,23 +175,6 @@ function planContext(
     },
   };
 }
-
-const PRIOR_RENEWER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }],
-  },
-  {
-    type: "function",
-    name: "transferRegistrarOwnership",
-    stateMutability: "nonpayable",
-    inputs: [{ type: "address", name: "newOwner" }],
-    outputs: [],
-  },
-] as const;
 
 async function ownerWallet(opts: CommonOptions, owner: Address) {
   const chain = networkChain(opts.network, opts.rpcUrl, opts.chainId);
@@ -529,28 +528,45 @@ export function assertSeedable(rows: FixtureEnvelope[]): void {
 
 /// Reports the reverse claims a selection cannot all express.
 ///
-/// A reverse node derives from the claimant, and each actor alias is one
-/// account, so every scenario claiming from the same alias writes the same node
-/// and only the last survives. Nothing reads a reverse record back, so this
-/// would otherwise be invisible; it is reported rather than refused because the
-/// overlap is inherent to a fixed actor pool and touches no other state the
-/// corpus shapes or checks.
-function reportReverseClaimOverlap(rows: FixtureEnvelope[]): void {
-  const byClaimant = new Map<string, number>();
+/// A reverse node derives from the claimant account, so every scenario claiming
+/// from the same account writes the same node and only the last survives.
+/// Claims are counted per resolved account rather than per alias: nominating an
+/// owner wallet puts several aliases on one account, and claims those aliases
+/// would have kept apart then collide. Nothing reads a reverse record back, so
+/// this would otherwise be invisible; it is reported rather than refused
+/// because the overlap is inherent to a fixed actor pool and touches no other
+/// state the corpus shapes or checks.
+export function reportReverseClaimOverlap(
+  rows: FixtureEnvelope[],
+  actors: FixtureActor[],
+): void {
+  const addressOf = new Map(
+    actors.map((a) => [a.alias, getAddress(a.account.address)]),
+  );
+  const byAccount = new Map<string, { aliases: string[]; claims: number }>();
   for (const row of rows) {
     for (const step of row.scenario.v1.setup_steps) {
       if (step.action !== "set_reverse_claim") continue;
-      const claimant = String(step.address_actor ?? "").replace("actor.", "");
-      byClaimant.set(claimant, (byClaimant.get(claimant) ?? 0) + 1);
+      const alias = String(step.address_actor ?? "").replace("actor.", "");
+      // An alias outside the actor set shares an account with nothing, so it
+      // is counted under its own name rather than folded in with the others.
+      const key = addressOf.get(alias) ?? `actor.${alias}`;
+      const entry = byAccount.get(key);
+      if (entry) {
+        if (!entry.aliases.includes(alias)) entry.aliases.push(alias);
+        entry.claims += 1;
+      } else {
+        byAccount.set(key, { aliases: [alias], claims: 1 });
+      }
     }
   }
-  const overlapping = [...byClaimant.entries()].filter(([, n]) => n > 1);
+  const overlapping = [...byAccount.values()].filter((e) => e.claims > 1);
   if (!overlapping.length) return;
   const detail = overlapping
-    .map(([claimant, n]) => `${claimant} (${n})`)
+    .map((e) => `${e.aliases.join("+")} (${e.claims})`)
     .join(", ");
   console.warn(
-    `warning: ${overlapping.reduce((a, [, n]) => a + n, 0)} reverse claims share ${overlapping.length} ` +
+    `warning: ${overlapping.reduce((a, e) => a + e.claims, 0)} reverse claims share ${overlapping.length} ` +
       `actor accounts, so only the last claim per account survives: ${detail}`,
   );
 }
@@ -559,7 +575,8 @@ async function verify(opts: CommonOptions): Promise<void> {
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
   assertSeedable(rows);
-  reportReverseClaimOverlap(rows);
+  const actors = accounts(opts);
+  reportReverseClaimOverlap(rows, actors);
 
   const ids = new Set<string>();
   const labels = new Set<string>();
@@ -579,12 +596,16 @@ async function verify(opts: CommonOptions): Promise<void> {
 
   // Placeholder addresses are enough to prove every action resolves, and keep
   // the check runnable without deployments or an RPC.
+  //
+  // The actors are the exception: they are derived, not deployed, so the plan
+  // is built against the very addresses a run will use. A placeholder per alias
+  // would give the three owner aliases three addresses even when a nominated
+  // wallet has collapsed them onto one, which is the difference between the
+  // preview and the run that a dry run exists to rule out.
   const placeholder = (n: number) =>
     `0x${n.toString(16).padStart(40, "0")}` as Address;
   const ctx: PlanContext = {
-    actors: new Map(
-      accounts(opts).map((a, i) => [a.alias, placeholder(0x1000 + i)]),
-    ),
+    actors: new Map(actors.map((a) => [a.alias, a.account.address])),
     fixtureContracts: Object.fromEntries(
       FIXTURE_ARTIFACTS.map((f, i) => [f.name, placeholder(0x2000 + i)]),
     ),
@@ -634,6 +655,9 @@ async function verify(opts: CommonOptions): Promise<void> {
     JSON.stringify(
       {
         selected: rows.length,
+        // Null unless a wallet is nominated, so a preview says whose the names
+        // will be rather than leaving it to be read off the command line.
+        owner: ownerAddress(opts),
         sourceScenarios: perVector.size,
         replicasPerVector: {
           min: Math.min(...perVector.values()),
@@ -699,9 +723,10 @@ export async function seedV1(
   const rows = loadFixture(opts);
   if (!rows.length) throw new Error("fixture selection is empty");
   assertSeedable(rows);
-  reportReverseClaimOverlap(rows);
 
   const actors = accounts(opts);
+  reportReverseClaimOverlap(rows, actors);
+
   const { chain, client, wallet } = clients(opts);
 
   // Checked before the controller re-enable, which is the run's first write.
@@ -715,11 +740,13 @@ export async function seedV1(
     existing?.fixtureContracts ?? {},
   );
 
-  // Record the deployed batcher and counterparty contracts before registering
-  // anything. Seeding registers each name to the batcher first, so a run that
-  // fails partway leaves names owned by it; without this the next run would
-  // deploy a second batcher, fail to recognise the first as its own, and refuse
-  // to continue against names it had itself created.
+  // Record the deployed batcher, counterparty contracts and actor identities
+  // before registering anything. Seeding registers each name to the batcher
+  // first, so a run that fails partway leaves names owned by it; without this
+  // the next run would deploy a second batcher, fail to recognise the first as
+  // its own, and refuse to continue against names it had itself created. The
+  // identities are what a resumed run is held to, and what a later read-back
+  // resolves the corpus's actor aliases against.
   const startedAt = new Date().toISOString();
   const seeded: FixtureRunState = existing ?? {
     version: 2,
@@ -735,6 +762,9 @@ export async function seedV1(
   };
   seeded.batcher = batcher;
   seeded.fixtureContracts = fixtureContracts;
+  seeded.actorAddresses = Object.fromEntries(
+    actors.map((a) => [a.alias, a.account.address]),
+  );
   saveRunState(opts, seeded);
 
   const v1 = v1Addresses(opts);
@@ -962,13 +992,19 @@ export async function seedV1(
 
   const state = seeded;
   state.fixtureDigest = fixtureDigest(rows);
-  state.actorAddresses = Object.fromEntries(
-    actors.map((a) => [a.alias, a.account.address]),
-  );
   saveRunState(opts, state);
   const csv = writePremigrationCsv(opts, rows, state);
 
   console.log(`seeded ${state.names.length} fixture names on v1`);
+  // An owner key makes owner_a, owner_b and owner_c one account, so a run says
+  // whose the names are and what distinction it gave up to put them there.
+  const owner = ownerAddress(opts);
+  if (owner) {
+    console.log(
+      `owner: ${owner} (owner_a, owner_b and owner_c are this one account, ` +
+        "so scenarios that turn on the owners differing no longer do)",
+    );
+  }
   console.log(`batcher: ${batcher}`);
   console.log(`run state: ${runStatePath(opts)}`);
   console.log(
@@ -1000,12 +1036,21 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       "no seeded names in this selection; widen the selection or seed it first",
     );
   }
+  // Aliases resolve to the accounts the seeding run put the names on, read back
+  // from its record. Deriving them here instead would report every name of an
+  // owner-key run as owned by the wrong address, since that key is nominated on
+  // `seed-v1` alone.
+  if (!Object.keys(state.actorAddresses).length) {
+    throw new Error(
+      `${runStatePath(opts)} records no actor addresses; re-run "fixture seed-v1", which resumes and records them`,
+    );
+  }
 
   const v1 = v1Addresses(opts);
   const result = await verifySeededV1State(
     client,
     rows,
-    refContext(opts, state.fixtureContracts),
+    refContext(opts, state.fixtureContracts, state.actorAddresses),
     {
       registry: v1.registry.address,
       baseRegistrar: v1.base.address,
@@ -1091,9 +1136,15 @@ async function fundActorAccounts(
     },
     floor,
   );
-  for (const a of actors) {
-    const balance = await client.getBalance({ address: a.account.address });
-    console.log(`  ${a.alias} ${a.account.address} ${balance}`);
+  // Reported per account rather than per alias. Three identical rows under
+  // three alias names read as three funded accounts, which is the misreading a
+  // nominated owner wallet invites, and the requirement is no longer the same
+  // on every row.
+  for (const target of fundingTargets(actors, floor)) {
+    const balance = await client.getBalance({ address: target.address });
+    console.log(
+      `  ${target.aliases.join("+")} ${target.address} ${balance} (needs ${target.required})`,
+    );
   }
 }
 
@@ -1117,7 +1168,6 @@ export async function runFixtureSeedStage(
   const { path: premigrationCsv, labels } = await seedV1(opts);
   console.log("fixture: verifying the shaped V1 state");
   await verifyV1(opts);
-
   return { labels, premigrationCsv };
 }
 
@@ -1136,22 +1186,25 @@ function addCommon(command: Command): Command {
     .option("--deployment-network <name>", "V2 deployment namespace")
     .option("--v1-deployments-dir <path>", "V1 deployments root")
     .option("--v1-deployment-network <name>", "V1 deployment namespace")
-    .option("--private-key <key>", "Fixture operator private key")
+    .option("--fixture-private-key <key>", "Fixture operator private key")
     .option("--v1-owner <address>", "Canonical V1 owner address")
     .option(
       "--v1-owner-key <key>",
       "V1 owner / prior renewer owner private key",
     )
-    .option("--actor-mnemonic <mnemonic>", "Dedicated fixture actor mnemonic")
-    .option("--limit <count>", "Limit selected fixture instances")
-    .option("--tiers <tiers>", "Comma-separated popularity tiers")
     .option(
-      "--scenarios <scenarios>",
+      "--fixture-actor-mnemonic <mnemonic>",
+      "Dedicated fixture actor mnemonic",
+    )
+    .option("--fixture-limit <count>", "Limit selected fixture instances")
+    .option("--fixture-tiers <tiers>", "Comma-separated popularity tiers")
+    .option(
+      "--fixture-scenarios <scenarios>",
       "Comma-separated execution scenarios, e.g. live_now",
     )
     .option("--fixture-ids <ids>", "Comma-separated fixture IDs")
     .option(
-      "--replicas-per-vector <count>",
+      "--fixture-replicas-per-vector <count>",
       "Keep at most N replicas of each source scenario",
     )
     .option(
@@ -1159,6 +1212,21 @@ function addCommon(command: Command): Command {
       "Enable impersonation/time control RPC methods",
       false,
     );
+}
+
+/// Nominates the wallet that will own every seeded name. Every command up to and
+/// including registration takes it, because each resolves the owner aliases:
+/// planning resolves them to preview the layout seeding will register rather
+/// than the default three-owner one, seeding registers to that wallet, and
+/// funding has to top up the accounts seeding will sign from, which once a
+/// wallet is nominated are that wallet rather than the mnemonic's owner
+/// accounts. Nothing after registration takes it, where it would instead read as
+/// a way to change who owns the names, which no command can do.
+function addOwnerKeyOption(command: Command): Command {
+  return command.option(
+    "--fixture-owner-key <key>",
+    "Private key of the wallet that should own every seeded name",
+  );
 }
 
 /// Gate every fixture action that writes to the chain.
@@ -1200,19 +1268,23 @@ function normalizeOptions(raw: any): CommonOptions {
 /// drift apart on options or behaviour.
 export function addFixtureSubcommands(program: Command): Command {
   program.addCommand(
-    addCommon(
-      new Command("verify").description(
-        "Offline: validate the selection and plan every scenario's calls",
+    addOwnerKeyOption(
+      addCommon(
+        new Command("verify").description(
+          "Offline: validate the selection and plan every scenario's calls",
+        ),
       ),
     ).action((raw) => verify(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(
-      new Command("fund-actors").description(
-        "Top up the fixture actor accounts",
+    addOwnerKeyOption(
+      addCommon(
+        new Command("fund-actors").description(
+          "Top up the fixture actor accounts",
+        ),
       ),
     )
-      .option("--floor <eth>", "Minimum balance per actor", "0.5")
+      .option("--floor <eth>", "Minimum balance per actor alias", "0.5")
       .action((raw) => fundActorAccounts(normalizeOptions(raw), raw.floor)),
   );
   program.addCommand(
@@ -1223,9 +1295,11 @@ export function addFixtureSubcommands(program: Command): Command {
     ).action((raw) => deployFixtures(normalizeOptions(raw))),
   );
   program.addCommand(
-    addCommon(
-      new Command("seed-v1").description(
-        "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
+    addOwnerKeyOption(
+      addCommon(
+        new Command("seed-v1").description(
+          "Register the corpus on v1 and shape each name's pre-migration state (before phase 3)",
+        ),
       ),
     ).action(async (raw) => {
       await seedV1(normalizeOptions(raw));

@@ -40,16 +40,14 @@ Two things cut across every path:
 
 ## Phases
 
-Phase numbering matches the console output of the `fork full` orchestrator in
-[`script/migration.ts`](../script/migration.ts). Every command below also takes the shared
-[common options](#common-options) (`--network`, `--rpc-url`, deployment dirs); run any command with
-`--help` for its authoritative option list.
+Every command below also takes the shared [common options](#common-options) (`--network`,
+`--rpc-url`, deployment dirs); run any command with `--help` for its authoritative option list.
 
 | Phase | Action | Command(s) | Applies to | Signer |
 | --- | --- | --- | --- | --- |
 | 0 | Deploy fresh v1 contracts | part of `clean-testnet` | clean-testnet only | `deployer` |
 | 1 | Deploy all v2 contracts, including reverse-registrar adapters and the HCA stack on HCA-enabled networks (registrar deferred) | `phase deploy-v2` | live + clean-testnet | `deployer` / `owner` / `urManager` (+ v1 owner) |
-| F1 | *(optional)* Seed the ENSv1 test fixture corpus, then check the shaped v1 state | `fixture seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
+| F1 | *(optional)* Seed the ENSv1 test fixture corpus and check the shaped v1 state | `fixture fund-actors` → `seed-v1` → `verify-v1` | live + clean-testnet | fixture operator + actors (+ v1 owner) |
 | 2 | Seed v1 names as reserved on v2 | `premigration run` → `verify` | live + clean-testnet | BatchRegistrar owner |
 | 3 | Freeze v1 registrations | `phase disable-v1-registrars` (+ `verify-*`) | live + clean-testnet | v1 owner |
 | 4 | Keep unmigrated names renewable | `phase authorize-v1-renewer` | live + clean-testnet | v1 owner |
@@ -70,7 +68,6 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 
 ### Phase 1: deploy v2 contracts
 
-- **Applies to:** live + clean-testnet.
 - **Command:**
   ```bash
   bun run migration -- phase deploy-v2 --network sepolia
@@ -100,22 +97,17 @@ Phase numbering matches the console output of the `fork full` orchestrator in
 The deferred v1-owner transactions point the v1 `.eth` resolver at `ENSV2Resolver` and authorize the
 reverse adapters, including `DefaultReverseRegistrarAdapter` when HCA is enabled.
 
-On an HCA-enabled network, phase 1 deploys `HCAOwnerAndSessionValidator`, `StandaloneHCAFactory`,
-`HCAUpgradeSet`, and `StandaloneHCAImplementation` — the shared infrastructure only. Individual
-owner-bound HCAs remain counterfactual and are deployed lazily through `StandaloneHCAFactory`.
-Sepolia defaults to the fixed Rhinestone intent executor and production USDC addresses in
-[`script/deploy-constants.ts`](../script/deploy-constants.ts); local, test, and clean-testnet
-deployments use local mock infrastructure. The `HCA_*` address variables are optional overrides.
-
-**Updating the HCA stack in place.** `--resume --tags hca` refreshes the shared HCA contracts and
-their reverse adapters inside an existing namespace: it reuses the core deployment records, deploys
-contracts whose bytecode or constructor arguments changed, and prepares replacement-adapter grants
-followed by revocations of every recorded prior adapter. Replay the deferred owner transactions, then
-verify that both replacement adapters are controllers and every superseded adapter is not.
+HCA deploys as shared infrastructure only — the validator, factory, upgrade set and standalone
+implementation. Individual owner-bound HCAs stay counterfactual and are created lazily through the
+factory. Sepolia uses the fixed Rhinestone intent executor and production USDC addresses from
+[`script/deploy-constants.ts`](../script/deploy-constants.ts), overridable through the `HCA_*`
+variables; local, test and clean-testnet deployments use mocks. `--resume --tags hca` refreshes that
+stack inside an existing namespace, redeploying only what changed and preparing grants for the
+replacement reverse adapters plus revocations of every prior one — replay the deferred owner
+transactions afterwards.
 
 ### Phase 2: initial pre-migration
 
-- **Applies to:** live + clean-testnet.
 - **Command:**
   ```bash
   bun run migration -- premigration run --network sepolia \
@@ -135,7 +127,6 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
 
 ### Phase 3: disable v1 registrars
 
-- **Applies to:** live + clean-testnet.
 - **Command:**
   ```bash
   bun run migration -- phase disable-v1-registrars --network sepolia \
@@ -169,15 +160,12 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
   the grant; everything else is listed as `v1-owned, outside migration remit` and left enabled.
 
 > **Use an archival RPC.** Each surface's controller history is read from its events across the whole
-> chain. An uncapped archival endpoint reads each surface in one request. Providers that cap
-> `eth_getLogs` by block span or result count (free tiers commonly at 1k–10k blocks) still complete
-> and return the same controllers, but cost hundreds of requests and several minutes. A refusal that
-> persists at the smallest span, or a fork whose history predates its fork block, **fails** both
-> commands rather than falling back to a partial audit.
+> chain — one request per surface on an uncapped endpoint, hundreds and several minutes on one that
+> caps `eth_getLogs`. An endpoint that refuses even the smallest span, or a fork whose history
+> predates its fork block, **fails** both commands rather than auditing partially.
 
 ### Phase 4: authorize ETHRenewerV1
 
-- **Applies to:** live + clean-testnet.
 - **Command:**
   ```bash
   bun run migration -- phase authorize-v1-renewer --network sepolia
@@ -199,7 +187,6 @@ If you seeded a fixture corpus, run this a second time against its own CSV and w
 
 ### Phase 5: final pre-migration sync
 
-- **Applies to:** live + clean-testnet.
 - **Command:**
   ```bash
   bun run migration -- premigration run --network sepolia \
@@ -218,7 +205,6 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 
 ### Phase 6: enable the v2 controller
 
-- **Applies to:** live + clean-testnet.
 - **Command:** four owner-gated steps, **in order**, then verify:
   ```bash
   bun run migration -- phase disable-batch-registrar          --network sepolia
@@ -234,19 +220,17 @@ a fresh `--work-dir`; the corpus is frozen by then, so the file does not need re
 - **Keys / args:** registry root-role admin key (`OWNER_KEY`, falls back to `DEPLOYER_KEY`) for
   `disable-batch-registrar` and `enable-v2-registrar`; v1 owner key for the `activate-v1-*` steps. The
   owner-gated and v1-owner steps accept `--calldata-only` for a multisig. On testnets
-  `TestnetV1PremigrationRegistrar` keeps its roles, re-authorized by `activate-v1-handoff-controllers`
-  (the individual steps are also available as `activate-v1-graveyard` and
-  `authorize-testnet-v1-premigration-registrar`).
+  `TestnetV1PremigrationRegistrar` keeps its roles, re-authorized by
+  `activate-v1-handoff-controllers`.
 - **Result:** `BatchRegistrar` roles revoked (pre-migration seeding ends); `Graveyard` (+ testnet
   helper) authorized as v1 controllers; v1 `BaseRegistrar` ownership transferred to `ETHRenewerV1`
   (final lock-down); `ETHRegistrar` granted `REGISTRAR | RENEW` on the v2 `ETHRegistry` — live v2
   registrations open. `verify-v2-registrar` confirms the grant.
 
-These handoff grants are the last step to touch v1 authorizations, so `verify-v1-registrars-disabled`
-is re-run here to assert the final set: only the active deployment's contracts may hold a v1 grant.
-`fork full` runs this assertion automatically. It is the check that catches a superseded deployment's
-controller surviving the freeze; the phase 3 registration smoke test cannot see one, because it only
-exercises the official registrar controller's path.
+These grants are the last step to touch v1 authorizations, so `verify-v1-registrars-disabled` runs
+again here to assert the final set: only the active deployment's contracts may hold a v1 grant. It is
+what catches a superseded deployment's controller surviving the freeze, which the phase 3 smoke test
+cannot see — that only exercises the official registrar controller's path.
 
 ### Phase 7: switch the Universal Resolver to v2
 
@@ -342,26 +326,18 @@ sample, not a real export.
 
 ### Run the phases
 
-Run the phases in order; each links to its entry in [Phases](#phases) for the exact command,
-prerequisites, and result:
+Run [phases 1–7](#phases) in order, each with its own `--work-dir`. Four things are particular to
+this path:
 
-1. [Phase 1 — deploy fresh v2](#phase-1-deploy-v2-contracts), recording v1-owner txs with
-   `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl`
-   and replaying the resolver update and reverse-adapter grants via
-   `phase execute-owner-txs --role v1Owner`.
-   Then, *(optional)* [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus):
-   `fixture seed-v1` → `fixture verify-v1`. **This must sit after phase 1**, which deploys the
-   `MigrationHelper` the corpus approves, **and before phase 3**, which freezes v1 registration.
-2. [Phase 2 — initial pre-migration](#phase-2-initial-pre-migration) (`--work-dir .dev/sepolia-live/premig-1`).
-   Pass the fixture label CSV alongside the real export if the corpus was seeded.
-3. [Phase 3 — freeze v1 registrations](#phase-3-disable-v1-registrars) (`--private-key $SEPOLIA_V1_OWNER_KEY`).
-4. [Phase 4 — keep names renewable](#phase-4-authorize-ethrenewerv1). With an EOA v1 owner on Sepolia
-   you can run phases 3 and 4 back-to-back, so the renewal gap is small.
-5. [Phase 5 — final sync](#phase-5-final-pre-migration-sync) from a fresh post-freeze CSV
-   (`--work-dir .dev/sepolia-live/premig-2`).
-6. [Phase 6 — enable the v2 controller](#phase-6-enable-the-v2-controller).
-7. [Phase 7 — resolution cutover](#phase-7-switch-the-universal-resolver-to-v2): sepolia is a reuse
-   network, so only `upgrade-managed-urp` + `verify-urp` run.
+- **Phase 1** cannot sign as the v1 owner, so record those transactions with
+  `--defer-v1-owner-transactions --deferred-v1-owner-transactions-file .dev/sepolia-live/phase1-v1owner.jsonl`
+  and replay them with `phase execute-owner-txs --role v1Owner`.
+- **Between phases 1 and 3**, optionally
+  [seed the ENSv1 test fixture corpus](#ensv1-test-fixture-corpus) and pass its label CSV to phases 2
+  and 5 alongside the real export.
+- **Phases 3 and 4** run back-to-back, because the v1 owner is an EOA here — so the renewal gap is
+  seconds rather than however long a multisig takes.
+- **Phase 7** skips `switch-urp-to-managed`: sepolia is a reuse network.
 
 This runbook assumes a first migration. On a repeat deploy the order is unchanged but extra steps
 apply — see
@@ -391,22 +367,18 @@ export ETHERSCAN_API_KEY=<etherscan v2 api key>   # one key covers all chains; n
 bun run verify:sepolia                            # → verify:mainnet for the mainnet set
 ```
 
-A `clean-testnet` namespace also carries the ENSv1 stack it deployed, under
-`deployments/v1/<namespace>`. Both sets are verified: the command picks up that tree whenever it
-exists and submits it as a second pass. `--skip-v1` limits the run to v2. Pass the namespace as the
-network for a clean testnet — the chain is read from the artifacts, not from a network config:
+A `clean-testnet` namespace also carries the ENSv1 stack it deployed under `deployments/v1/<namespace>`;
+both sets are verified, and `--skip-v1` limits the run to v2. Pass the namespace as the network — the
+chain is read from the artifacts, not from a network config:
 
 ```bash
 bun run verify -- --network sepolia-clean-<timestamp>
 ```
 
-Verification is idempotent and re-runnable: contracts already verified on a backend are detected and
-skipped. `--etherscan-only` and `--sourcify-only` limit the run to one backend, and
-`--sourcify-server <url>` points at a self-hosted Sourcify. Any other flag passes through to
-`rocketh-verify` (e.g. `bun run verify -- --network sepolia --etherscan-only`).
-
-A contract that fails Sourcify verification is reported by name and the command exits non-zero; the
-run continues through the rest of the set first, so one failure does not hide the others.
+Re-running is safe: contracts already verified on a backend are skipped. `--etherscan-only`,
+`--sourcify-only` and `--sourcify-server <url>` narrow or redirect the run; any other flag passes
+through to `rocketh-verify`. A failure is reported by name and exits non-zero only after the rest of
+the set has been attempted, so one failure does not hide the others.
 
 ## ENSv1 test fixture corpus
 
@@ -416,34 +388,26 @@ state — wrapped or unwrapped, particular fuses burned, particular resolver and
 claims, parent/child hierarchies — and most of the labels are then reserved on v2 by the ordinary
 pre-migration phases.
 
-The corpus seeds v1 state and gets labels reserved. It does **not** migrate names: migrating a name is
-a manual action its owner takes whenever they choose, and no phase performs it.
-
-This is test scaffolding. It is refused against live mainnet, and nothing in the canonical phases
-depends on it.
+It seeds and reserves; it does **not** migrate. Migrating a name is a manual action its owner takes
+whenever they choose, so seeded names can be
+[registered to a tester's wallet](#choosing-who-owns-the-seeded-names) for a person to migrate by
+hand. This is test scaffolding: it is refused against live mainnet, and nothing in the canonical
+phases depends on it.
 
 ### Input data
 
-The corpus ships with the repo as `contracts/fixtures/migration-fixture.tgz`. It expands to about
-54MB, so the archive is tracked and the working copy is not: `postinstall` unpacks it alongside the
-other CSV input, which is gitignored.
+The corpus ships as `contracts/fixtures/migration-fixture.tgz` and expands to tens of megabytes of
+scenario JSONL, so the archive is tracked and the working copy is not. `bun install` unpacks it to
+`csv-data/migration-fixture/weighted-scenarios.jsonl` — one scenario per line, and the whole corpus:
+the label list pre-migration reserves is derived from it, not shipped beside it.
 
-```
-csv-data/migration-fixture/
-  weighted-scenarios.jsonl    # one scenario per line, ~54MB
-```
-
-`bun install` does this. To unpack it by hand — after replacing the archive, or if a fresh checkout
-skipped lifecycle scripts — run `bun run fixtures:extract` from the repo root. It re-extracts only
-when the archive is newer than what was unpacked, so it is cheap to run repeatedly. To repack a
+`bun run fixtures:extract` unpacks it by hand, after replacing the archive or when a checkout skipped
+lifecycle scripts; it re-extracts only when the archive is newer than what was unpacked. To repack a
 changed corpus:
 
 ```bash
 cd contracts/csv-data && tar czf ../fixtures/migration-fixture.tgz migration-fixture
 ```
-
-The scenario file is the whole corpus — the label list pre-migration reserves is derived from it, not
-shipped beside it.
 
 ### Choosing a cohort
 
@@ -452,42 +416,45 @@ is. Selection flags compose:
 
 | Flag | Effect |
 | --- | --- |
-| `--scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
-| `--replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
-| `--tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
+| `--fixture-scenarios live_now` | Only scenarios a public testnet can express. `fork_only` needs Anvil/Tenderly time and reorg control. |
+| `--fixture-replicas-per-vector <n>` | Keep at most *n* copies of each distinct scenario. |
+| `--fixture-tiers <list>` | Restrict to popularity tiers. Concentrates volume on common shapes at the cost of behavioural coverage. |
 | `--fixture-ids <list>` | An explicit set, for reproducing one case. |
-| `--limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
+| `--fixture-limit <n>` | Cap the cohort at *n* names, applied after the filters above. |
 
 Seeding refuses a selection whose scenarios it cannot establish, naming them: an expiry that needs a
 controlled clock, a v2 state that needs the name already registered there, or a lease below the v1
 controller's minimum. `fixture verify` applies the same check offline, so a cohort can be tested
 before a run starts. Every `live_now` scenario passes it.
 
-> **Reverse records are shared.** A reverse node derives from the account that claims it, and each
-> actor alias is one account, so scenarios claiming from the same alias all write the same node and
-> only the last survives. Seeding reports the overlap. Nothing else the corpus shapes or checks
-> depends on it, and no migration route reads a reverse record.
+> **Reverse records are shared.** A reverse node derives from the account that claims it, so
+> scenarios claiming from one account all write the same node and only the last survives. Which
+> claims collide depends on the layout: an alias is normally its own account, but a
+> [nominated wallet](#choosing-who-owns-the-seeded-names) makes the three owner aliases one, so claims
+> that were distinct start overwriting each other. `verify` and seeding both report the overlap per
+> account. Nothing else the corpus shapes or checks depends on it, and no migration route reads a
+> reverse record.
 
-`--scenarios live_now --replicas-per-vector 4` is the recommended default: it covers every scenario
-the public network can express, several times over, without the long tail of replicas that adds
-registration cost but no new behaviour.
-
-`--scenarios` filters on each scenario's `execution.scenario` — whether it can run on a public network
-at all. That is a separate axis from the v2 state a scenario declares, which is what decides
-[whether its label gets reserved](#reserving-the-fixture-labels-on-v2); neither filters the other, so
+`--fixture-scenarios live_now --fixture-replicas-per-vector 4` is the recommended default: every
+scenario the public network can express, several times over, without the long tail of replicas that
+adds registration cost but no new behaviour. It filters on whether a scenario can run on a public
+network at all — a separate axis from the v2 state a scenario declares, which is what decides
+[whether its label gets reserved](#reserving-the-fixture-labels-on-v2). Neither filters the other, so
 a `live_now` cohort still contains names meant to stay unreserved.
 
 Always dry-run the selection first. `verify` sends nothing — it parses the corpus, checks the replica
 contract, and plans every scenario's calls, so an unsupported action or an unresolvable reference
 surfaces before anything touches a chain. It still derives the actor addresses the plan refers to, so
-it needs the actor mnemonic and a network RPC variable set:
+it needs the actor mnemonic and a network RPC variable set, and the same
+[`--fixture-owner-key`](#choosing-who-owns-the-seeded-names) seeding will get — otherwise it previews
+the default layout rather than the run you are about to make.
 
 ```bash
 export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
 
 bun run migration -- fixture verify --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --scenarios live_now --replicas-per-vector 4
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4
 ```
 
 Planning is not a state check. It confirms every call can be *built*; whether the resulting state is
@@ -498,7 +465,9 @@ reachable on-chain is what [`verify-v1`](#checking-the-shaped-state) answers, af
 Requires `bun run compile` first, a funded operator key, and a dedicated actor mnemonic
 (`MIGRATION_FIXTURE_ACTOR_MNEMONIC`) — never a mnemonic used for anything else. Fixture names are
 distributed across five named actors, which need funding because a large share of the state shaping
-must be signed by the holder rather than batched.
+must be signed by the holder rather than batched. They hold the names because shaping demands it, not
+because they are meant to keep them: [nominate an owner
+wallet](#choosing-who-owns-the-seeded-names) and the names are registered to that instead.
 
 ```bash
 export MIGRATION_FIXTURE_ACTOR_MNEMONIC="<dedicated fixture mnemonic>"
@@ -508,7 +477,7 @@ bun run migration -- fixture fund-actors --network sepolia \
 
 bun run migration -- fixture seed-v1 --network sepolia \
   --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
-  --scenarios live_now --replicas-per-vector 4
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4
 ```
 
 `seed-v1` deploys a batching helper and the corpus's counterparty contracts, registers each name
@@ -524,15 +493,14 @@ and replaying setup over it would write against a name that has already moved on
 directory when that happens: it records the batcher that holds the name, and a fresh one deploys
 another and cannot reach it. Drop the name from the selection, or reseed against a fresh chain.
 
-> **Recompile first.** `seed-v1` deploys the corpus's counterparty contracts from
-> `generated/artifacts/`, which is gitignored. A tree compiled before those contracts last changed
-> fails at the first deployment with viem's `AbiEncodingLengthMismatchError` — a stale-ABI mismatch,
-> not a fault in the corpus or the chain.
+> **Recompile first.** The counterparty contracts are deployed from the gitignored
+> `generated/artifacts/`. A tree compiled before they last changed fails at the first deployment with
+> viem's `AbiEncodingLengthMismatchError` — a stale ABI, not a fault in the corpus or the chain.
 
 > **Ordering.** Seeding sits **after [phase 1](#phase-1-deploy-v2-contracts) and before
-> [phase 3](#phase-3-disable-v1-registrars)**. It cannot precede phase 1: much of the corpus approves
-> `MigrationHelper` as an operator while shaping its v1 state, and that is a v2 contract phase 1
-> deploys. It cannot follow phase 3 either, since that freezes v1 registration.
+> [phase 3](#phase-3-disable-v1-registrars)**: much of the corpus approves `MigrationHelper` while
+> shaping its v1 state, and that is a v2 contract phase 1 deploys, while phase 3 freezes the v1
+> registration seeding needs.
 
 ### Checking the shaped state
 
@@ -553,18 +521,81 @@ It exits non-zero listing every mismatch, and writes the full set to
 `<work-dir>/fixture-v1-verification.json`. Run it before pre-migration, while a name whose state did
 not take can still be reshaped.
 
-> **Known-bad vectors — exclude them from the cohort.** Some scenarios declare `CAN_EXTEND_EXPIRY` on
-> a `.eth` 2LD, which cannot be satisfied on-chain: the fuse is parent-controlled, and `wrapETH2LD`
-> always burns `PARENT_CANNOT_CONTROL`, so nothing can set it afterwards. Fuses are compared exactly,
-> so `verify-v1` fails on any cohort containing one. `fixture verify` does not catch them — the plan
-> is buildable; only the chain rejects it.
->
-> 38 of the 761 distinct `live_now` vectors are affected; their ids all begin `3W-`, `FE-` or `PW-`
-> (most vectors under those prefixes are fine — the report names the exact ones). Because
-> `--replicas-per-vector` sorts by scenario id, `--limit` takes an alphabetical prefix that starts on
-> an affected vector: ten of the first forty. Standalone this is a report you can read past;
-> [in a rehearsal it aborts the run](#in-a-rehearsal). Until the corpus is fixed, pin the cohort with
-> `--fixture-ids` from a list the affected vectors are excluded from.
+It takes no owner option of its own. Each actor alias is resolved against the addresses the seeding
+run recorded in `<work-dir>/fixture-run.json`, so a cohort registered to a [nominated
+wallet](#choosing-who-owns-the-seeded-names) is checked against that wallet.
+
+> **Known-bad vectors — exclude them from the cohort.** A few scenarios declare `CAN_EXTEND_EXPIRY` on
+> a `.eth` 2LD, which no chain can satisfy: the fuse is parent-controlled and `wrapETH2LD` always
+> burns `PARENT_CANNOT_CONTROL`, so nothing can set it afterwards. Fuses are compared exactly, so
+> `verify-v1` fails on any cohort containing one, and `fixture verify` does not catch them — the plan
+> is buildable; only the chain rejects it. Their ids begin `3W-`, `FE-` or `PW-`, and the verification
+> report names the exact ones. A `--fixture-limit` cohort takes an alphabetical prefix of the scenario
+> ids and so tends to include some; pin the cohort with `--fixture-ids` instead. Standalone this is a
+> report you can read past — [in a rehearsal it aborts the run](#in-a-rehearsal).
+
+### Choosing who owns the seeded names
+
+By default the corpus is owned by the five actor accounts the mnemonic derives, which is fine when
+nobody but the tooling needs to touch it. To put it in a tester's hands, nominate that wallet with
+`--fixture-owner-key` and seeding shapes every name into it instead.
+
+It is a **key**, not an address, and that is the whole trick. Shaping a name means signing as its
+owner — reverse claims, operator approvals, unwraps, records written after the name leaves the
+batcher — so an owner we can sign for can be the tester from the moment the batcher lets go. Nothing
+is handed over afterwards, so nothing can refuse to be: names carrying `CANNOT_TRANSFER`, which no
+transfer could ever have moved, are the tester's on the same terms as the rest, and a subname comes
+with the name above it, so it can actually be migrated.
+
+Pass it to `fixture verify`, `fund-actors` and `seed-v1` alike — it decides which accounts the owner
+aliases resolve to, so it is what the dry run previews, what funding tops up, and what registration
+registers to. `fork full` and `clean-testnet` take it too. Export `MIGRATION_FIXTURE_OWNER_KEY` to
+avoid repeating it. Nothing after registration takes it: `verify-v1` resolves each alias against the
+addresses the seeding run recorded, and no command can change who owns a name once it is seeded.
+
+```bash
+bun run migration -- fixture seed-v1 --network sepolia \
+  --fixture-root csv-data/migration-fixture --work-dir .dev/fixture \
+  --fixture-scenarios live_now --fixture-replicas-per-vector 4 \
+  --fixture-owner-key 0x<tester key>
+```
+
+The key covers `owner_a`, `owner_b` and `owner_c` — every alias the corpus ever names as an owner.
+`operator` and `attacker` stay on the mnemonic, because each is only meaningful as an address the
+owner is *not*, and a key that is one of them is refused: a tenth of the corpus migrates as the
+operator or the attacker to prove that caller is turned away, and giving the owner their key would
+make those calls authorised while verification, reading the same accounts, still passed.
+
+The operator key (`--fixture-private-key`) is separate and still needed — it pays for the batcher and
+the registrations. Only ownership moves to the nominated wallet, and every name still reaches it
+through the batcher, which does the commit/reveal in bulk and passes the name on while its state is
+being shaped, before any fuse that would refuse a transfer is burned.
+
+> **What one wallet costs.** Collapsing the three owner aliases onto one account means the scenarios
+> that turn on owners differing no longer do: `transfer_registrant` steps become self-transfers, an
+> `alternate_owner` becomes the owner itself, and a third of the helper batches stop spanning more
+> than one owner, so `MigrationHelper`'s per-owner grouping goes unexercised. Nothing fails; the
+> coverage is simply narrower. Seed without the flag when the point is to exercise the migration
+> paths rather than to hand someone a wallet.
+
+> **Operator approvals belong to an account, not a name.** Some scenarios expect migration to revert
+> because the holder never approved `MigrationHelper`; many more grant it `setApprovalForAll` while
+> shaping their own state. That approval covers every name the granting account holds on the same
+> token and is never revoked, so seeding both groups together leaves the first approved and its guard
+> unexercised. This is a property of the corpus rather than of one wallet — every scenario relying on
+> the guard shares its owner alias with one that grants, so a whole-corpus run loses it with or
+> without `--fixture-owner-key`. Seed those scenarios in a cohort of their own when the guard is the
+> point; nothing else detects it, since `verify-v1` reads names, not approvals.
+
+> **Fund the wallet that signs.** On a live chain `fund-actors` is the only thing that puts gas where
+> seeding needs it, and it needs the owner key to know where that is. Give the key to `seed-v1` alone
+> and funding tops up three mnemonic accounts that will never sign anything while the wallet doing the
+> work starts empty — seeding then runs out of gas part-way through a name it has already registered,
+> leaving it part-shaped, which the resume guard refuses to replay. The wallet is funded to three
+> times `--floor` for the same reason: one account is now doing three actors' work. Nominating the
+> operator key itself is allowed, but then there is nowhere to fund it from — `fund-actors` reports
+> the shortfall and stops rather than sending an account its own money, so top that one up from
+> outside the run.
 
 ### Reserving the fixture labels on v2
 
@@ -612,29 +643,28 @@ bun run migration -- fork full --network sepolia \
   --fixture-scenarios live_now --fixture-replicas-per-vector 1 --fixture-limit 40
 ```
 
-The selection flags mirror the standalone ones (`--fixture-scenarios`, `--fixture-tiers`,
-`--fixture-ids`, `--fixture-limit`, `--fixture-replicas-per-vector`). Keep a rehearsal cohort small:
-every name is a real commit/reveal registration plus its state-shaping calls, so the whole corpus
-costs far more wall-clock than the rest of the rehearsal put together.
+Every fixture flag is spelled as it is standalone, `--fixture-` prefix and all, so a cohort is
+selected the same way either way and none of them can be mistaken for the rehearsal's own
+`--initial-limit`, `--finish-limit` or signer options. Keep a rehearsal cohort small: every name is a
+real commit/reveal registration plus its state-shaping calls, so the whole corpus costs far more
+wall-clock than the rest of the rehearsal put together.
 
-A rehearsal prepends the fixture labels to its own transformed CSV rather than passing
-`fixture-premigration.csv` to a second pre-migration run, but it reserves the same set. The written
-file is still there for inspection under `<work-dir>/fixture/`. Because both phases read that one CSV,
-a `--resume-from-phase 2` run skips reseeding and keeps the labels the earlier run already prepended.
+A rehearsal prepends the fixture labels to its own transformed CSV rather than running pre-migration
+a second time, reserving the same set. `fixture-premigration.csv` is still written under
+`<work-dir>/fixture/` for inspection, and because both phases read the one CSV, a
+`--resume-from-phase 2` run keeps the labels the earlier run prepended instead of reseeding.
 
-Against a state-controlled RPC (a local fork or a Tenderly virtual testnet) the operator key and the
-actor mnemonic are generated per run and funded directly, so no funded keys are needed; both are
-written under `<work-dir>/fixture/` so a resumed run addresses the same accounts. Generating them also
-avoids the EIP-7702 delegations that the well-known test accounts carry on live chains, which would
-otherwise make ERC-1155 receipt fail. On an RPC without state controls, pass `--fixture-private-key`
-and `--fixture-actor-mnemonic` (or their environment equivalents).
+Against a state-controlled RPC — a local fork or a Tenderly virtual testnet — the operator key and
+actor mnemonic are generated per run, funded directly, and written under `<work-dir>/fixture/` so a
+resumed run addresses the same accounts. No funded keys are needed, and generating them avoids the
+EIP-7702 delegations the well-known test accounts carry on live chains, which would otherwise make
+ERC-1155 receipt fail. Without state controls, pass `--fixture-private-key` and
+`--fixture-actor-mnemonic`.
 
 > **The state check is fatal here.** Standalone, `verify-v1` reports mismatches and exits non-zero,
-> leaving you to decide. In a rehearsal it runs inside the seed stage, so one mismatch throws and
-> takes the whole run down before phase 2 — including a
-> [known-bad vector](#checking-the-shaped-state). The `--fixture-limit 40` cohort above trips it. Pin
-> the cohort with `--fixture-ids` instead; a 60-vector cohort built that way runs end-to-end, with
-> `verify-v1` passing and phases 2 and 5 reserving the labels.
+> leaving you to decide. In a rehearsal it runs inside the seed stage, so one mismatch takes the whole
+> run down before phase 2 — a [known-bad vector](#checking-the-shaped-state) included, which the
+> `--fixture-limit 40` cohort above will contain. Pin the cohort with `--fixture-ids` instead.
 
 ## Rehearsals
 
@@ -740,8 +770,8 @@ Mainnet works the same way (`--network mainnet`; it is a bootstrap URP network).
 - **Phased deploy scripts** — the scripts under [`deploy/`](../deploy/) carry migration tags
   (`migration:phase1:deploy-v2`, `migration:phase5:switch-urp-to-managed`,
   `migration:phase6:upgrade-managed-urp`, `migration:post-cutover:direct-urp-to-v2`) so each on-chain
-  change is bound to a deploy step. The tag strings are stable identifiers and do not track the phase
-  numbering.
+  change is bound to a deploy step. The tags are stable identifiers; the numbers in them are not the
+  phase numbers above.
 
 ### Common options
 
@@ -789,16 +819,16 @@ and idempotency rules.
 | `premigration status` | Print the current pre-migration checkpoint JSON (local; `--work-dir` only) |
 | `premigration verify` | Verify eligible CSV names were reserved or registered on v2 |
 | `fixture verify` | Offline: validate a fixture selection and plan every scenario's calls |
-| `fixture fund-actors` | Top up the fixture actor accounts from the operator key |
+| `fixture fund-actors` | Top up the accounts seeding will sign from, to `--floor` (default 0.5 ETH) per alias |
 | `fixture deploy-fixtures` | Deploy the fixture batcher and the corpus counterparty contracts |
-| `fixture seed-v1` | Register the ENSv1 fixture corpus, shape each name's pre-migration state, and emit the label subset pre-migration reserves (after phase 1, before phase 3) |
-| `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario (after `seed-v1`) |
-| `phase deploy-v2` | Phase 1: deploy the v2 migration contracts, reverse-registrar adapters, and enabled HCA infrastructure with the registrar deferred; archives any existing namespace and deploys fresh by default (`--resume` continues an interrupted deploy) |
-| `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior deployment's `ETHRenewerV1` back to the v1 owner (run before the phase-1 deferred-tx replay on an already-migrated chain) |
-| `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization (BaseRegistrar + reverse registrars) the active deployment did not grant |
+| `fixture seed-v1` | Register the corpus, shape each name's v1 state, and emit the labels pre-migration reserves |
+| `fixture verify-v1` | Read the shaped v1 state back and check it against each scenario |
+| `phase deploy-v2` | Phase 1: deploy the v2 contracts, reverse adapters and HCA stack, with the registrar grant deferred |
+| `phase reclaim-v1-registrar-ownership` | Re-migration only: reclaim v1 `BaseRegistrar` ownership from a prior `ETHRenewerV1` |
+| `phase disable-v1-registrars` | Phase 3: revoke every v1 authorization the active deployment did not grant |
 | `phase set-v1-reverse-default-resolver` | Point the v1 `ReverseRegistrar` default resolver at the v1 `PublicResolver` (v1-owner write) |
 | `phase verify-v1-registrars-disabled` | Verify no v1 authorization outside the active deployment is enabled |
-| `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` as a v1 controller so unmigrated names stay renewable |
+| `phase authorize-v1-renewer` | Phase 4: authorize `ETHRenewerV1` so unmigrated names stay renewable |
 | `phase execute-owner-txs` | Execute prepared owner transactions from a JSONL file (optionally filtered by `--role`) |
 | `phase disable-batch-registrar` | Phase 6: revoke registrar/renew roles from `BatchRegistrar` |
 | `phase verify-batch-registrar-disabled` | Verify `BatchRegistrar` no longer has registrar/renew roles |
@@ -806,11 +836,11 @@ and idempotency rules.
 | `phase activate-v1-handoff-controllers` | Phase 6: authorize `Graveyard` + testnet helper as v1 controllers |
 | `phase activate-v1-graveyard` | Phase 6 (individual): authorize `Graveyard` only |
 | `phase authorize-testnet-v1-premigration-registrar` | Phase 6 (individual, testnet): authorize the testnet premigration helper |
-| `phase activate-v1-renewer` | Phase 6: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` (final lock-down) |
+| `phase activate-v1-renewer` | Phase 6: transfer v1 `BaseRegistrar` ownership to `ETHRenewerV1` |
 | `phase enable-v2-registrar` | Phase 6: grant registrar/renew roles to `ETHRegistrar` |
 | `phase verify-v2-registrar` | Verify `ETHRegistrar` has registrar/renew roles |
 | `phase switch-urp-to-managed` | Phase 7 (bootstrap only): point the top URP at the managed URP |
-| `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` (resolution cutover) |
+| `phase upgrade-managed-urp` | Phase 7: upgrade the managed URP to `UniversalResolverV2` — the resolution cutover |
 | `phase verify-urp` | Verify top and managed URP implementations |
 | `fork full` | Run the full phased migration rehearsal against an Anvil fork (or a Tenderly fork with `--direct`) |
 | `clean-testnet` | Deploy fresh testnet v1 contracts and run the full phased migration (sepolia only) |
@@ -855,7 +885,8 @@ flags/env). See `bunx hardhat migration <task> --help` for options.
 | `<PREFIX>_MNEMONIC`, `<PREFIX>_MNEMONIC_PATH`, `<PREFIX>_MNEMONIC_INDEX`, `<PREFIX>_MNEMONIC_PASSPHRASE` | Mnemonic-backed signer alternatives for `phase execute-owner-txs`; prefixes `OWNER_TX`, `SEPOLIA_V1_OWNER` / `V1_OWNER`, `SEPOLIA_TOP_URP_OWNER` / `TOP_URP_OWNER` |
 | `PREMIGRATION_PRIVATE_KEY`, `BATCH_REGISTRAR_OWNER_KEY`, `DEPLOYER_KEY` | BatchRegistrar owner key fallbacks for `premigration run` / `resume` |
 | `MIGRATION_FIXTURE_ACTOR_MNEMONIC` | Dedicated mnemonic for the five `fixture` actor accounts — never reuse a mnemonic held elsewhere |
-| `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--private-key` is omitted |
+| `MIGRATION_FIXTURE_PRIVATE_KEY` | Fixture operator key (`fixture` commands) when `--fixture-private-key` is omitted |
+| `MIGRATION_FIXTURE_OWNER_KEY` | Key for the wallet that should own every seeded name, when `--fixture-owner-key` is omitted; read by `fixture verify`, `fixture fund-actors` and `fixture seed-v1` alike |
 | `MIGRATION_FIXTURE_V1_OWNER` | v1 owner address used only when `fixture seed-v1` finds v1 registration already frozen |
 | `MIGRATION_FIXTURE_COMMIT_BATCH_SIZE`, `MIGRATION_FIXTURE_REGISTER_BATCH_SIZE` | Fixture registration batch sizes (default 80 and 12) |
 | `THEGRAPH_API_KEY` / `GRAPH_API_KEY` | TheGraph Gateway key for `fetch-data` |
@@ -873,7 +904,7 @@ role-specific variables are tried in order.
   CSV format, continuity expiry, checkpoints, verification.
 - [universalResolver.md](./universalResolver.md) — the URP proxy chain behind phase 7, and the
   post-cutover step.
-- [prepareMigration.md](./prepareMigration.md) — the non-phased, all-at-once role hand-off script that
-  phase 6 supersedes.
+- [prepareMigration.md](./prepareMigration.md) — the non-phased, all-at-once role hand-off; phase 6 is
+  the phased equivalent.
 - [deployments/README.md](../deployments/README.md) — deployment artifact layout, namespace naming,
   and the idempotency rule for fresh re-deploys.

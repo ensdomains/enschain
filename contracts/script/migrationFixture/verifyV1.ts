@@ -24,107 +24,35 @@ import {
   type RecordSpec,
 } from "./types.js";
 
+import {
+  BaseRegistrar,
+  EnsRegistry,
+  NameWrapper,
+  PublicResolver,
+} from "../abis.js";
+
+/// The v1 surfaces this verification reads, each as narrow as the reads it
+/// makes: these go out in multicall batches, where a wide ABI costs the type
+/// checker its inference.
 const REGISTRY_READ_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "resolver",
-    stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "ttl",
-    stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }],
-    outputs: [{ name: "", type: "uint64" }],
-  },
+  ...EnsRegistry.owner,
+  ...EnsRegistry.resolver,
+  ...EnsRegistry.ttl,
 ] as const;
-
 const BASE_REGISTRAR_READ_ABI = [
-  {
-    type: "function",
-    name: "ownerOf",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "nameExpires",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
+  ...BaseRegistrar.ownerOf,
+  ...BaseRegistrar.nameExpires,
 ] as const;
-
 const WRAPPER_READ_ABI = [
-  {
-    type: "function",
-    name: "ownerOf",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "getData",
-    stateMutability: "view",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [
-      { name: "owner", type: "address" },
-      { name: "fuses", type: "uint32" },
-      { name: "expiry", type: "uint64" },
-    ],
-  },
+  ...NameWrapper.ownerOf,
+  ...NameWrapper.getData,
 ] as const;
-
 const RESOLVER_READ_ABI = [
-  {
-    type: "function",
-    name: "addr",
-    stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "text",
-    stateMutability: "view",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "key", type: "string" },
-    ],
-    outputs: [{ name: "", type: "string" }],
-  },
-  {
-    type: "function",
-    name: "contenthash",
-    stateMutability: "view",
-    inputs: [{ name: "node", type: "bytes32" }],
-    outputs: [{ name: "", type: "bytes" }],
-  },
+  ...PublicResolver.addr,
+  ...PublicResolver.text,
+  ...PublicResolver.contenthash,
 ] as const;
-
-const RESOLVER_MULTICOIN_READ_ABI = [
-  {
-    type: "function",
-    name: "addr",
-    stateMutability: "view",
-    inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "coinType", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bytes" }],
-  },
-] as const;
+const RESOLVER_MULTICOIN_READ_ABI = PublicResolver.addrMulticoin;
 
 export type V1Addresses = {
   registry: Address;
@@ -295,6 +223,11 @@ export function buildV1Checks(
   const base = { fixtureId: row.fixture_id, name: scenario.name, form };
   const checks: Check[] = [];
 
+  // A name given away after seeding is held by its recipient wherever the
+  // corpus names the actor it was shaped under. Only that alias moves: refs
+  // naming the wrapper, a counterparty contract or a different actor still
+  // resolve as written, and so do the record values spelled with the same
+  // alias, which describe content rather than ownership.
   const registryOwner = resolveRef(pre.registry_owner_ref, ctx);
   checks.push({
     ...base,

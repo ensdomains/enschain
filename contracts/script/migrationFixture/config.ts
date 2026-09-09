@@ -7,7 +7,9 @@ import {
   defineChain,
   http,
   keccak256,
+  parseEther,
   stringToHex,
+  type Address,
   type Chain,
   type Hex,
 } from "viem";
@@ -158,9 +160,9 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
   const file = fixtureFile(opts);
   if (!existsSync(file)) throw new Error(`missing fixture file: ${file}`);
 
-  const tiers = splitList(opts.tiers);
+  const tiers = splitList(opts.fixtureTiers);
   const ids = splitList(opts.fixtureIds);
-  const scenarios = splitList(opts.scenarios);
+  const scenarios = splitList(opts.fixtureScenarios);
 
   let rows = readFileSync(file, "utf8")
     .split(/\r?\n/)
@@ -173,7 +175,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
     rows = rows.filter((r) => scenarios.has(r.scenario.execution.scenario));
   }
 
-  const perVector = parseNumber(opts.replicasPerVector, 0);
+  const perVector = parseNumber(opts.fixtureReplicasPerVector, 0);
   if (perVector > 0) {
     const seen = new Map<string, number>();
     rows = rows
@@ -191,7 +193,7 @@ export function loadFixture(opts: CommonOptions): FixtureEnvelope[] {
       });
   }
 
-  const limit = parseNumber(opts.limit, 0);
+  const limit = parseNumber(opts.fixtureLimit, 0);
   if (limit > 0) rows = rows.slice(0, limit);
 
   const seenIds = new Set<string>();
@@ -208,28 +210,139 @@ export function fixtureDigest(rows: FixtureEnvelope[]): Hex {
   return keccak256(stringToHex(rows.map((r) => r.fixture_id).join("\n")));
 }
 
+/// The aliases the corpus ever names as a name's owner. Across every scenario a
+/// terminal owner is only ever one of these three; `operator` and `attacker`
+/// appear solely as counterparties.
+const OWNER_ALIASES = new Set(["owner_a", "owner_b", "owner_c"]);
+
+/// Rejects an owner key that already belongs to a counterparty.
+///
+/// A counterparty is only ever meaningful as an address the owner is not: a
+/// tenth of the corpus migrates as the operator or the attacker precisely to
+/// prove that caller is refused. Nominating one of their keys as the owner makes
+/// those calls owner-authorised and the scenarios assert nothing, and since
+/// verification reads the same collapsed actor map, every one of them still
+/// passes. No run wants this, and nothing downstream would reveal it.
+function assertOwnerKeyIsNotCounterparty(
+  owner: Address,
+  mnemonic: string,
+): void {
+  for (const [accountIndex, alias] of ACTOR_ALIASES.entries()) {
+    if (OWNER_ALIASES.has(alias)) continue;
+    const counterparty = mnemonicToAccount(mnemonic, { accountIndex });
+    if (counterparty.address.toLowerCase() !== owner.toLowerCase()) continue;
+    throw new Error(
+      `--fixture-owner-key is the "${alias}" account ${owner}, which the corpus ` +
+        "needs as a non-owner; nominate a wallet outside the actor mnemonic",
+    );
+  }
+}
+
 /// Builds the named actor set. Unlike the previous hash-derived scheme, an alias
 /// maps to a fixed mnemonic index so `owner_b` is the same account everywhere.
+///
+/// An owner key collapses the three owner aliases onto the one account it
+/// controls, which is what lets a tester own every seeded name from the moment
+/// it is registered rather than receiving it afterwards. The counterparties stay
+/// on the mnemonic: an operator or an attacker is only meaningful as an address
+/// the owner is *not*.
 export function accounts(opts: CommonOptions): FixtureActor[] {
   const mnemonic =
-    opts.actorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
+    opts.fixtureActorMnemonic ?? process.env.MIGRATION_FIXTURE_ACTOR_MNEMONIC;
   if (!mnemonic) {
     throw new Error(
-      "missing --actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC; use a dedicated fixture mnemonic",
+      "missing --fixture-actor-mnemonic or MIGRATION_FIXTURE_ACTOR_MNEMONIC; use a dedicated fixture mnemonic",
     );
+  }
+  const owner = optionalOwnerKey(opts);
+  const ownerAccount = owner ? privateKeyToAccount(owner) : null;
+  if (ownerAccount) {
+    assertOwnerKeyIsNotCounterparty(ownerAccount.address, mnemonic);
   }
   return ACTOR_ALIASES.map((alias, accountIndex) => ({
     alias,
-    account: mnemonicToAccount(mnemonic, { accountIndex }),
+    account:
+      ownerAccount && OWNER_ALIASES.has(alias)
+        ? ownerAccount
+        : mnemonicToAccount(mnemonic, { accountIndex }),
   }));
+}
+
+/// One account a funding run has to top up, and what it needs.
+export type FundingTarget = {
+  address: Address;
+  /// Every alias that resolved to this account, in actor order.
+  aliases: string[];
+  /// The floor, counted once per alias sharing the account.
+  required: bigint;
+};
+
+/// Groups the actors by the account each alias actually resolves to.
+///
+/// An alias is not an account. Nominating an owner wallet puts the three owner
+/// aliases on one address, and that address then signs all three aliases' share
+/// of the seeding traffic, so a single floor funds a third of what it is about
+/// to spend. Charging the floor per alias and topping the account up to their
+/// sum leaves the default case, where every alias is its own account, exactly
+/// where it was.
+export function fundingTargets(
+  actors: Iterable<FixtureActor>,
+  floorEth: string,
+): FundingTarget[] {
+  const floor = parseEther(floorEth);
+  const targets = new Map<string, FundingTarget>();
+  for (const actor of actors) {
+    const address = actor.account.address;
+    // Grouped case-insensitively: the addresses come from two derivation paths,
+    // and case is not part of what makes two of them the same account.
+    const key = address.toLowerCase();
+    const target = targets.get(key);
+    if (target) {
+      target.aliases.push(actor.alias);
+      target.required += floor;
+    } else {
+      targets.set(key, { address, aliases: [actor.alias], required: floor });
+    }
+  }
+  return [...targets.values()];
+}
+
+/// The wallet that owns every seeded name, when one is nominated.
+///
+/// Supplying a key rather than an address is what removes the need to transfer
+/// anything: the shaping calls a name's owner has to sign — reverse claims,
+/// operator approvals, unwraps, records written after the name leaves the
+/// batcher — can be signed as the owner, so the owner can be the tester from
+/// the start. Names the wrapper would refuse to move, `CANNOT_TRANSFER` among
+/// them, are theirs on the same terms as any other.
+export function optionalOwnerKey(opts: CommonOptions): Hex | null {
+  const key =
+    opts.fixtureOwnerKey ??
+    (process.env.MIGRATION_FIXTURE_OWNER_KEY as Hex | undefined);
+  if (!key) return null;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error(
+      "malformed --fixture-owner-key: expected a 32-byte hex private key",
+    );
+  }
+  return key;
+}
+
+/// The address the owner key controls, for reporting which account a run put
+/// the corpus on.
+export function ownerAddress(opts: CommonOptions): Address | null {
+  const key = optionalOwnerKey(opts);
+  return key ? privateKeyToAccount(key).address : null;
 }
 
 export function requirePrivateKey(opts: CommonOptions): Hex {
   const key =
-    opts.privateKey ??
+    opts.fixturePrivateKey ??
     (process.env.MIGRATION_FIXTURE_PRIVATE_KEY as Hex | undefined);
   if (!key)
-    throw new Error("missing --private-key or MIGRATION_FIXTURE_PRIVATE_KEY");
+    throw new Error(
+      "missing --fixture-private-key or MIGRATION_FIXTURE_PRIVATE_KEY",
+    );
   return key;
 }
 

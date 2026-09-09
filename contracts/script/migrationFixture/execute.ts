@@ -2,7 +2,6 @@ import {
   createWalletClient,
   encodeFunctionData,
   http,
-  parseEther,
   type Address,
   type Chain,
   type Hex,
@@ -12,11 +11,13 @@ import { Artifact_MigrationFixtureBatcher } from "generated/artifacts/MigrationF
 
 import {
   bufferedGas,
+  fundingTargets,
   receipt,
   rpcAny,
   v1Deployment,
   withPriceBuffer,
 } from "./config.js";
+import { EthRegistrarController } from "../abis.js";
 import type { PlannedCall, Signer } from "./plan.js";
 import type { CommonOptions, FixtureActor } from "./types.js";
 
@@ -133,26 +134,7 @@ export async function executePlannedCalls(
   }
 }
 
-const RENT_PRICE_ABI = [
-  {
-    type: "function",
-    name: "rentPrice",
-    stateMutability: "view",
-    inputs: [
-      { name: "name", type: "string" },
-      { name: "duration", type: "uint256" },
-    ],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "base", type: "uint256" },
-          { name: "premium", type: "uint256" },
-        ],
-      },
-    ],
-  },
-] as const;
+const RENT_PRICE_ABI = EthRegistrarController.rentPrice;
 
 /// Resolves any quoted price into the value the call must carry.
 async function resolveCallValue(
@@ -312,21 +294,39 @@ export async function assertStateControls(opts: CommonOptions): Promise<void> {
 /// Tops every fixture actor up to a floor balance from the operator key. Actor
 /// transactions are a large share of seeding, so they need funding before a run
 /// rather than failing part-way through.
+///
+/// Funding is per account, not per alias: aliases can share an account, and a
+/// shared one has to arrive holding every alias's floor. Topping up per alias
+/// would stop at the first, because the account already clears the check the
+/// others are measured against.
+///
+/// An alias can also resolve to the account paying for the top-ups, which a
+/// nominated owner wallet does when it holds the operator key too. Nothing can
+/// be sent to it: a transfer out of an account and back leaves it poorer by the
+/// gas. It is reported as a shortfall to fund elsewhere instead, which is the
+/// same promise the command makes for every other account — that what the run
+/// needs is there before the first name is registered.
 export async function fundActors(
   ex: Executor,
   floorEth: string,
 ): Promise<void> {
-  const floor = parseEther(floorEth);
-  for (const [alias, actor] of ex.actors) {
+  const funder = String(ex.wallet.account.address).toLowerCase();
+  for (const target of fundingTargets(ex.actors.values(), floorEth)) {
     const balance = (await ex.client.getBalance({
-      address: actor.account.address,
+      address: target.address,
     })) as bigint;
-    if (balance >= floor) continue;
-    const topUp = floor - balance;
+    if (balance >= target.required) continue;
+    if (target.address.toLowerCase() === funder) {
+      throw new Error(
+        `${target.aliases.join("+")} is the funding account ${target.address}, ` +
+          `which holds ${balance} of the ${target.required} wei this selection needs ` +
+          "of it; fund it from outside the run",
+      );
+    }
     const hash = await ex.wallet.sendTransaction({
-      to: actor.account.address,
-      value: topUp,
+      to: target.address,
+      value: target.required - balance,
     });
-    await receipt(ex.client, hash, `fund ${alias}`);
+    await receipt(ex.client, hash, `fund ${target.aliases.join("+")}`);
   }
 }

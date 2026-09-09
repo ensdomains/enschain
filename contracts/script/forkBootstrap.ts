@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Address, parseEther } from "viem";
+import { RegistrarOwnership } from "./abis.js";
 
 // v1 contracts on canonical mainnet that v2 deploys and `setup.ts` reference
 // by name through rocketh's `get()`. Pre-populated into the devnet deployments
@@ -56,15 +57,7 @@ const LEGACY_ETH_REGISTRAR_CONTROLLER_ARCHIVE = join(
   "ETHRegistrarController_mainnet_9380471.json",
 );
 
-const OWNER_ABI = [
-  {
-    type: "function",
-    name: "owner",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }],
-  },
-] as const;
+const OWNER_ABI = RegistrarOwnership.owner;
 
 type ClientLike = {
   readContract: (args: {
