@@ -8,6 +8,7 @@ import type { Abi_OwnedResolver } from "generated/abis/OwnedResolver.js";
 import type { Abi_ENS } from "generated/abis/ENS.js";
 import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
 import { getAddress, namehash, zeroAddress } from "viem";
+import { unwindMirrorResolvers } from "../script/resolverDeployUtils.js";
 
 export default execute(
   async ({
@@ -36,12 +37,18 @@ export default execute(
       functionName: "resolver",
       args: [namehash("eth")],
     });
+    const v1EthResolver = await unwindMirrorResolvers(read, currentResolver);
+    if (getAddress(v1EthResolver) !== getAddress(currentResolver)) {
+      console.log(
+        `  - Unwound superseded mirror resolver ${currentResolver} to ${v1EthResolver}`,
+      );
+    }
     const ethResolver =
-      getAddress(currentResolver) === getAddress(zeroAddress)
+      getAddress(v1EthResolver) === getAddress(zeroAddress)
         ? await getV1<Abi_OwnedResolver>("OwnedResolver")
             .then((deployment) => deployment.address)
-            .catch(() => currentResolver)
-        : currentResolver;
+            .catch(() => v1EthResolver)
+        : v1EthResolver;
     console.log(`  - Got: ${ethResolver}`);
 
     const existingEnsV2Resolver =
@@ -89,6 +96,13 @@ export default execute(
       "RootRegistry",
       "EthOwnedResolver", // BaseRegistrarImplementation:setup => eventually setup as OwnedResolver
       "RegistrarSecurityController",
+      // The v1 deploy scripts register their interface ids against whatever
+      // `.eth` currently resolves to, through a write only the v1 resolver's
+      // owner can make. Repointing `.eth` has to come after all of them. Only a
+      // devnet or clean-testnet run carries these scripts; elsewhere the tags
+      // name nothing and impose no order.
+      "WrappedETHRegistrarController",
+      "StaticBulkRenewal", // depends on ETHRegistrarController, which depends on NameWrapper
     ],
   },
 );

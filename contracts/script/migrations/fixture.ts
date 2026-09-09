@@ -49,8 +49,8 @@ import {
   v1Deployment,
   v2Deployment,
   withPriceBuffer,
-} from "./migrationFixture/config.js";
-import { verifySeededV1State } from "./migrationFixture/verifyV1.js";
+} from "./fixture/config.js";
+import { verifySeededV1State } from "./fixture/verifyV1.js";
 import { resolveRegistrarControlRoute } from "./registrarControl.js";
 import {
   executionScenario,
@@ -59,33 +59,34 @@ import {
   preMigrationOwnerAlias,
   wrapperState,
   type RefContext,
-} from "./migrationFixture/scenario.js";
+} from "./fixture/scenario.js";
 import {
   planSetupSteps,
   tokenIdOf,
   type PlanContext,
   type PlannedCall,
-} from "./migrationFixture/plan.js";
+} from "./fixture/plan.js";
 import {
   actorsNeedingHelperApproval,
   buildHelperArgs,
   migrationTarget,
   partitionMigration,
-} from "./migrationFixture/migrate.js";
+} from "./fixture/migrate.js";
 import {
   executePlannedCalls,
   fundActors,
   assertStateControls,
   impersonateAccount,
   type Executor,
-} from "./migrationFixture/execute.js";
+} from "./fixture/execute.js";
+import { sameAddress } from "./plumbing.js";
 import {
   type CommonOptions,
   type FixtureEnvelope,
   type FixtureRunName,
   type FixtureRunState,
   type FixtureActor,
-} from "./migrationFixture/types.js";
+} from "./fixture/types.js";
 
 /// The corpus's counterparty contracts. `v1Args` names the v1 deployments each
 /// constructor takes, in order.
@@ -190,7 +191,7 @@ async function ownerWallet(opts: CommonOptions, owner: Address) {
     (process.env.V1_OWNER_KEY as Hex | undefined);
   if (key) {
     const account = privateKeyToAccount(key);
-    if (getAddress(account.address) === getAddress(owner)) {
+    if (sameAddress(account.address, owner)) {
       return createWalletClient({
         chain,
         account,
@@ -391,7 +392,7 @@ function assertRunStateCompatible(
     mismatches.push(`corpus ${state.fixtureRoot}, now ${fixtureRoot}`);
   for (const actor of actors) {
     const recorded = state.actorAddresses[actor.alias];
-    if (recorded && getAddress(recorded) !== getAddress(actor.account.address))
+    if (recorded && !sameAddress(recorded, actor.account.address))
       mismatches.push(
         `actor ${actor.alias} ${recorded}, now ${actor.account.address}`,
       );
@@ -1070,6 +1071,14 @@ export async function verifyV1(opts: CommonOptions): Promise<void> {
       `${failingIds.size}/${result.names} seeded names do not match their declared pre-migration state`,
     );
   }
+  // A scenario with nothing declared, or a resolver that answers with the zero
+  // address, contributes no check at all. With none of the selected rows declaring
+  // anything, "all seeded names match" describes a comparison that never happened.
+  if (result.checks === 0) {
+    throw new Error(
+      `no pre-migration state was checked across ${result.names} seeded name(s): the selected scenarios declare none, so this verified nothing`,
+    );
+  }
   console.log("all seeded names match their declared pre-migration state");
 }
 
@@ -1242,7 +1251,10 @@ export function addFixtureSubcommands(program: Command): Command {
 }
 
 export async function main(argv = process.argv): Promise<void> {
-  loadDotEnv(resolve(".env"));
+  // Anchored to `contracts/`, like the migration CLI. Resolving against the working
+  // directory means the fixture commands silently pick up no configuration unless the
+  // operator happens to be standing in the right place.
+  loadDotEnv(resolve(import.meta.dirname, "../../.env"));
   const program = addFixtureSubcommands(
     new Command("migration-fixture").description(
       "Seed the weighted ENSv1 migration fixture and carry it through pre-migration.",

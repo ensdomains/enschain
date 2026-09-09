@@ -5,6 +5,12 @@ import type { HardhatPlugin } from "hardhat/types/plugins";
 // exercise names that actually exist on the target network with stable records.
 const DEFAULT_VERIFY_SMOKE_NAMES = "raffy.eth,vitalik.eth,nick.eth";
 
+// Hardhat accumulates each option into the task's argument type, so these cannot be
+// added through a shared builder without erasing that. The wording is shared instead,
+// which is what had drifted: three tasks described the same directory differently.
+const DEPLOYMENTS_DIR_DESCRIPTION = "Root directory for v2 deployments";
+const DEPLOYMENT_NETWORK_DESCRIPTION = "Deployment directory network name";
+
 const plugin: HardhatPlugin = {
   id: "ens-migration",
   tasks: [
@@ -41,12 +47,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployments",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
@@ -72,12 +78,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployments",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
@@ -135,12 +141,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for deployment files",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({
@@ -213,6 +219,17 @@ const plugin: HardhatPlugin = {
         name: "keepAnvil",
         description: "Leave the local Anvil process running",
       })
+      .addFlag({
+        name: "requireFullCoverage",
+        description:
+          "Fail instead of silently running a reduced set of smoke checks",
+      })
+      .addOption({
+        name: "resolutionNames",
+        description:
+          "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+        defaultValue: "",
+      })
       .setAction(() => import("./tasks/fork-full.ts"))
       .build(),
     task(
@@ -253,7 +270,7 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployment files",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
@@ -328,12 +345,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployment files",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
@@ -397,12 +414,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployments",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({
@@ -489,12 +506,12 @@ const plugin: HardhatPlugin = {
       })
       .addOption({
         name: "deploymentsDir",
-        description: "Root directory for v2 deployments",
+        description: DEPLOYMENTS_DIR_DESCRIPTION,
         defaultValue: "./deployments",
       })
       .addOption({
         name: "deploymentNetwork",
-        description: "Deployment directory network name",
+        description: DEPLOYMENT_NETWORK_DESCRIPTION,
         defaultValue: "",
       })
       .addOption({

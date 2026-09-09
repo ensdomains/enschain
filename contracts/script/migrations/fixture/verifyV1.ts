@@ -17,6 +17,7 @@ import {
   type RefContext,
 } from "./scenario.js";
 import { labelhashOf, recordValue, tokenIdOf } from "./plan.js";
+import { sameAddress } from "../plumbing.js";
 import {
   FUSES,
   OWNER_CONTROLLED_MASK,
@@ -160,7 +161,7 @@ type Check = {
 };
 
 const addrEq = (a: unknown, b: Address) =>
-  typeof a === "string" && getAddress(a as Address) === getAddress(b);
+  typeof a === "string" && sameAddress(a as Address, b);
 
 /// Byte strings are compared by value. Accepting anything non-empty would pass a
 /// slot seeded with the wrong bytes, and would fail a slot a scenario cleared on

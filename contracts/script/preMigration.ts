@@ -118,7 +118,10 @@ export interface Checkpoint {
   totalExpected: number;
   successCount: number;
   renewedCount: number;
-  failureCount: number;
+  /// CSV line numbers whose name has failed and has not since succeeded. Held as
+  /// lines rather than as a count so a resumed run can retry exactly those rows,
+  /// and so a row that later succeeds stops being reported as a failure.
+  failedLines: number[];
   /// Aggregate of the two skip sub-counters below (names not claimable on v1).
   skippedCount: number;
   /// Names skipped because they were never registered on v1.
@@ -128,6 +131,9 @@ export interface Checkpoint {
   /// Names skipped because they are already registered (owned) on v2. Tracked
   /// separately from genuine failures.
   alreadyRegisteredCount: number;
+  /// Names already reserved on v2 with an expiry at least as long as the one this
+  /// run would set. Submitting them would be a no-op on-chain, so they are not sent.
+  upToDateCount: number;
   invalidLabelCount: number;
   timestamp: string;
 }
@@ -151,6 +157,15 @@ const BASE_REGISTRAR_ADDRESS =
 export const V1_GRACE_PERIOD_DAYS = 90n;
 export const V1_GRACE_PERIOD_SECONDS = V1_GRACE_PERIOD_DAYS * 86400n;
 
+/// Whether a v1 name is still claimable, and so within the migration's remit. A
+/// name that was never registered, or whose grace period has elapsed, is not:
+/// pre-migration will not reserve it, and nothing downstream may treat it as
+/// something the migration carries over. Judge against chain time — on a fork the
+/// wall clock disagrees, and a wall-clock now admits names the chain has released.
+export function isClaimableOnV1(expiry: bigint, now: bigint): boolean {
+  return expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > now;
+}
+
 export function createFreshCheckpoint(): Checkpoint {
   return {
     lastProcessedLineNumber: -1,
@@ -158,11 +173,12 @@ export function createFreshCheckpoint(): Checkpoint {
     totalExpected: 0,
     successCount: 0,
     renewedCount: 0,
-    failureCount: 0,
+    failedLines: [],
     skippedCount: 0,
     skippedNeverRegisteredCount: 0,
     skippedPastGraceCount: 0,
     alreadyRegisteredCount: 0,
+    upToDateCount: 0,
     invalidLabelCount: 0,
     timestamp: new Date().toISOString(),
   };
@@ -361,6 +377,65 @@ interface V1VerificationResult {
   expiry: bigint;
 }
 
+/// Largest expiry the registry can store, since expiries are `uint64`.
+export const MAX_UINT64 = 2n ** 64n - 1n;
+
+/// The v2 expiry a v1 name should end up with: its v1 expiry plus the bonus period,
+/// capped at what the registry can store.
+///
+/// Some names carry a deliberately maximal v1 expiry, so the sum can run past
+/// `uint64`. Pre-migration writes the capped value, so anything checking the result
+/// has to compute it the same way — otherwise those names read as permanent expiry
+/// mismatches and no reconciliation over them can ever pass.
+export function bonusAdjustedExpiry(
+  v1Expiry: bigint,
+  bonusPeriodSeconds: bigint,
+): bigint {
+  const raw = v1Expiry + bonusPeriodSeconds;
+  return raw > MAX_UINT64 ? MAX_UINT64 : raw;
+}
+
+// Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
+// outside the range `Date` can represent, and letting one of those throw would abort
+// the whole run over a log line, so they are described rather than formatted.
+export function formatExpiry(expiry: bigint): string {
+  const milliseconds = Number(expiry) * 1000;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15) {
+    return `${expiry} (beyond representable dates)`;
+  }
+  return new Date(milliseconds).toISOString().split("T")[0];
+}
+
+// Chain time on the v1 side, which is what the grace-period rule is actually about.
+// Wall-clock time only agrees with it on a live network: against a fork pinned to a
+// past block it runs ahead, marking names released that the chain still holds in
+// grace, and against a fork that has time-travelled it runs behind.
+/// Chain time on the v1 side, which is what the grace-period rule is about.
+///
+/// The error is not caught: substituting wall-clock time changes which names count as
+/// claimable, and on a fork pinned to a past block it marks names released that the
+/// chain still holds. A failed read has to be a failed run.
+async function readV1Timestamp(v1Client: any): Promise<bigint> {
+  const block = await v1Client.getBlock();
+  return BigInt(block.timestamp);
+}
+
+/// Days added to a v1 expiry to reach the expected v2 expiry.
+///
+/// A value that will not parse is an error rather than a silent default: every name
+/// in the run gets its v2 expiry from this, so a typo would seed the whole set
+/// against the wrong bonus.
+function parseBonusPeriodDays(value: string | undefined): number {
+  if (value === undefined || value === "") return 62;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `--bonus-period-days must be a non-negative number, got: ${JSON.stringify(value)}`,
+    );
+  }
+  return parsed;
+}
+
 export async function verifyNameOnV1(
   labelName: string,
   client: any,
@@ -379,7 +454,7 @@ export async function verifyNameOnV1(
     args: [tokenId],
   });
 
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+  const currentTimestamp = await readV1Timestamp(client);
   const isRegistered = expiry > 0n && expiry > currentTimestamp;
 
   return { isRegistered, expiry };
@@ -407,11 +482,17 @@ function previewCSVLine(line: string): string {
     : `${line.slice(0, CSV_ROW_PREVIEW_LIMIT)}...`;
 }
 
+// `onlyLines` restricts the walk to specific data-line numbers, which is how a
+// resumed run retries just the rows that failed. The file is still streamed, but no
+// row outside the set is parsed or verified — a retry must not re-read the chain for
+// every name that already succeeded, and must not trip over a malformed row it was
+// never asked about.
 async function* readCSVInBatches(
   csvFilePath: string,
   batchSize: number,
   startLineNumber: number = -1,
   limit: number | null = null,
+  onlyLines: ReadonlySet<number> | null = null,
 ): AsyncGenerator<ENSRegistration[]> {
   const readline = await import("node:readline");
 
@@ -468,6 +549,13 @@ async function* readCSVInBatches(
     }
 
     if (dataLineNumber <= startLineNumber) {
+      if (line !== "") {
+        dataLineNumber++;
+      }
+      continue;
+    }
+
+    if (onlyLines !== null && !onlyLines.has(dataLineNumber)) {
       if (line !== "") {
         dataLineNumber++;
       }
@@ -637,30 +725,6 @@ async function createMigrationClients(
   };
 }
 
-const MAX_UINT64 = (1n << 64n) - 1n;
-
-// The reservation expiry stored on v2, widened by the bonus period and held inside
-// the uint64 the registry stores it in. A v1 name renewed to the ceiling would
-// otherwise wrap around and reserve a name that reads as long expired.
-export function bonusAdjustedExpiry(
-  v1Expiry: bigint,
-  bonusPeriodSeconds: bigint,
-): bigint {
-  const raw = v1Expiry + bonusPeriodSeconds;
-  return raw > MAX_UINT64 ? MAX_UINT64 : raw;
-}
-
-// Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
-// outside the range `Date` can represent, and letting one of those throw would abort
-// the whole run over a log line, so they are described rather than formatted.
-export function formatExpiry(expiry: bigint): string {
-  const milliseconds = Number(expiry) * 1000;
-  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15) {
-    return `${expiry} (beyond representable dates)`;
-  }
-  return new Date(milliseconds).toISOString().split("T")[0];
-}
-
 async function fetchAndReserveInBatches(
   config: PreMigrationConfig,
   checkpoint: Checkpoint,
@@ -675,78 +739,129 @@ async function fetchAndReserveInBatches(
   logger.config("Block Gas Limit", block.gasLimit.toString());
   logger.config("Max Gas Per Batch", maxGas.toString());
 
+  // The retry pass and the main scan differ only in which rows they read. A retried
+  // row was already counted and already capped by an earlier run, so only the main
+  // scan grows the expected total or answers to --limit.
+  const walk = async (
+    batches: AsyncGenerator<ENSRegistration[]>,
+    mainPass: boolean,
+  ): Promise<void> => {
+    for await (const batch of batches) {
+      try {
+        if (mainPass) checkpoint.totalExpected += batch.length;
+
+        let invalidLabelsInBatch = 0;
+        let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
+        const validBatch = batch.filter((reg) => {
+          if (!isValidLabel(reg.labelName)) {
+            logger.skippingInvalidName(reg.labelName || "unknown");
+            invalidLabelsInBatch++;
+            checkpoint.invalidLabelCount++;
+            checkpoint.totalProcessed++;
+            // A row that can never be reserved is not an outstanding failure, so a
+            // retry of it leaves the queue rather than sitting in it forever.
+            checkpoint.failedLines = checkpoint.failedLines.filter(
+              (line) => line !== reg.lineNumber,
+            );
+            lastInvalidLineNumber = Math.max(
+              lastInvalidLineNumber,
+              reg.lineNumber,
+            );
+            return false;
+          }
+          return true;
+        });
+
+        if (invalidLabelsInBatch > 0) {
+          checkpoint.lastProcessedLineNumber = lastInvalidLineNumber;
+          if (!config.disableCheckpoint) {
+            saveCheckpoint(checkpoint);
+          }
+        }
+
+        logger.info(
+          `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
+            `Starting reservation of ${validBatch.length} valid names...`,
+        );
+
+        if (validBatch.length > 0) {
+          checkpoint = await processBatch(
+            config,
+            validBatch,
+            client,
+            mainnetClient,
+            registry,
+            batchRegistrar,
+            checkpoint,
+            registryAbi,
+            maxGas,
+          );
+        }
+
+        logger.info(
+          `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
+            `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
+            `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
+            `${checkpoint.failedLines.length} failed)`,
+        );
+
+        if (
+          mainPass &&
+          config.limit &&
+          checkpoint.totalProcessed >= config.limit
+        ) {
+          logger.info(`\nReached limit of ${config.limit} names. Stopping.`);
+          break;
+        }
+      } catch (error) {
+        // A whole batch failing is a different class of problem than one bad name:
+        // usually the RPC rather than the data, and none of its names were written.
+        // The run stops here so the checkpoint still points *before* them — carrying
+        // on would advance the resume cursor past rows that were never reserved, and
+        // `--continue` would then skip them permanently.
+        logger.error(
+          `Failed to process batch: ${error}. The checkpoint still points before this batch; re-run with --continue once the cause is fixed.`,
+        );
+        throw error;
+      }
+    }
+  };
+
+  // Rows a previous run failed on are retried before the scan continues. They sit
+  // behind the resume cursor, so nothing else would reach them, and a retry that
+  // succeeds takes them out of the queue rather than leaving the run reporting a
+  // failure it has since fixed.
+  const retryLines = new Set(checkpoint.failedLines);
+  if (retryLines.size > 0) {
+    logger.info(
+      `\nRetrying ${retryLines.size} name(s) that failed in an earlier run...`,
+    );
+    await walk(
+      readCSVInBatches(
+        config.csvFilePath,
+        config.batchSize,
+        -1,
+        null,
+        retryLines,
+      ),
+      false,
+    );
+  }
+
   logger.info(
     `\nReading CSV file and reserving in batches of ${config.batchSize}...`,
   );
   logger.info(`CSV file: ${config.csvFilePath}`);
 
-  const batchGenerator = readCSVInBatches(
-    config.csvFilePath,
-    config.batchSize,
-    config.startIndex,
-    config.limit,
+  await walk(
+    readCSVInBatches(
+      config.csvFilePath,
+      config.batchSize,
+      config.startIndex,
+      config.limit,
+    ),
+    true,
   );
-
-  for await (const batch of batchGenerator) {
-    try {
-      checkpoint.totalExpected += batch.length;
-
-      let invalidLabelsInBatch = 0;
-      let lastInvalidLineNumber = checkpoint.lastProcessedLineNumber;
-      const validBatch = batch.filter((reg) => {
-        if (!isValidLabel(reg.labelName)) {
-          logger.skippingInvalidName(reg.labelName || "unknown");
-          invalidLabelsInBatch++;
-          checkpoint!.invalidLabelCount++;
-          checkpoint!.totalProcessed++;
-          lastInvalidLineNumber = reg.lineNumber;
-          return false;
-        }
-        return true;
-      });
-
-      if (invalidLabelsInBatch > 0) {
-        checkpoint.lastProcessedLineNumber = lastInvalidLineNumber;
-        if (!config.disableCheckpoint) {
-          saveCheckpoint(checkpoint);
-        }
-      }
-
-      logger.info(
-        `\nRead ${batch.length} names from CSV (${invalidLabelsInBatch} invalid labels filtered). ` +
-          `Starting reservation of ${validBatch.length} valid names...`,
-      );
-
-      if (validBatch.length > 0) {
-        checkpoint = await processBatch(
-          config,
-          validBatch,
-          client,
-          mainnetClient,
-          registry,
-          batchRegistrar,
-          checkpoint,
-          registryAbi,
-          maxGas,
-        );
-      }
-
-      logger.info(
-        `Batch complete. Total: ${checkpoint.totalProcessed} processed ` +
-          `(${checkpoint.successCount} reserved, ${checkpoint.renewedCount} renewed, ` +
-          `${checkpoint.skippedCount} skipped, ${checkpoint.invalidLabelCount} invalid, ` +
-          `${checkpoint.failureCount} failed)`,
-      );
-
-      if (config.limit && checkpoint.totalProcessed >= config.limit) {
-        logger.info(`\nReached limit of ${config.limit} names. Stopping.`);
-        break;
-      }
-    } catch (error) {
-      logger.error(`Failed to process batch: ${error}`);
-      throw error;
-    }
-  }
 
   printFinalSummary(checkpoint);
 }
@@ -761,6 +876,9 @@ export interface VerificationResult {
   /// separately by adding the configurable `--bonus-period-days`.
   v1IsClaimable: boolean;
   v1Expiry: bigint;
+  /// Current expiry recorded on v2, or 0 when the name has no v2 entry. Used to tell
+  /// a reservation that needs extending from one that is already long enough.
+  v2Expiry: bigint;
   error?: string;
 }
 
@@ -814,7 +932,7 @@ export async function batchVerifyRegistrations(
       ? v1Settled.value
       : buildFallback(v1Settled.reason);
 
-  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
+  const currentTimestamp = await readV1Timestamp(mainnetClient);
 
   return registrations.map((reg, i) => {
     const v2 = (v2Results as any[])[i];
@@ -827,6 +945,7 @@ export async function batchVerifyRegistrations(
         v2LatestOwner: zeroAddress,
         v1IsClaimable: false,
         v1Expiry: 0n,
+        v2Expiry: 0n,
         error: v2.status === "failure" ? String(v2.error) : String(v1.error),
       };
     }
@@ -836,8 +955,8 @@ export async function batchVerifyRegistrations(
       registration: reg,
       v2Status: (v2.result as any).status,
       v2LatestOwner: (v2.result as any).latestOwner,
-      v1IsClaimable:
-        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > currentTimestamp,
+      v2Expiry: BigInt((v2.result as any).expiry ?? 0),
+      v1IsClaimable: isClaimableOnV1(expiry, currentTimestamp),
       v1Expiry: expiry,
     };
   });
@@ -991,8 +1110,23 @@ async function processBatch(
 ): Promise<Checkpoint> {
   const batchLabels: string[] = [];
   const batchExpires: bigint[] = [];
+  // Submission failures come back keyed by label, but the retry queue works in CSV
+  // lines, so the two have to be joined back up.
+  const lineByLabel = new Map<string, number>();
   const alreadyReservedNames = new Set<string>();
   let lastLineNumber = checkpoint.lastProcessedLineNumber;
+  // A failure means nothing was written to v2, so the line is queued for retry: a
+  // resumed run reaches it again instead of stepping over it and leaving the name
+  // missing with nothing to report it later.
+  const failedLines = new Set(checkpoint.failedLines);
+  const recordFailedLine = (lineNumber: number) => {
+    failedLines.add(lineNumber);
+  };
+  // A row that succeeds, is skipped, or turns out to need nothing done stops being a
+  // failure, so a retry that works clears the entry the earlier run left behind.
+  const clearFailedLine = (lineNumber: number) => {
+    failedLines.delete(lineNumber);
+  };
 
   const bonusPeriodSeconds = BigInt(config.bonusPeriodDays) * 86400n;
 
@@ -1018,53 +1152,79 @@ async function processBatch(
       checkpoint.totalExpected,
     );
 
-    if (result.error) {
-      logger.failed(registration.labelName, result.error);
-      checkpoint.failureCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "failed");
-      continue;
-    }
-
-    if (result.v2Status === 2) {
-      logger.error(
-        `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
-      );
-      checkpoint.alreadyRegisteredCount++;
-      checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "failed");
-      continue;
-    }
-    if (result.v2Status === 1) {
-      alreadyReservedNames.add(registration.labelName);
-    }
-
-    if (!result.v1IsClaimable) {
-      const neverRegistered = result.v1Expiry === 0n;
-      const reason = neverRegistered
-        ? "never registered on v1"
-        : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
-      logger.v1NotRegistered(registration.labelName, reason);
-      checkpoint.skippedCount++;
-      if (neverRegistered) {
-        checkpoint.skippedNeverRegisteredCount++;
-      } else {
-        checkpoint.skippedPastGraceCount++;
+    // One bad name must never take the whole run down with it. Every failure
+    // mode below is handled explicitly, but an unforeseen one — a value that
+    // overflows a conversion, a malformed record — would otherwise abort a
+    // multi-hour pre-migration partway through. It is recorded and skipped.
+    try {
+      if (result.error) {
+        logger.failed(registration.labelName, result.error);
+        checkpoint.totalProcessed++;
+        recordFailedLine(registration.lineNumber);
+        logger.finishedName(registration.labelName, "failed");
+        continue;
       }
+
+      if (result.v2Status === 2) {
+        logger.error(
+          `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
+        );
+        checkpoint.alreadyRegisteredCount++;
+        checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
+        logger.finishedName(registration.labelName, "failed");
+        continue;
+      }
+      if (result.v2Status === 1) {
+        alreadyReservedNames.add(registration.labelName);
+      }
+
+      if (!result.v1IsClaimable) {
+        const neverRegistered = result.v1Expiry === 0n;
+        const reason = neverRegistered
+          ? "never registered on v1"
+          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
+        logger.v1NotRegistered(registration.labelName, reason);
+        checkpoint.skippedCount++;
+        if (neverRegistered) {
+          checkpoint.skippedNeverRegisteredCount++;
+        } else {
+          checkpoint.skippedPastGraceCount++;
+        }
+        checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
+        logger.finishedName(registration.labelName, "skipped");
+        continue;
+      }
+
+      const effectiveExpiry = bonusAdjustedExpiry(
+        result.v1Expiry,
+        bonusPeriodSeconds,
+      );
+
+      // A reservation is only renewed on-chain when the new expiry is longer than the
+      // stored one; submitting an equal or shorter one does nothing. Leaving such
+      // names out of the batch keeps the counters honest and keeps the final sync from
+      // re-sending the entire CSV when almost nothing has changed.
+      if (result.v2Status === 1 && effectiveExpiry <= result.v2Expiry) {
+        checkpoint.upToDateCount++;
+        checkpoint.totalProcessed++;
+        clearFailedLine(registration.lineNumber);
+        logger.finishedName(registration.labelName, "skipped");
+        continue;
+      }
+
+      logger.v1Verified(registration.labelName, formatExpiry(effectiveExpiry));
+
+      batchLabels.push(registration.labelName);
+      batchExpires.push(effectiveExpiry);
+      lineByLabel.set(registration.labelName, registration.lineNumber);
+    } catch (error) {
+      logger.failed(registration.labelName, String(error));
       checkpoint.totalProcessed++;
-      logger.finishedName(registration.labelName, "skipped");
-      continue;
+      recordFailedLine(registration.lineNumber);
+      logger.finishedName(registration.labelName, "failed");
     }
-
-    const effectiveExpiry = bonusAdjustedExpiry(
-      result.v1Expiry,
-      bonusPeriodSeconds,
-    );
-
-    logger.v1Verified(registration.labelName, formatExpiry(effectiveExpiry));
-
-    batchLabels.push(registration.labelName);
-    batchExpires.push(effectiveExpiry);
   }
 
   if (batchLabels.length > 0 && !config.dryRun) {
@@ -1081,6 +1241,8 @@ async function processBatch(
 
     for (const { label, txHash } of result.succeeded) {
       checkpoint.totalProcessed++;
+      const succeededLine = lineByLabel.get(label);
+      if (succeededLine !== undefined) clearFailedLine(succeededLine);
       if (alreadyReservedNames.has(label)) {
         checkpoint.renewedCount++;
         logger.renewed(txHash);
@@ -1095,7 +1257,8 @@ async function processBatch(
     for (const { label, error } of result.failed) {
       logger.failed(label, error);
       checkpoint.totalProcessed++;
-      checkpoint.failureCount++;
+      const lineNumber = lineByLabel.get(label);
+      if (lineNumber !== undefined) recordFailedLine(lineNumber);
       logger.finishedName(label, "failed");
     }
   } else if (batchLabels.length > 0 && config.dryRun) {
@@ -1104,6 +1267,8 @@ async function processBatch(
     for (const label of batchLabels) {
       logger.dryRun();
       checkpoint.totalProcessed++;
+      const plannedLine = lineByLabel.get(label);
+      if (plannedLine !== undefined) clearFailedLine(plannedLine);
       if (alreadyReservedNames.has(label)) {
         checkpoint.renewedCount++;
         logger.finishedName(label, "renewed");
@@ -1114,7 +1279,14 @@ async function processBatch(
     }
   }
 
-  checkpoint.lastProcessedLineNumber = lastLineNumber;
+  // The cursor is a plain high-water mark. Failed rows are not held behind it —
+  // they are carried in the retry queue instead, which survives the batches that
+  // follow them and so cannot be overwritten by a later clean batch.
+  checkpoint.lastProcessedLineNumber = Math.max(
+    checkpoint.lastProcessedLineNumber,
+    lastLineNumber,
+  );
+  checkpoint.failedLines = [...failedLines].sort((a, b) => a - b);
   checkpoint.timestamp = new Date().toISOString();
 
   if (!config.disableCheckpoint) {
@@ -1134,8 +1306,9 @@ function calculateSuccessRate(
 }
 
 function printFinalSummary(checkpoint: Checkpoint): void {
+  const failureCount = checkpoint.failedLines.length;
   const actualRegistrations =
-    checkpoint.successCount + checkpoint.renewedCount + checkpoint.failureCount;
+    checkpoint.successCount + checkpoint.renewedCount + failureCount;
 
   logger.info("");
   logger.divider();
@@ -1168,14 +1341,16 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     yellow(checkpoint.alreadyRegisteredCount.toString()),
   );
   logger.config(
+    "Already up to date on v2",
+    yellow(checkpoint.upToDateCount.toString()),
+  );
+  logger.config(
     "Invalid labels",
     yellow(checkpoint.invalidLabelCount.toString()),
   );
   logger.config(
     "Failed (other errors)",
-    checkpoint.failureCount > 0
-      ? red(checkpoint.failureCount.toString())
-      : checkpoint.failureCount,
+    failureCount > 0 ? red(failureCount.toString()) : failureCount,
   );
   logger.config("Actual reservations/renewals attempted", actualRegistrations);
 
@@ -1189,7 +1364,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
 
   logger.divider();
 
-  if (checkpoint.failureCount > 0) {
+  if (failureCount > 0) {
     logger.warning(
       `\nSome registrations failed. Check ${ERROR_LOG_FILE} for details.`,
     );
@@ -1197,6 +1372,7 @@ function printFinalSummary(checkpoint: Checkpoint): void {
 }
 
 export async function main(argv = process.argv): Promise<void> {
+  let failedNames = 0;
   const program = new Command()
     .name("premigrate")
     .description(
@@ -1286,9 +1462,7 @@ export async function main(argv = process.argv): Promise<void> {
     limit: opts.limit ? parseInt(opts.limit) : null,
     dryRun: opts.dryRun,
     continue: opts.continue,
-    bonusPeriodDays: Number.isNaN(parseInt(opts.bonusPeriodDays))
-      ? 62
-      : parseInt(opts.bonusPeriodDays),
+    bonusPeriodDays: parseBonusPeriodDays(opts.bonusPeriodDays),
     v1ResolverAddress: opts.v1Resolver as Address,
     v1BaseRegistrarAddress: opts.v1BaseRegistrar as Address,
   };
@@ -1327,7 +1501,7 @@ export async function main(argv = process.argv): Promise<void> {
         config.startIndex = cp.lastProcessedLineNumber;
         logger.config(
           "Checkpoint Found",
-          `${cp.totalProcessed} processed (${cp.successCount} reserved, ${cp.renewedCount} renewed, ${cp.skippedCount} skipped, ${cp.invalidLabelCount} invalid, ${cp.failureCount} failed) (last line: ${cp.lastProcessedLineNumber})`,
+          `${cp.totalProcessed} processed (${cp.successCount} reserved, ${cp.renewedCount} renewed, ${cp.skippedCount} skipped, ${cp.invalidLabelCount} invalid, ${cp.failedLines.length} failed) (last line: ${cp.lastProcessedLineNumber})`,
         );
         logger.info(`Resuming from CSV line ${config.startIndex}`);
       }
@@ -1338,11 +1512,28 @@ export async function main(argv = process.argv): Promise<void> {
 
     await fetchAndReserveInBatches(config, checkpoint);
 
-    logger.success("\nPre-migration script completed successfully!");
+    // A name that reverted or timed out was never written to v2. Reporting the run
+    // as a success would hand the operator a green result over an incomplete
+    // reservation set, so it is raised instead. Names already registered on v2 are
+    // not failures: nothing was lost, there was simply nothing to do.
+    failedNames = checkpoint.failedLines.length;
+
+    if (failedNames === 0) {
+      logger.success("\nPre-migration script completed successfully!");
+    }
   } catch (error) {
     logger.error(`Fatal error: ${error}`);
     console.error(error);
     process.exit(1);
+  }
+
+  // Raised outside the catch so an in-process caller — the fork rehearsal runs this
+  // in the same process — receives an error it can handle, rather than having the
+  // whole run terminated by a process exit.
+  if (failedNames > 0) {
+    throw new Error(
+      `pre-migration finished with ${failedNames} failed name(s); see ${ERROR_LOG_FILE}`,
+    );
   }
 }
 

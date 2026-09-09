@@ -1,7 +1,7 @@
 # Deployments
 
 Deployment artifacts written and read by [rocketh](https://github.com/wighawag/rocketh)
-through the migration tooling ([`script/migration.ts`](../script/migration.ts),
+through the migration tooling ([`script/migrate.ts`](../script/migrate.ts),
 [`docs/migration.md`](../docs/migration.md)). Each contract a deploy script
 produces is recorded here as JSON so later runs and the phase commands can resolve
 on-chain addresses without re-deploying.
@@ -124,10 +124,16 @@ is cut over.
 
 ## Saving artifacts
 
-The rehearsal (`fork full`) does not persist artifacts unless `--save-deployments`
-is passed, so a fork run leaves `deployments/` untouched by default. `phase
-deploy-v2` always persists its deployment into the chosen `--deployment-network`
-(both a fresh run and a `--resume`).
+The rehearsal (`fork full`) deploys into its own `<network>-fork` namespace unless
+`--deployment-network` names another, and persists there. It has to: phase 3's
+controller audit reads the active deployment's handoff contracts off disk to tell
+them apart from a superseded deployment's. That namespace is gitignored and
+re-created by the next run, so a rehearsal still leaves the committed sets
+untouched. Deploying a rehearsal into the live namespace instead would make phase 1
+try to adopt and upgrade the real chain's proxies, which fails on a fork.
+
+`phase deploy-v2` always persists its deployment into the chosen
+`--deployment-network` (both a fresh run and a `--resume`).
 
 ## Git tracking
 

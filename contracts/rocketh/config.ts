@@ -48,7 +48,10 @@ export const config = {
       chain: 1,
       scripts: ["deploy"],
       overrides: {
-        tags: ["hasDao"],
+        // `hca` deploys the standalone HCA stack. The reverse-registrar adapter
+        // takes the factory address as a constructor argument, so without it
+        // phase 1 cannot deploy the adapter at all.
+        tags: ["hasDao", "hca"],
       },
     },
     sepolia: {

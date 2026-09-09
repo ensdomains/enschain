@@ -14,6 +14,14 @@ import {
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 
+import {
+  forkChain,
+  loadV1Deployment,
+  loadV2Deployment,
+  maybeLoadV2Deployment,
+  NETWORKS,
+  requireV1Deployment,
+} from "../plumbing.js";
 import type {
   CommonOptions,
   FixtureActor,
@@ -65,63 +73,44 @@ export function networkChain(
   rpcUrl: string,
   chainId?: string,
 ): Chain {
-  const base = network === "sepolia" ? sepolia : mainnet;
-  const id = parseNumber(chainId, base.id);
-  return defineChain({
-    ...base,
-    id,
-    name: id === base.id ? base.name : `${base.name} fixture ${id}`,
-    rpcUrls: { default: { http: [rpcUrl] } },
-  });
+  return forkChain(
+    network,
+    parseNumber(chainId, NETWORKS[network].chain.id),
+    rpcUrl,
+  );
 }
 
 export function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-export function deployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment {
-  const path = join(resolve(root), environment, `${name}.json`);
-  if (!existsSync(path)) throw new Error(`missing deployment: ${path}`);
-  return readJson<JsonDeployment>(path);
-}
+export const deployment = loadV2Deployment;
 
-export function optionalDeployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment | null {
-  const path = join(resolve(root), environment, `${name}.json`);
-  return existsSync(path) ? readJson<JsonDeployment>(path) : null;
-}
+export const optionalDeployment = maybeLoadV2Deployment;
 
 export function v1Deployment(
   opts: CommonOptions,
   name: string,
 ): JsonDeployment {
-  const roots = opts.v1DeploymentsDir
-    ? [resolve(opts.v1DeploymentsDir)]
-    : [resolve("./deployments/v1"), resolve("./lib/ens-contracts/deployments")];
-  const environment = opts.v1DeploymentNetwork ?? opts.network;
-  for (const root of roots) {
-    const path = join(root, environment, `${name}.json`);
-    if (existsSync(path)) return readJson<JsonDeployment>(path);
-  }
-  throw new Error(`missing V1 deployment ${environment}/${name}.json`);
+  return requireV1Deployment(opts.network, name, {
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork ?? opts.network,
+  });
 }
 
+/// The v1 deployment when the artifact is present, and null when it is not.
+///
+/// Only absence is an answer. A file that is present but will not parse is a
+/// corrupt artifact, and reading it as "not deployed" sends the fixture down the
+/// absent-contract path instead of reporting what is wrong.
 export function optionalV1Deployment(
   opts: CommonOptions,
   name: string,
 ): JsonDeployment | null {
-  try {
-    return v1Deployment(opts, name);
-  } catch {
-    return null;
-  }
+  return loadV1Deployment(opts.network, name, {
+    v1DeploymentsDir: opts.v1DeploymentsDir,
+    v1DeploymentNetwork: opts.v1DeploymentNetwork ?? opts.network,
+  });
 }
 
 export function v2Deployment(

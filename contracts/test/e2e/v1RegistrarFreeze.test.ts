@@ -8,14 +8,22 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  writeDeploymentArtifact,
+  writeDeploymentRecord,
+  writeNamespaceMetadata,
+} from "../utils/deploymentArtifacts.js";
 import type { UserConfig } from "rocketh/types";
-import { getAddress, type Address } from "viem";
+import { encodeFunctionData, getAddress, toHex, type Address } from "viem";
+import { mnemonicToAccount } from "viem/accounts";
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../../rocketh/environment.js";
 import artifacts from "../../script/artifacts.js";
 import {
   disableV1Registrars,
+  executePreparedOwnerTransactions,
   verifyV1RegistrarsDisabled,
-} from "../../script/migration.js";
+  verifyReverseAdapters,
+} from "../../script/migrate.js";
 import { deployArtifact } from "../integration/fixtures/deployArtifact.js";
 
 // Each revoke waits a full receipt poll, so the freeze needs more than the default
@@ -51,6 +59,22 @@ const ARCHIVED_ETH_RENEWER = getAddress(
   "0x00000000000000000000000000000000000ada03",
 );
 
+// The devnet derives its accounts from the standard test mnemonic. The prepared
+// owner-transaction runner signs with a key rather than by impersonation, so the
+// matching key is recovered by address.
+const TEST_MNEMONIC =
+  "test test test test test test test test test test test junk";
+
+function testPrivateKeyFor(address: Address): `0x${string}` {
+  for (let index = 0; index < 10; index++) {
+    const account = mnemonicToAccount(TEST_MNEMONIC, { addressIndex: index });
+    if (getAddress(account.address) === getAddress(address)) {
+      return toHex(account.getHdKey().privateKey!);
+    }
+  }
+  throw new Error(`no test key for ${address}`);
+}
+
 describe("v1 registrar freeze", () => {
   const { env, setupEnv } = process.TEST_GLOBALS!;
   const workDir = mkdtempSync(join(tmpdir(), "v1-registrar-freeze-"));
@@ -62,41 +86,6 @@ describe("v1 registrar freeze", () => {
   afterAll(() => {
     rmSync(workDir, { recursive: true, force: true });
   });
-
-  function writeDeployment(
-    root: string,
-    namespace: string,
-    name: string,
-    deployment: { address: Address; abi: readonly unknown[] },
-  ) {
-    writeDeploymentRecord(root, namespace, name, {
-      address: deployment.address,
-      abi: deployment.abi,
-    });
-  }
-
-  function writeDeploymentRecord(
-    root: string,
-    namespace: string,
-    name: string,
-    deployment: unknown,
-  ) {
-    const dir = join(root, namespace);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, `${name}.json`),
-      JSON.stringify(deployment, (_, value) =>
-        typeof value === "bigint" ? value.toString() : value,
-      ),
-    );
-  }
-
-  function writeNamespaceMetadata(root: string, namespace: string) {
-    writeFileSync(
-      join(root, namespace, ".chain"),
-      JSON.stringify({ environment: namespace, chainId: "1" }),
-    );
-  }
 
   // Mirrors the artifact layout the freeze reads: the shared v1 contracts under the
   // v1 deployments root, and one v2 namespace per deployment — the active one plus a
@@ -115,7 +104,7 @@ describe("v1 registrar freeze", () => {
       ["ReverseRegistrar", env.shared.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.shared.DefaultReverseRegistrar],
     ] as const) {
-      writeDeployment(v1DeploymentsDir, NETWORK, name, contract);
+      writeDeploymentArtifact(v1DeploymentsDir, NETWORK, name, contract);
     }
 
     for (const [name, contract] of [
@@ -124,8 +113,13 @@ describe("v1 registrar freeze", () => {
         "DefaultReverseRegistrarAdapter",
         env.shared.DefaultReverseRegistrarAdapter,
       ],
+      // A real namespace carries every handoff contract, and
+      // `--require-active-grants` refuses to assert over one that does not: an
+      // absent artifact silently narrows the assertion to what is on disk.
+      ["ETHRenewerV1", env.v2.ETHRenewerV1],
+      ["Graveyard", env.v2.Graveyard],
     ] as const) {
-      writeDeployment(deploymentsDir, activeNamespace, name, contract);
+      writeDeploymentArtifact(deploymentsDir, activeNamespace, name, contract);
     }
     writeNamespaceMetadata(deploymentsDir, activeNamespace);
 
@@ -134,7 +128,7 @@ describe("v1 registrar freeze", () => {
       ["DefaultReverseRegistrarAdapter", ARCHIVED_DEFAULT_REVERSE_ADAPTER],
       ["ETHRenewerV1", ARCHIVED_ETH_RENEWER],
     ] as const) {
-      writeDeployment(deploymentsDir, archivedNamespace, name, {
+      writeDeploymentArtifact(deploymentsDir, archivedNamespace, name, {
         address,
         abi: [],
       });
@@ -150,7 +144,7 @@ describe("v1 registrar freeze", () => {
       ["ReverseRegistrar", env.shared.ReverseRegistrar],
       ["DefaultReverseRegistrar", env.shared.DefaultReverseRegistrar],
     ] as const) {
-      writeDeployment(v1DeploymentsDir, NETWORK, name, contract);
+      writeDeploymentArtifact(v1DeploymentsDir, NETWORK, name, contract);
     }
     writeNamespaceMetadata(v1DeploymentsDir, NETWORK);
 
@@ -288,6 +282,9 @@ describe("v1 registrar freeze", () => {
       v1DeploymentsDir,
       v1DeploymentNetwork: NETWORK,
       impersonateOwner: true,
+      // These tests exercise the freeze itself; the reconciliation gate has its own
+      // coverage below.
+      skipPreconditions: true,
       ...overrides,
     } as const;
   }
@@ -429,6 +426,115 @@ describe("v1 registrar freeze", () => {
       ).resolves.toBe(true);
 
       await verifyV1RegistrarsDisabled(freezeOptions());
+      await verifyReverseAdapters(freezeOptions());
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "reports a revoked active adapter that the one-sided audit passes over",
+    async () => {
+      writeDeploymentArtifacts();
+      await disableV1Registrars(freezeOptions());
+
+      // Revoke a grant the active deployment depends on. The revoke-side audit tests
+      // `enabled` first, so a missing grant reads as "already revoked" and passes —
+      // exactly the hole these presence checks close.
+      await env.shared.ReverseRegistrar.write.setController(
+        [env.shared.ReverseRegistrarAdapter.address, false],
+        { account: await ownerAccountOf(env.shared.ReverseRegistrar) },
+      );
+
+      await verifyV1RegistrarsDisabled(freezeOptions());
+
+      await expect(
+        verifyV1RegistrarsDisabled({
+          ...freezeOptions(),
+          requireActiveGrants: true,
+        }),
+      ).rejects.toThrow(/authorizations missing/);
+
+      await expect(verifyReverseAdapters(freezeOptions())).rejects.toThrow(
+        /is not a ReverseRegistrar controller/,
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "executes a prepared owner transaction once, and skips it on a re-run",
+    async () => {
+      writeDeploymentArtifacts();
+      const registrar = env.shared.ReverseRegistrar;
+      const owner = await ownerAccountOf(registrar);
+      const target = ARCHIVED_REVERSE_ADAPTER;
+
+      const preparedFile = join(workDir, "owner-transactions.jsonl");
+      const journalFile = join(workDir, "owner-transactions.executed.json");
+      writeFileSync(
+        preparedFile,
+        `${JSON.stringify({
+          role: "v1Owner",
+          from: owner.address,
+          to: registrar.address,
+          data: encodeFunctionData({
+            abi: registrar.abi,
+            functionName: "setController",
+            args: [target, true],
+          }),
+          label: "setController",
+        })}\n`,
+      );
+
+      const execute = (overrides: Record<string, unknown> = {}) =>
+        executePreparedOwnerTransactions({
+          network: NETWORK,
+          rpcUrl: `http://${env.hostPort}`,
+          chainId: "1",
+          file: preparedFile,
+          journalFile,
+          privateKey: testPrivateKeyFor(owner.address),
+          ...overrides,
+        });
+
+      await execute();
+      await expect(registrar.read.controllers([target])).resolves.toBe(true);
+
+      const journal = JSON.parse(readFileSync(journalFile, "utf8")) as Record<
+        string,
+        { hash: string; chainId: number }
+      >;
+      const entries = Object.values(journal);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].chainId).toBe(1);
+
+      // Re-running must not re-send an owner-gated write that already landed.
+      await execute();
+      expect(
+        Object.values(
+          JSON.parse(readFileSync(journalFile, "utf8")) as Record<
+            string,
+            { hash: string }
+          >,
+        )[0].hash,
+      ).toBe(entries[0].hash);
+
+      // A journal from another chain must not suppress the transaction here.
+      writeFileSync(
+        journalFile,
+        JSON.stringify({
+          [Object.keys(journal)[0]]: { ...entries[0], chainId: 999 },
+        }),
+      );
+      await execute();
+      expect(
+        Object.values(
+          JSON.parse(readFileSync(journalFile, "utf8")) as Record<
+            string,
+            { hash: string }
+          >,
+        )[0].hash,
+      ).not.toBe(entries[0].hash);
     },
     TEST_TIMEOUT_MS,
   );

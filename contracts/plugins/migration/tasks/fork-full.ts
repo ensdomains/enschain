@@ -1,9 +1,8 @@
 import type { NewTaskActionFunction } from "hardhat/types/tasks";
 
-import {
-  parseMigrationNetwork,
-  runForkFull,
-} from "../../../script/migration.js";
+import { parseMigrationNetwork } from "../../../script/migrations/plumbing.js";
+
+import { runForkFull } from "../../../script/migrate.js";
 import {
   isTenderlyVirtualRpc,
   logMigrationSigners,
@@ -36,6 +35,8 @@ type ForkFullTaskArgs = {
   includeTestnetPremigrationRegistrar: boolean;
   debugRpc: boolean;
   keepAnvil: boolean;
+  requireFullCoverage: boolean;
+  resolutionNames: string;
 };
 
 const action: NewTaskActionFunction<ForkFullTaskArgs> = async (args, hre) => {
@@ -84,6 +85,8 @@ const action: NewTaskActionFunction<ForkFullTaskArgs> = async (args, hre) => {
       ...signers,
       debugRpc: args.debugRpc,
       keepAnvil: args.keepAnvil,
+      requireFullCoverage: args.requireFullCoverage,
+      resolutionNames: nonEmptyString(args.resolutionNames),
     });
   } finally {
     await connection.close();

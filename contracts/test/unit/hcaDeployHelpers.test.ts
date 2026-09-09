@@ -60,6 +60,16 @@ describe("HCA deployment address resolution", () => {
     ).toBe(MOCK_EXECUTOR);
   });
 
+  it("uses the same production addresses on mainnet", () => {
+    // Mainnet runs against the same Rhinestone deployment as Sepolia. Without
+    // this the validator has no executor to resolve and phase 1 cannot deploy.
+    const tags = { hca: true, hasDao: true };
+
+    expect(resolveHCAIntentExecutor({ tags, env: {} })).toBe(
+      RHINESTONE_INTENT_EXECUTOR,
+    );
+  });
+
   it("allows explicit environment overrides", () => {
     const tags = { hca: true, sepolia: true };
     const env = {

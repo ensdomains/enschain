@@ -15,7 +15,7 @@ import {
   SEC_PER_YEAR,
   GRACE_PERIOD_V2,
 } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migration.js";
+import { migrationDataComponents } from "../../script/migrate.js";
 import { expect, expectVar } from "../utils/expectVar.js";
 import {
   COIN_TYPE_ETH,

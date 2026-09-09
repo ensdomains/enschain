@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { Artifact_ETHRegistrarController } from "generated/artifacts/ETHRegistrarController.js";
 import { FUSES, ROLES, STATUS } from "../../script/deploy-constants.js";
-import { migrationDataComponents } from "../../script/migration.js";
+import { migrationDataComponents } from "../../script/migrate.js";
 import { main as preMigrationMain } from "../../script/preMigration.js";
 import {
   buildMainArgs,
@@ -395,7 +395,7 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
       const proc = Bun.spawn(
         [
           "bun",
-          "script/migration.ts",
+          "script/migrate.ts",
           "fork",
           "full",
           "--network",
@@ -452,6 +452,13 @@ describeSepoliaFork("Sepolia Anvil fork migration rehearsal", () => {
         "v2 registrar rejected pre-migrated reserved name after enablement",
       );
       expect(output).toContain("v2 registrar registered");
+
+      // The rehearsal must say what it covered. A pristine fork runs every smoke,
+      // so anything less than full coverage here means the run silently degraded.
+      expect(output).toContain(
+        "pristine chain: v1 registration controllers still authorized",
+      );
+      expect(output).toContain("coverage: all smoke checks ran");
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }

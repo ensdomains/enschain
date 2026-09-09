@@ -75,7 +75,7 @@ Named accounts in [`rocketh/config.ts`](../rocketh/config.ts):
 
 ## CLI
 
-The bootstrap-only switch (top-URP-owner-signed) and the intermediate-URP upgrade (admin-signed), plus verification, are exposed as `script/migration.ts` phase commands, for use against live networks and fork rehearsals. In the reuse flow the upgrade is the only step you run. The post-cutover step 6 has no phase command — it runs only as the `migration:post-cutover:direct-urp-to-v2` deploy script:
+The bootstrap-only switch (top-URP-owner-signed) and the intermediate-URP upgrade (admin-signed), plus verification, are exposed as `script/migrate.ts` phase commands, for use against live networks and fork rehearsals. In the reuse flow the upgrade is the only step you run. The post-cutover step 6 has no phase command — it runs only as the `migration:post-cutover:direct-urp-to-v2` deploy script:
 
 ```bash
 # Bootstrap only: top URP → intermediate URP (top URP owner signature).

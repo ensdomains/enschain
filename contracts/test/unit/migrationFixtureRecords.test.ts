@@ -1,17 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import { zeroAddress, type Address } from "viem";
 
-import { isRetryableRpcRequest } from "../../script/migration.js";
+import { isRetryableRpcRequest } from "../../script/migrate.js";
 import {
   clearedRecord,
   recordValue,
-} from "../../script/migrationFixture/plan.js";
-import { assertSeedable } from "../../script/migrationFixture.js";
-import type { RefContext } from "../../script/migrationFixture/scenario.js";
+} from "../../script/migrations/fixture/plan.js";
+import { assertSeedable } from "../../script/migrations/fixture.js";
+import type { RefContext } from "../../script/migrations/fixture/scenario.js";
 import type {
   FixtureEnvelope,
   RecordSpec,
-} from "../../script/migrationFixture/types.js";
+} from "../../script/migrations/fixture/types.js";
 
 const OWNER = "0x00000000000000000000000000000000000000a1" as Address;
 

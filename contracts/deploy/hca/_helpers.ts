@@ -66,8 +66,14 @@ function usesMockHCAInfrastructure(tags: Record<string, unknown>) {
   return Boolean(tags.local || tags.test || tags["clean-testnet"]);
 }
 
-function usesSepoliaHCAProductionDefaults(tags: Record<string, unknown>) {
-  return Boolean(tags.sepolia && !usesMockHCAInfrastructure(tags));
+// Networks that resolve the live Rhinestone deployment rather than standing up
+// their own. The orchestrator sits at the same address on each, so a public
+// network takes it as the default; only the mock-infrastructure networks
+// substitute a locally deployed executor.
+function usesProductionHCADefaults(tags: Record<string, unknown>) {
+  return Boolean(
+    (tags.sepolia || tags.hasDao) && !usesMockHCAInfrastructure(tags),
+  );
 }
 
 export function shouldDeployStandaloneHCA(tags: Record<string, unknown>) {
@@ -91,7 +97,7 @@ export function resolveHCAIntentExecutor({
 }): Address | undefined {
   return (
     optionalEnvAddress("HCA_INTENT_EXECUTOR", env.HCA_INTENT_EXECUTOR) ??
-    (usesSepoliaHCAProductionDefaults(tags)
+    (usesProductionHCADefaults(tags)
       ? RHINESTONE_INTENT_EXECUTOR
       : undefined) ??
     localExecutor ??

@@ -28,6 +28,7 @@ import {
   http,
   keccak256,
   namehash,
+  parseAbi,
   parseAbiItem,
   parseEther,
   stringToHex,
@@ -36,6 +37,7 @@ import {
   type AbiEvent,
   type Address,
   type Chain,
+  type Hex,
 } from "viem";
 import {
   english as englishWordlist,
@@ -46,9 +48,11 @@ import {
 } from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
-import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
+import { Artifact_StandardRentPriceOracle } from "generated/artifacts/StandardRentPriceOracle.js";
+import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
 import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import { isHCAOnlyDeployment } from "../deploy/hca/_helpers.js";
 import { config as rockethConfig } from "../rocketh/config.js";
@@ -56,18 +60,98 @@ import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environ
 import { generateAddressMarkdown } from "./addressDocs.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+  DEPLOYMENT_ROLES,
+  FUSES,
   LOCAL_BATCH_GATEWAY_URL,
+  MAINNET_DAI,
+  MAINNET_USDC,
   ROLES,
   SEC_PER_DAY,
   STATUS,
 } from "./deploy-constants.js";
-import { main as exportRegistrationsMain } from "./exportTheGraphRegistrations.js";
+import {
+  main as exportRegistrationsMain,
+  parseENSRegistrationNetwork,
+} from "./exportTheGraphRegistrations.js";
 import {
   addFixtureSubcommands,
   runFixtureSeedStage,
-} from "./migrationFixture.js";
-import { ACTOR_ALIASES, bufferedGas } from "./migrationFixture/config.js";
-import { resolveRegistrarControlRoute } from "./registrarControl.js";
+} from "./migrations/fixture.js";
+import { ACTOR_ALIASES, bufferedGas } from "./migrations/fixture/config.js";
+import { isLogSpanRefusalMessage } from "./migrations/logSpanRefusal.js";
+import {
+  executePreparedOwnerTransactions,
+  preparedOwnerTransactionLabel,
+  printPreparedCall,
+  readPreparedOwnerTransactions,
+  type PreparedOwnerTransaction,
+} from "./migrations/ownerTx.js";
+import {
+  assertRejected,
+  assertV1Owner,
+  assertV2State,
+  migrateUnwrappedV1Name,
+  migrateWrappedV1Name,
+  registerViaV1Controller,
+  readV1Owner,
+  registerViaV2Registrar,
+  renewViaEthRenewerV1,
+  runV2RegistrarSmoke,
+} from "./migrations/smoke.js";
+import {
+  createRpcSnapshot,
+  increaseTime,
+  RPC_RETRY_COUNT,
+  requestAny,
+  walletClient,
+  withGasBuffer,
+  impersonate,
+  impersonatedAccountProvider,
+  installRpcCompatibility,
+  isLocalRpcUrl,
+  isTenderlyVirtualRpc,
+  privateKeyRpcProvider,
+  privateKeySignerProtocol,
+  saveRpcSnapshotFile,
+  setBalance,
+  waitForRpc,
+  withRpcCompatibility,
+  httpRpcProvider,
+  clearAccountDelegations,
+} from "./migrations/rpc.js";
+import {
+  BUNDLED_V1_DEPLOYMENTS_DIR,
+  labelId,
+  requireRpcUrl,
+  V1_BASE_REGISTRAR_NAME,
+  V1_REGISTRATION_DURATION,
+  V2_REGISTRATION_DURATION,
+  waitForCommitmentAge,
+  waitForSuccessfulReceipt,
+  DEFAULT_DEPLOYMENTS_DIR,
+  dnsEncodeName,
+  errorMessageChain,
+  forkChain,
+  type JsonDeployment,
+  LOCAL_V1_DEPLOYMENTS_DIR,
+  loadV1Deployment,
+  loadV2Deployment,
+  maybeLoadV2Deployment,
+  type MigrationNetwork,
+  migrationChain,
+  NETWORKS,
+  parseMigrationNetwork,
+  parseNumber,
+  publicClient,
+  requireV1Deployment,
+  envPrivateKey,
+  envValue,
+  resolveDeploymentAddress,
+  sameAddress,
+  type RpcProvider,
+  type V1DeploymentOptions,
+} from "./migrations/plumbing.js";
+import { resolveRegistrarControlRoute } from "./migrations/registrarControl.js";
 import {
   CHECKPOINT_FILE,
   type Checkpoint,
@@ -76,8 +160,54 @@ import {
   loadCheckpoint,
   main as preMigrationMain,
   parseCSVLine,
-  V1_GRACE_PERIOD_SECONDS,
+  bonusAdjustedExpiry,
+  isClaimableOnV1,
 } from "./preMigration.js";
+import {
+  compareCalldata,
+  describeVerdict,
+  type CalldataVerdict,
+} from "./migrations/safeCalldata.js";
+import {
+  checkPrecondition,
+  clearVerification,
+  describePreconditionFailure,
+  readVerification,
+  recordVerification,
+} from "./migrations/phaseGate.js";
+import {
+  compareDeployedBytecode,
+  describeComparison,
+  extractImmutableValues,
+  immutableAsAddress,
+  type ImmutableReferences,
+} from "./migrations/bytecodeCheck.js";
+import {
+  describeDifference,
+  diffResolutionSnapshots,
+  queriesFromSnapshot,
+  recordQueries,
+  snapshotCarriesRecords,
+  type NameSnapshot,
+  type ResolutionSnapshot,
+} from "./migrations/resolutionSnapshot.js";
+import {
+  describeRoleBitmap,
+  describeRoleFinding,
+  diffRoleMatrix,
+  type RoleExpectation,
+  type RoleHolder,
+} from "./migrations/roleAudit.js";
+import {
+  assertCompleteCsv,
+  assertIndependentSource,
+  assertIndexCoversChainTime,
+  buildV1NameIndex,
+  buildV1NameIndexFromRpc,
+  createRpcIndexClient,
+  loadV1NameIndex,
+  readV1NameIndexMeta,
+} from "./premigrationIndex.js";
 import {
   PREMIGRATION_CSV_HEADER,
   premigrationCsvRow,
@@ -94,25 +224,25 @@ const MAINNET_DAO = "0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7" as const;
 // account in rocketh/config.ts so the two values cannot drift apart.
 const SEPOLIA_V1_OWNER = getAddress(rockethConfig.accounts.v1Owner.sepolia);
 
-const V1_REGISTRATION_DURATION = 365n * SEC_PER_DAY;
-const V2_REGISTRATION_DURATION = 28n * SEC_PER_DAY;
 const REGISTRAR_ROLES = ROLES.REGISTRY.REGISTRAR | ROLES.REGISTRY.RENEW;
-const RPC_RETRY_COUNT = 3;
-/// Transport-level retries for a dropped connection, on top of viem's own
-/// JSON-RPC retries, which never see a request that failed to reach the node.
-const RPC_TRANSPORT_RETRIES = 5;
-const RPC_TRANSPORT_BACKOFF_MS = 250;
-const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
-const DEFAULT_DEPLOYMENTS_DIR = resolve(import.meta.dirname, "../deployments");
-const BUNDLED_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../lib/ens-contracts/deployments",
-);
-const LOCAL_V1_DEPLOYMENTS_DIR = resolve(
-  import.meta.dirname,
-  "../deployments/v1",
-);
+/// The registry reads that are issued in batches, named one function at a time.
+///
+/// `multicall` infers a result type per entry, and doing that against the whole
+/// registry ABI exceeds the type instantiation depth, which degrades every result to
+/// `unknown[]` and pushes the checking into casts. Naming only the functions being
+/// called keeps the results typed.
+const REGISTRY_BATCH_ABI = parseAbi([
+  "struct State { uint8 status; uint64 expiry; address latestOwner; uint256 tokenId; uint256 resource; }",
+  "function getState(uint256 anyId) view returns (State state)",
+  "function getResource(uint256 anyId) view returns (uint256)",
+  "function getResolver(string label) view returns (address)",
+  "function roles(uint256 anyId, address account) view returns (uint256)",
+]);
+const V1_REGISTRAR_BATCH_ABI = parseAbi([
+  "function nameExpires(uint256 id) view returns (uint256)",
+]);
+const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
 const MIGRATION_DEPLOY_TAGS = ["migration:phase1:deploy-v2"] as const;
 
@@ -123,82 +253,12 @@ export const migrationDataComponents = [
   { name: "resolver", type: "address" },
 ] as const;
 
-export type MigrationNetwork = "sepolia" | "mainnet";
-
-type RpcProvider = {
-  request(args: {
-    method: string;
-    params?: readonly unknown[] | object;
-  }): Promise<unknown>;
-};
-
-type JsonDeployment = {
-  address: Address;
-  abi: readonly any[];
-};
-
-type V1DeploymentOptions = {
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-};
-
 type PrivateKeyOptions = {
   deployerPrivateKey?: `0x${string}`;
   ownerPrivateKey?: `0x${string}`;
   v1OwnerPrivateKey?: `0x${string}`;
   urManagerPrivateKey?: `0x${string}`;
 };
-
-type NetworkConfig = {
-  chain: Chain;
-  environment: MigrationNetwork;
-  rpcEnv: string;
-  defaultForkPort: number;
-  defaultOwner: Address;
-  defaultV1Owner: Address;
-  chainTags: string[];
-};
-
-type PreparedOwnerTransaction = {
-  account?: string;
-  role?: string;
-  from?: Address;
-  to: Address;
-  value?: string;
-  data: `0x${string}`;
-  phase?: string;
-  label?: string;
-  functionName?: string;
-  deployment?: string;
-};
-
-const NETWORKS: Record<MigrationNetwork, NetworkConfig> = {
-  sepolia: {
-    chain: sepolia,
-    environment: "sepolia",
-    rpcEnv: "SEPOLIA_RPC_URL",
-    defaultForkPort: 8547,
-    defaultOwner: DEFAULT_ANVIL_OWNER,
-    defaultV1Owner: SEPOLIA_V1_OWNER,
-    chainTags: [],
-  },
-  mainnet: {
-    chain: mainnet,
-    environment: "mainnet",
-    rpcEnv: "MAINNET_RPC_URL",
-    defaultForkPort: 8548,
-    defaultOwner: MAINNET_DAO,
-    defaultV1Owner: MAINNET_DAO,
-    chainTags: ["hasDao"],
-  },
-};
-
-export function parseMigrationNetwork(
-  value: string | undefined,
-): MigrationNetwork {
-  if (value === "mainnet" || value === "sepolia") return value;
-  throw new Error(`Unsupported network: ${value ?? "<missing>"}`);
-}
 
 function loadDotEnv(filePath: string): void {
   if (!existsSync(filePath)) return;
@@ -222,53 +282,6 @@ function loadDotEnv(filePath: string): void {
   }
 }
 
-function requireRpcUrl(
-  opts: { rpcUrl?: string },
-  network: MigrationNetwork,
-): string {
-  const config = NETWORKS[network];
-  const rpcUrl = opts.rpcUrl ?? process.env[config.rpcEnv];
-  if (!rpcUrl) {
-    throw new Error(`Missing --rpc-url or ${config.rpcEnv}`);
-  }
-  return rpcUrl;
-}
-
-function forkChain(
-  network: MigrationNetwork,
-  chainId: number,
-  rpcUrl: string,
-): Chain {
-  const base = NETWORKS[network].chain;
-  return defineChain({
-    ...base,
-    id: chainId,
-    name: chainId === base.id ? base.name : `${base.name} Fork ${chainId}`,
-    rpcUrls: { default: { http: [rpcUrl] } },
-  });
-}
-
-function migrationChain(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-}): Chain {
-  return forkChain(
-    opts.network,
-    parseNumber(opts.chainId, NETWORKS[opts.network].chain.id),
-    opts.rpcUrl,
-  );
-}
-
-function publicClient(rpcUrl: string, chain: Chain, provider?: RpcProvider) {
-  return createPublicClient({
-    chain,
-    transport: provider
-      ? custom(provider as any)
-      : http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
-  });
-}
-
 async function getProviderChainId(provider: RpcProvider): Promise<number> {
   const value = await provider.request({ method: "eth_chainId" });
   if (typeof value === "number") return value;
@@ -281,32 +294,6 @@ type WalletAccount =
   | ReturnType<typeof privateKeyToAccount>
   | ReturnType<typeof mnemonicToAccount>;
 
-function walletClient({
-  rpcUrl,
-  chain,
-  privateKey,
-  account,
-  provider,
-}: {
-  rpcUrl: string;
-  chain: Chain;
-  privateKey?: `0x${string}`;
-  account?: Address | WalletAccount;
-  provider?: RpcProvider;
-}) {
-  const walletAccount = privateKey ? privateKeyToAccount(privateKey) : account;
-  if (!walletAccount) {
-    throw new Error("A private key or impersonated account is required");
-  }
-  return createWalletClient({
-    account: walletAccount,
-    chain,
-    transport: provider
-      ? custom(provider as any)
-      : http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
-  });
-}
-
 function loadDeploymentFromRoot(
   root: string,
   environment: string,
@@ -315,92 +302,6 @@ function loadDeploymentFromRoot(
   const path = join(root, environment, `${name}.json`);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf-8")) as JsonDeployment;
-}
-
-function loadV1Deployment(
-  network: MigrationNetwork,
-  name: string,
-  opts: V1DeploymentOptions = {},
-): JsonDeployment | null {
-  const roots = opts.v1DeploymentsDir
-    ? [resolve(opts.v1DeploymentsDir)]
-    : [LOCAL_V1_DEPLOYMENTS_DIR, BUNDLED_V1_DEPLOYMENTS_DIR];
-  const environment = opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
-  for (const root of roots) {
-    const deployment = loadDeploymentFromRoot(root, environment, name);
-    if (deployment) return deployment;
-  }
-  return null;
-}
-
-function requireV1Deployment(
-  network: MigrationNetwork,
-  name: string,
-  opts: V1DeploymentOptions = {},
-): JsonDeployment {
-  const deployment = loadV1Deployment(network, name, opts);
-  if (!deployment) {
-    const environment =
-      opts.v1DeploymentNetwork ?? NETWORKS[network].environment;
-    throw new Error(`Missing ${environment} v1 deployment: ${name}`);
-  }
-  return deployment;
-}
-
-function loadV2Deployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment {
-  const deployment = loadDeploymentFromRoot(resolve(root), environment, name);
-  if (!deployment) {
-    throw new Error(
-      `Missing v2 deployment: ${resolve(root)}/${environment}/${name}.json`,
-    );
-  }
-  return deployment;
-}
-
-function maybeLoadV2Deployment(
-  root: string,
-  environment: string,
-  name: string,
-): JsonDeployment | null {
-  return loadDeploymentFromRoot(resolve(root), environment, name);
-}
-
-function resolveDeploymentAddress(
-  explicitAddress: Address | undefined,
-  deploymentsDir: string,
-  environment: string,
-  name: string,
-): Address {
-  if (explicitAddress) return explicitAddress;
-  return loadV2Deployment(deploymentsDir, environment, name).address;
-}
-
-function parseNumber(
-  value: string | number | undefined,
-  fallback: number,
-): number {
-  if (value === undefined || value === "") return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Expected a numeric value, got: ${JSON.stringify(value)}`);
-  }
-  return parsed;
-}
-
-function envValue(...names: string[]): string | undefined {
-  for (const name of names) {
-    const value = process.env[name];
-    if (value) return value;
-  }
-  return undefined;
-}
-
-function envPrivateKey(...names: string[]): `0x${string}` | undefined {
-  return envValue(...names) as `0x${string}` | undefined;
 }
 
 function parseResumeFromPhase(value: string | undefined): 2 | undefined {
@@ -413,6 +314,55 @@ function parseResumeFromPhase(value: string | undefined): 2 | undefined {
 // Locate the label column case-insensitively (matching the premigration run
 // parser), accepting either a `labelName` or `label` header. Returns -1 when
 // neither is present so callers can fail loudly instead of guessing a column.
+// How many CSV rows name a v1 registration that is still claimable at `chainNow`.
+//
+// The exporter's query has no expiry filter, so a CSV holds every registration the
+// subgraph ever indexed. Comparing that raw total against an index of claimable names
+// puts two correct sources millions of rows apart and calls it a discrepancy. Where
+// the CSV carries expiries the rows are filtered to match; where it does not — a
+// hand-made export — the count is reported as unfiltered rather than as comparable.
+function countClaimableCsvRows(
+  csvFile: string,
+  chainNow: bigint,
+): { count: number; filtered: boolean; unknownExpiry: number } {
+  const { header, rows, labelIndex } = openLabelCsv(csvFile);
+  if (labelIndex < 0) {
+    return { count: 0, filtered: false, unknownExpiry: 0 };
+  }
+  const expiryIndex = header
+    .map((field) => field.trim().toLowerCase())
+    .indexOf("expirydate");
+
+  let labelled = 0;
+  let expired = 0;
+  let dated = 0;
+  for (const line of rows) {
+    const fields = parseCSVLine(line);
+    if (!fields[labelIndex]?.trim()) continue;
+    labelled++;
+    if (expiryIndex < 0) continue;
+    const raw = fields[expiryIndex]?.trim();
+    if (!raw) continue;
+    let expiry: bigint;
+    try {
+      expiry = BigInt(raw);
+    } catch {
+      continue;
+    }
+    dated++;
+    if (!isClaimableOnV1(expiry, chainNow)) expired++;
+  }
+
+  // A row whose expiry the CSV does not carry is of unknown claimability, not
+  // expired, so it stays in the count. And a column that is present but empty on
+  // every row carries no expiry data at all, whatever the header says.
+  return {
+    count: labelled - expired,
+    filtered: dated > 0,
+    unknownExpiry: labelled - dated,
+  };
+}
+
 function csvLabelColumnIndex(header: string[]): number {
   const normalized = header.map((field) => field.trim().toLowerCase());
   const labelNameIndex = normalized.indexOf("labelname");
@@ -420,16 +370,34 @@ function csvLabelColumnIndex(header: string[]): number {
   return normalized.indexOf("label");
 }
 
-function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
+/// A label CSV opened for reading: its rows, its header fields, and where the label
+/// column sits.
+///
+/// Every reader needs the same three things and had derived them for itself, with
+/// three slightly different messages for the same missing column. `rows` excludes the
+/// header.
+function openLabelCsv(csvFile: string): {
+  header: string[];
+  rows: string[];
+  labelIndex: number;
+} {
   const lines = readFileSync(csvFile, "utf-8").trim().split(/\r?\n/);
-  if (lines.length === 0 || !lines[0]) return [];
+  if (lines.length === 0 || !lines[0]) {
+    return { header: [], rows: [], labelIndex: -1 };
+  }
   const header = parseCSVLine(lines[0]);
   const labelIndex = csvLabelColumnIndex(header);
   if (labelIndex < 0) {
     throw new Error(`CSV must contain a labelName or label column: ${csvFile}`);
   }
+  return { header, rows: lines.slice(1), labelIndex };
+}
+
+function readLabelsFromCsv(csvFile: string, limit?: number): string[] {
+  const { rows, labelIndex } = openLabelCsv(csvFile);
+  if (labelIndex < 0) return [];
   const labels: string[] = [];
-  for (const line of lines.slice(1)) {
+  for (const line of rows) {
     if (limit !== undefined && labels.length >= limit) break;
     const label = parseCSVLine(line)[labelIndex]?.trim();
     if (label) labels.push(label);
@@ -441,19 +409,11 @@ function transformCsvForPreMigration(
   sourcePath: string,
   targetPath: string,
 ): number {
-  const lines = readFileSync(sourcePath, "utf-8").trim().split(/\r?\n/);
-  if (lines.length === 0) throw new Error(`CSV is empty: ${sourcePath}`);
-
-  const sourceHeader = parseCSVLine(lines[0]);
-  const labelIndex = csvLabelColumnIndex(sourceHeader);
-  if (labelIndex < 0) {
-    throw new Error(
-      `CSV must contain either a labelName or label column: ${sourcePath}`,
-    );
-  }
+  const { rows, labelIndex } = openLabelCsv(sourcePath);
+  if (labelIndex < 0) throw new Error(`CSV is empty: ${sourcePath}`);
 
   const output = [PREMIGRATION_CSV_HEADER];
-  for (const line of lines.slice(1)) {
+  for (const line of rows) {
     const columns = parseCSVLine(line);
     const label = columns[labelIndex]?.trim();
     if (label) output.push(premigrationCsvRow(label));
@@ -470,7 +430,11 @@ function prependCsvLabels(csvFile: string, labels: string[]): void {
 }
 
 /// The smoke names phase 2 reserves, which later phases migrate and re-register.
-type ReservedSmokeLabels = { migrate: string; reservedOnly: string };
+type ReservedSmokeLabels = {
+  migrate: string;
+  reservedOnly: string;
+  migrateWrapped: string;
+};
 
 /// Reads back the reserved smoke names an earlier run chose.
 ///
@@ -483,272 +447,6 @@ function readReservedSmokeLabels(path: string): ReservedSmokeLabels {
     );
   }
   return JSON.parse(readFileSync(path, "utf-8")) as ReservedSmokeLabels;
-}
-
-function labelId(label: string): bigint {
-  return BigInt(keccak256(stringToHex(label)));
-}
-
-async function requestAny(
-  client: RpcProvider,
-  requests: Array<{ method: string; params: unknown[] }>,
-) {
-  let lastError: unknown;
-  for (const request of requests) {
-    try {
-      return await client.request({
-        method: request.method as any,
-        params: request.params as any,
-      });
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
-}
-
-async function increaseTime(
-  client: ReturnType<typeof publicClient>,
-  seconds: bigint,
-) {
-  await requestAny(client, [
-    { method: "anvil_increaseTime", params: [Number(seconds)] },
-    { method: "evm_increaseTime", params: [Number(seconds)] },
-  ]);
-  await requestAny(client, [
-    { method: "anvil_mine", params: [1] },
-    { method: "evm_mine", params: [] },
-  ]);
-}
-
-async function waitForCommitmentAge(
-  client: ReturnType<typeof publicClient>,
-  seconds: bigint,
-  useRpcStateControls: boolean,
-) {
-  if (useRpcStateControls) {
-    await increaseTime(client, seconds);
-    return;
-  }
-  const startTimestamp = (await client.getBlock()).timestamp;
-  const targetTimestamp = startTimestamp + seconds + 15n;
-  console.log(
-    `waiting for commitment age until block timestamp ${targetTimestamp}`,
-  );
-  for (;;) {
-    const currentTimestamp = (await client.getBlock()).timestamp;
-    if (currentTimestamp >= targetTimestamp) return;
-    const remainingSeconds = targetTimestamp - currentTimestamp;
-    const delaySeconds = remainingSeconds < 12n ? remainingSeconds : 12n;
-    await new Promise((resolvePromise) =>
-      setTimeout(resolvePromise, Number(delaySeconds) * 1000),
-    );
-  }
-}
-
-async function setBalance(client: RpcProvider, address: Address) {
-  const balance = `0x${parseEther("100").toString(16)}`;
-  await requestAny(client, [
-    { method: "anvil_setBalance", params: [address, balance] },
-    { method: "hardhat_setBalance", params: [address, balance] },
-    { method: "tenderly_setBalance", params: [address, balance] },
-    { method: "tenderly_setBalance", params: [[address], balance] },
-  ]);
-}
-
-async function impersonate(client: RpcProvider, address: Address) {
-  await requestAny(client, [
-    { method: "anvil_impersonateAccount", params: [address] },
-    { method: "hardhat_impersonateAccount", params: [address] },
-    { method: "tenderly_impersonateAccount", params: [address] },
-    { method: "tenderly_impersonateAccount", params: [[address]] },
-  ]);
-  await setBalance(client, address);
-}
-
-async function waitForRpc(rpcUrl: string, chain: Chain): Promise<void> {
-  const client = publicClient(rpcUrl, chain);
-  const started = Date.now();
-  while (Date.now() - started < 30_000) {
-    try {
-      await client.getChainId();
-      return;
-    } catch {
-      try {
-        const response = await fetch(rpcUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "eth_chainId",
-            params: [],
-          }),
-        });
-        const payload = await response.json();
-        if (typeof payload?.result === "string") return;
-      } catch {}
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-  throw new Error(`Timed out waiting for RPC at ${rpcUrl}`);
-}
-
-function buildFeeHistoryResult(params: any) {
-  const blockCount = Number(BigInt(params?.[0] ?? "0x1"));
-  const percentiles = params?.[2] ?? [];
-  return {
-    oldestBlock: "0x1",
-    baseFeePerGas: Array.from({ length: blockCount + 1 }, () => "0x1"),
-    gasUsedRatio: Array.from({ length: blockCount }, () => 0),
-    reward: Array.from({ length: blockCount }, () =>
-      Array.from({ length: percentiles.length }, () => "0x1"),
-    ),
-  };
-}
-
-function buildFeeHistoryResponse(request: any) {
-  return {
-    jsonrpc: "2.0",
-    id: request.id,
-    result: buildFeeHistoryResult(request.params),
-  };
-}
-
-function isMissingFeeHistory(error: any): boolean {
-  const message = String(error?.details ?? error?.message ?? "");
-  return (
-    error?.code === -32601 ||
-    error?.code === -32001 ||
-    message.includes("eth_feeHistory") ||
-    message.includes("Method not found") ||
-    message.includes("method not found") ||
-    message === "not found"
-  );
-}
-
-function withRpcCompatibility(
-  provider: RpcProvider,
-  debugRpc = false,
-): RpcProvider {
-  return {
-    async request(args) {
-      try {
-        return await provider.request(args);
-      } catch (error) {
-        if (args.method === "eth_feeHistory" && isMissingFeeHistory(error)) {
-          return buildFeeHistoryResult(
-            Array.isArray(args.params) ? args.params : [],
-          );
-        }
-        if (debugRpc) {
-          console.error(`rpc error from ${args.method}:`, error);
-        }
-        throw error;
-      }
-    },
-  };
-}
-
-function httpRpcProvider(rpcUrl: string): RpcProvider {
-  let id = 0;
-  return {
-    async request(args) {
-      const response = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: ++id,
-          method: args.method,
-          params: args.params ?? [],
-        }),
-      });
-      const payload = (await response.json()) as {
-        result?: unknown;
-        error?: { code?: number; message?: string; data?: unknown };
-      };
-      if (payload.error) {
-        const error = new Error(
-          payload.error.message ?? "JSON-RPC error",
-        ) as Error & {
-          code?: number;
-          data?: unknown;
-        };
-        error.code = payload.error.code;
-        error.data = payload.error.data;
-        throw error;
-      }
-      return payload.result;
-    },
-  };
-}
-
-function privateKeyRpcProvider({
-  rpcUrl,
-  chain,
-  privateKey,
-}: {
-  rpcUrl: string;
-  chain: Chain;
-  privateKey: `0x${string}`;
-}): RpcProvider {
-  const account = privateKeyToAccount(privateKey);
-  const client = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl, { retryCount: RPC_RETRY_COUNT }),
-  });
-  const fallback = httpRpcProvider(rpcUrl);
-  const normalizeTransaction = (transaction: any) => {
-    if (transaction.type === "0x2") {
-      return { ...transaction, type: "eip1559" };
-    }
-    if (transaction.maxFeePerGas || transaction.maxPriorityFeePerGas) {
-      const { gasPrice: _gasPrice, type: _type, ...rest } = transaction;
-      return { ...rest, type: "eip1559" };
-    }
-    return transaction;
-  };
-  return {
-    async request(args) {
-      if (args.method === "eth_accounts")
-        return [account.address.toLowerCase()];
-      if (args.method === "eth_sendTransaction") {
-        const [transaction] = (args.params ?? []) as [any];
-        return await client.sendTransaction(normalizeTransaction(transaction));
-      }
-      if (args.method === "eth_signTransaction") {
-        const [transaction] = (args.params ?? []) as [any];
-        return await client.signTransaction(normalizeTransaction(transaction));
-      }
-      return fallback.request(args);
-    },
-  };
-}
-
-function privateKeySignerProtocol(rpcUrl: string, chain: Chain) {
-  return async (protocolString: string) => {
-    const privateKey = protocolString.slice(
-      "privateKey:".length,
-    ) as `0x${string}`;
-    return {
-      type: "remote" as const,
-      signer: privateKeyRpcProvider({ rpcUrl, chain, privateKey }) as any,
-    } as any;
-  };
-}
-
-function impersonatedAccountProvider(
-  provider: RpcProvider,
-  address: Address,
-): RpcProvider {
-  return {
-    async request(args) {
-      if (args.method === "eth_accounts") return [address];
-      return provider.request(args);
-    },
-  };
 }
 
 function impersonationProvider(opts: DeployV2Options): RpcProvider | undefined {
@@ -764,395 +462,45 @@ function impersonationProvider(opts: DeployV2Options): RpcProvider | undefined {
     : opts.provider;
 }
 
-export async function createRpcSnapshot(
-  provider: RpcProvider,
-): Promise<string> {
-  const snapshotId = await provider.request({
-    method: "evm_snapshot",
-    params: [],
-  });
-  if (typeof snapshotId !== "string") {
-    throw new Error(`unexpected evm_snapshot response: ${String(snapshotId)}`);
+/// Names the endpoint as simulated, or returns null for a chain that looks real.
+///
+/// A fork is indistinguishable from its parent on the evidence a verification would
+/// otherwise record: it reports the parent's chain id and serves the parent's history
+/// unchanged. State-control methods are the difference — only a simulated node offers
+/// them — so a gate that must not be satisfied by a rehearsal asks for those.
+async function describeSimulatedEndpoint(
+  client: ReturnType<typeof publicClient>,
+  rpcUrl: string,
+): Promise<string | null> {
+  if (isLocalRpcUrl(rpcUrl)) return `${rpcUrl} is a local endpoint`;
+  if (isTenderlyVirtualRpc(rpcUrl)) {
+    return `${rpcUrl} is a Tenderly virtual testnet`;
   }
-  return snapshotId;
-}
-
-export function saveRpcSnapshotFile(
-  path: string,
-  snapshotId: string,
-  network: string,
-) {
-  const filePath = resolve(path);
-  mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(
-    filePath,
-    `${JSON.stringify(
-      {
-        network,
-        snapshotId,
-        createdAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    )}\n`,
-  );
-}
-
-/// Reads outside the `eth_get*` family that a dropped connection can re-issue.
-const RETRYABLE_RPC_METHODS = new Set([
-  "eth_accounts",
-  "eth_blockNumber",
-  "eth_call",
-  "eth_chainId",
-  "eth_estimateGas",
-  "eth_feeHistory",
-  "eth_gasPrice",
-  "eth_maxPriorityFeePerGas",
-  "eth_protocolVersion",
-  "eth_syncing",
-  "net_listening",
-  "net_version",
-  "web3_clientVersion",
-]);
-
-/// Whether re-issuing a request cannot change the chain.
-///
-/// Reads are recognised explicitly so a method nobody has classified is left
-/// alone rather than replayed on a guess. Transaction submission is the case
-/// this exists to exclude: a node-signed send carries no client nonce, so a
-/// replay lands a second, distinct transaction rather than being rejected as a
-/// duplicate. The state controls are equally unsafe — replaying a clock
-/// increment advances it twice — and a batch is an array whose members cannot be
-/// judged from the envelope.
-export function isRetryableRpcRequest(request: any): boolean {
-  if (!request || Array.isArray(request)) return false;
-  const method = request.method;
-  return (
-    typeof method === "string" &&
-    (method.startsWith("eth_get") || RETRYABLE_RPC_METHODS.has(method))
-  );
-}
-
-/// Retries a fetch that never produced a response.
-///
-/// A long deploy issues thousands of RPC calls, and a single dropped connection
-/// would otherwise abort it partway through — leaving a half-deployed namespace
-/// that cannot be resumed. Only transport failures are retried: an HTTP response
-/// of any status is returned untouched, so JSON-RPC errors keep their existing
-/// handling.
-///
-/// Only idempotent requests are retried. Replaying a send would be unsafe, and
-/// would not help either: a node that accepted the first submission rejects the
-/// second as already known, so the run aborts whether or not it is retried.
-async function fetchWithTransportRetry(
-  originalFetch: typeof globalThis.fetch,
-  input: any,
-  init: any,
-  request: any,
-): Promise<Response> {
-  const attempts = isRetryableRpcRequest(request) ? RPC_TRANSPORT_RETRIES : 0;
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= attempts; attempt++) {
+  for (const method of ["anvil_nodeInfo", "hardhat_metadata"]) {
     try {
-      return await originalFetch(input, init);
-    } catch (error) {
-      lastError = error;
-      if (attempt === attempts) break;
-      const backoff = RPC_TRANSPORT_BACKOFF_MS * 2 ** attempt;
-      await sleep(backoff + Math.floor(Math.random() * backoff));
-    }
-  }
-  throw lastError;
-}
-
-/**
- * Permanently monkey-patches `globalThis.fetch` to add JSON-RPC compatibility
- * fallbacks for HTTP traffic issued by libraries we do not control (rocketh/viem
- * internals): when an RPC lacks `eth_feeHistory` and returns an error, a synthetic
- * fee-history response is fabricated so EIP-1559 fee estimation can proceed. With
- * `debugRpc` enabled, JSON-RPC error payloads are also logged. The patch is
- * process-wide, never uninstalled, and otherwise passes responses through untouched.
- */
-function installRpcCompatibility(debugRpc: boolean): void {
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  (globalThis as any).fetch = async (input: any, init?: any) => {
-    const request = (() => {
-      if (typeof init?.body !== "string") return null;
-      try {
-        return JSON.parse(init.body);
-      } catch {
-        return null;
-      }
-    })();
-    const response = await fetchWithTransportRetry(
-      originalFetch,
-      input,
-      init,
-      request,
-    );
-    try {
-      const payload = await response.clone().json();
-      if (
-        request?.method === "eth_feeHistory" &&
-        isMissingFeeHistory(payload?.error)
-      ) {
-        return new Response(JSON.stringify(buildFeeHistoryResponse(request)), {
-          headers: { "content-type": "application/json" },
-          status: 200,
-        });
-      }
-      if (debugRpc && payload?.error) {
-        console.error(
-          `rpc error from ${request?.method ?? "unknown"}:`,
-          payload.error,
-        );
-      }
+      // Cast to a no-argument method so the union-typed `request` accepts the
+      // probe; the string sent is the one in `method`.
+      await client.request({ method: method as "eth_chainId" });
+      return `${rpcUrl} answers ${method}, so it is a simulated node`;
     } catch {
-      // Non-JSON responses are unrelated to JSON-RPC compatibility handling.
+      // A real endpoint rejects the method, which is the answer being looked for.
     }
-    return response;
-  };
-}
-
-function isLocalRpcUrl(rpcUrl: string): boolean {
-  return /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(rpcUrl);
-}
-
-// Tenderly virtual testnets expose state-control RPC methods (impersonation, time
-// travel, setBalance) just like a local node, so they can run the rehearsal
-// without configured signer keys.
-export function isTenderlyVirtualRpc(rpcUrl: string): boolean {
-  try {
-    const hostname = new URL(rpcUrl).hostname.toLowerCase();
-    return (
-      hostname.startsWith("virtual.") && hostname.endsWith(".rpc.tenderly.co")
-    );
-  } catch {
-    return false;
   }
+  return null;
 }
 
-function printPreparedCall(
-  label: string,
-  target: Address,
-  data: `0x${string}`,
-): void {
-  console.log(`${label}`);
-  console.log(`  to:   ${target}`);
-  console.log(`  data: ${data}`);
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function parsePreparedOwnerTransaction(
-  value: unknown,
-  lineNumber: number,
-): PreparedOwnerTransaction {
-  if (typeof value !== "object" || value === null) {
-    throw new Error(`Invalid owner tx on line ${lineNumber}: expected object`);
-  }
-  const input = value as Record<string, unknown>;
-  const to = optionalString(input.to);
-  const data = optionalString(input.data);
-  if (!to)
-    throw new Error(`Invalid owner tx on line ${lineNumber}: missing to`);
-  if (!data?.startsWith("0x")) {
-    throw new Error(`Invalid owner tx on line ${lineNumber}: missing calldata`);
-  }
-
-  const rawValue = input.value;
-  return {
-    account: optionalString(input.account),
-    role: optionalString(input.role),
-    from: input.from ? getAddress(String(input.from)) : undefined,
-    to: getAddress(to),
-    value: rawValue === undefined ? undefined : String(rawValue),
-    data: data as `0x${string}`,
-    phase: optionalString(input.phase),
-    label: optionalString(input.label),
-    functionName: optionalString(input.functionName),
-    deployment: optionalString(input.deployment),
-  };
-}
-
-function readPreparedOwnerTransactions(
-  file: string,
-  role?: string,
-): PreparedOwnerTransaction[] {
-  const roleFilter = role?.toLowerCase();
-  return readFileSync(resolve(file), "utf-8")
-    .split(/\r?\n/)
-    .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
-    .filter(({ line }) => line.length > 0)
-    .map(({ line, lineNumber }) =>
-      parsePreparedOwnerTransaction(JSON.parse(line), lineNumber),
-    )
-    .filter((tx) => {
-      if (!roleFilter) return true;
-      return [tx.role, tx.account]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase() === roleFilter);
-    });
-}
-
-function preparedOwnerTransactionRole(tx: PreparedOwnerTransaction): string {
-  return tx.role ?? tx.account ?? "owner";
-}
-
-function preparedOwnerTransactionLabel(tx: PreparedOwnerTransaction): string {
-  const action = tx.label ?? tx.functionName ?? tx.deployment ?? "transaction";
-  return [tx.phase, action].filter(Boolean).join(": ");
-}
-
-// Role-specific env-var prefixes for prepared owner transactions. Roles not listed
-// here fall back to OWNER_TX_ENV_DEFAULT_PREFIXES. Role names are matched after
-// lowercasing and stripping dashes (e.g. "v1-owner" -> "v1owner").
-const OWNER_TX_ENV_PREFIXES: Record<string, readonly string[]> = {
-  v1owner: ["SEPOLIA_V1_OWNER", "V1_OWNER"],
-  sepoliatopurpowner: ["SEPOLIA_TOP_URP_OWNER", "TOP_URP_OWNER"],
-};
-
-const OWNER_TX_ENV_DEFAULT_PREFIXES = [
-  "OWNER_TX",
-  "SEPOLIA_V1_OWNER",
-  "V1_OWNER",
-  "SEPOLIA_TOP_URP_OWNER",
-  "TOP_URP_OWNER",
-] as const;
-
-function normalizeOwnerTransactionRole(role: string | undefined): string {
-  return role?.toLowerCase().replace(/-/g, "") ?? "";
-}
-
-function ownerTransactionEnv(
-  role: string | undefined,
-  suffix: string,
-): string | undefined {
-  const prefixes =
-    OWNER_TX_ENV_PREFIXES[normalizeOwnerTransactionRole(role)] ??
-    OWNER_TX_ENV_DEFAULT_PREFIXES;
-  return envValue(...prefixes.map((prefix) => `${prefix}${suffix}`));
-}
-
-function ownerTransactionPrivateKey(
-  role: string | undefined,
-  privateKey: `0x${string}` | undefined,
-): `0x${string}` | undefined {
-  if (privateKey) return privateKey;
-  if (normalizeOwnerTransactionRole(role) === "deployer") {
-    return envPrivateKey("DEPLOYER_KEY");
-  }
-  return ownerTransactionEnv(role, "_KEY") as `0x${string}` | undefined;
-}
-
-function ownerTransactionMnemonic(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC");
-}
-
-function ownerTransactionMnemonicPath(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC_PATH");
-}
-
-function ownerTransactionMnemonicPassphrase(
-  role: string | undefined,
-): string | undefined {
-  return ownerTransactionEnv(role, "_MNEMONIC_PASSPHRASE");
-}
-
-function ownerTransactionMnemonicIndex(role: string | undefined): number {
-  return parseNumber(ownerTransactionEnv(role, "_MNEMONIC_INDEX"), 0);
-}
-
-function ownerTransactionSigner(
-  role: string | undefined,
-  privateKey: `0x${string}` | undefined,
-): WalletAccount | undefined {
-  const resolvedPrivateKey = ownerTransactionPrivateKey(role, privateKey);
-  if (resolvedPrivateKey) return privateKeyToAccount(resolvedPrivateKey);
-
-  const mnemonic = ownerTransactionMnemonic(role);
-  if (!mnemonic) return undefined;
-
-  const path = ownerTransactionMnemonicPath(role);
-  const passphrase = ownerTransactionMnemonicPassphrase(role);
-  return mnemonicToAccount(
-    mnemonic,
-    (path
-      ? { path, passphrase }
-      : {
-          addressIndex: ownerTransactionMnemonicIndex(role),
-          passphrase,
-        }) as never,
-  );
-}
-
-async function executePreparedOwnerTransactions(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  file: string;
-  role?: string;
-  privateKey?: `0x${string}`;
-  dryRun?: boolean;
-}) {
-  const transactions = readPreparedOwnerTransactions(opts.file, opts.role);
-  if (transactions.length === 0) {
-    throw new Error(`No prepared owner transactions found in ${opts.file}`);
-  }
-
-  const account = ownerTransactionSigner(opts.role, opts.privateKey);
-  if (!account && !opts.dryRun) {
-    throw new Error(
-      "Missing --private-key, owner key env var, or owner mnemonic env var for prepared owner transactions",
-    );
-  }
-
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const wallet = account
-    ? walletClient({ rpcUrl: opts.rpcUrl, chain, account })
-    : null;
-
-  for (const tx of transactions) {
-    const label = preparedOwnerTransactionLabel(tx);
-    const role = preparedOwnerTransactionRole(tx);
-    console.log(`${opts.dryRun ? "prepared" : "executing"} ${role}: ${label}`);
-    console.log(`  to:   ${tx.to}`);
-    console.log(`  data: ${tx.data}`);
-
-    if (
-      account &&
-      tx.from &&
-      getAddress(account.address) !== getAddress(tx.from)
-    ) {
-      throw new Error(
-        `Signer ${account.address} does not match prepared tx sender ${tx.from} for ${label}`,
-      );
-    }
-    if (opts.dryRun) continue;
-
-    const hash = await wallet!.sendTransaction({
-      to: tx.to,
-      data: tx.data,
-      value: BigInt(tx.value ?? "0"),
-    });
-    await waitForSuccessfulReceipt(client, hash, label);
-    console.log(`  tx:   ${hash}`);
-  }
-}
+/// How far back from the head the phase gate records its fork-detecting block pair.
+/// Deep enough that an ordinary reorg does not invalidate a good pass, shallow enough
+/// that it still lands inside a fork's own history.
+const PHASE_GATE_HEAD_CONFIRMATIONS = 12n;
 
 async function runFetchData(opts: {
   thegraphApiKey?: string;
   network?: string;
   batchSize?: string;
-  startIndex?: string;
+  startId?: string;
   limit?: string;
+  block?: string;
   output: string;
 }) {
   const thegraphApiKey =
@@ -1171,12 +519,12 @@ async function runFetchData(opts: {
     opts.network ?? "mainnet",
     "--batch-size",
     String(parseNumber(opts.batchSize, 1000)),
-    "--start-index",
-    String(parseNumber(opts.startIndex, 0)),
     "--output",
     opts.output,
   ];
+  if (opts.startId) args.push("--start-id", opts.startId);
   if (opts.limit) args.push("--limit", opts.limit);
+  if (opts.block) args.push("--block", opts.block);
   await exportRegistrationsMain(args);
 }
 
@@ -1210,6 +558,9 @@ export async function runPreMigrationCommand(
   const network = opts.network ?? "mainnet";
   const deploymentNetwork = opts.deploymentNetwork ?? network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  // Seeding from a suffix of the registration set leaves the missing names with
+  // nothing to report them, so a partial export is refused before any of it is read.
+  assertCompleteCsv(opts.csvFile);
   const registry = resolveDeploymentAddress(
     opts.registry,
     deploymentsDir,
@@ -1375,17 +726,6 @@ async function verifyPreMigration(opts: {
   let verifiedActive = 0;
   let verifiedExpiredBonus = 0;
 
-  // reduce typescript burden
-  const getStateAbi = Artifact_PermissionedRegistry.abi.filter(
-    (x) => x.type === "function" && x.name === "getState",
-  );
-  const nameExpiresAbi = Artifact_BaseRegistrarImplementation.abi.filter(
-    (x) => x.type === "function" && x.name === "nameExpires",
-  );
-  const getResolverAbi = Artifact_PermissionedRegistry.abi.filter(
-    (x) => x.type === "function" && x.name === "getResolver",
-  );
-
   for (
     let start = 0;
     start < labels.length;
@@ -1403,19 +743,22 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: baseRegistrar,
-        abi: nameExpiresAbi,
+        abi: V1_REGISTRAR_BATCH_ABI,
         functionName: "nameExpires",
         args: [labelId(label)],
       })),
     });
     const stateResults = await client.multicall({
       allowFailure: true,
-      contracts: validBatch.map((label) => ({
-        address: registry.address,
-        abi: getStateAbi,
-        functionName: "getState",
-        args: [labelId(label)],
-      })),
+      contracts: validBatch.map(
+        (label) =>
+          ({
+            address: registry.address,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [labelId(label)],
+          }) as const,
+      ),
     });
     const resolverChecks: string[] = [];
 
@@ -1438,15 +781,14 @@ async function verifyPreMigration(opts: {
       const state = stateResult.result;
       const expiry = expiryResult.result;
 
-      const v1IsClaimable =
-        expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > v1Now;
-      if (!v1IsClaimable) {
+      if (!isClaimableOnV1(expiry, v1Now)) {
         skipped++;
         continue;
       }
 
       eligible++;
-      const expectedExpiry = expiry + bonusPeriodSeconds;
+      // Same cap pre-migration applies; see bonusAdjustedExpiry.
+      const expectedExpiry = bonusAdjustedExpiry(expiry, bonusPeriodSeconds);
       if (state.expiry !== expectedExpiry) {
         errors.push(
           `${label}.eth expiry mismatch: v2=${state.expiry} expected=${expectedExpiry} v1=${expiry}`,
@@ -1487,7 +829,7 @@ async function verifyPreMigration(opts: {
         allowFailure: true,
         contracts: resolverChecks.map((label) => ({
           address: registry.address,
-          abi: getResolverAbi,
+          abi: REGISTRY_BATCH_ABI,
           functionName: "getResolver",
           args: [label],
         })),
@@ -1500,7 +842,7 @@ async function verifyPreMigration(opts: {
           continue;
         }
         const actualResolver = result.result;
-        if (getAddress(actualResolver) !== getAddress(resolverToCheck)) {
+        if (!sameAddress(actualResolver, resolverToCheck)) {
           errors.push(`${label}.eth resolver mismatch: ${actualResolver}`);
           continue;
         }
@@ -1525,6 +867,561 @@ async function verifyPreMigration(opts: {
       `pre-migration verification failed for ${errors.length} names`,
     );
   }
+  // A verification that examined nothing is not a pass. A header-only CSV, a wrong
+  // path, or a label column that moved all produce an empty scan, and reporting that
+  // as success is a green light over an unseeded registry.
+  if (labels.length === 0) {
+    throw new Error(
+      `pre-migration verification read no labels from ${opts.csvFile}; it verified nothing`,
+    );
+  }
+  if (verifiedActive + verifiedExpiredBonus === 0) {
+    throw new Error(
+      `pre-migration verification matched none of the ${labels.length} label(s) read from ${opts.csvFile}; it verified nothing`,
+    );
+  }
+}
+
+// The block a contract was deployed in, so a v2-side event scan starts there rather
+// than at genesis.
+function readDeploymentBlock(
+  deploymentsDir: string,
+  environment: string,
+  name: string,
+): bigint | undefined {
+  const path = join(resolve(deploymentsDir), environment, `${name}.json`);
+  if (!existsSync(path)) return undefined;
+  const record = JSON.parse(readFileSync(path, "utf-8")) as {
+    receipt?: { blockNumber?: string | number };
+  };
+  const block = record.receipt?.blockNumber;
+  if (block === undefined) return undefined;
+  return BigInt(block);
+}
+
+// The deploy block recorded on an already-loaded artifact. Bundled v1 artifacts
+// carry it as a hex string, locally deployed ones as a number.
+// The address that sent a deployment's own transaction. The deploy scripts grant the
+// constructor roles to whoever deployed, so this is what the role audit has to compare
+// against — the configured owner is a different address on any live deployment, and on
+// mainnet it is the DAO.
+function deploymentOrigin(deployment: JsonDeployment): Address | undefined {
+  const origin = (deployment as { transaction?: { origin?: string } })
+    .transaction?.origin;
+  return origin ? getAddress(origin) : undefined;
+}
+
+function deploymentBlockNumber(deployment: JsonDeployment): number | undefined {
+  const block = (deployment as { receipt?: { blockNumber?: string | number } })
+    .receipt?.blockNumber;
+  if (block === undefined) return undefined;
+  return Number(BigInt(block));
+}
+
+const RESERVED_EVENT = parseAbiItem(
+  "event LabelReserved(uint256 indexed tokenId, bytes32 indexed labelHash, string label, uint64 expiry, address indexed sender)",
+);
+const REGISTERED_EVENT = parseAbiItem(
+  "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
+);
+
+// Every labelhash the v2 registry has ever created an entry for. The registry is new,
+// so this is a short scan from its deploy block — unlike the v1 side, which is why
+// the v1 half of the reconciliation comes from an indexer instead.
+async function discoverV2SeededLabelhashes(
+  client: ReturnType<typeof publicClient>,
+  registry: Address,
+  fromBlock: bigint,
+): Promise<Map<string, string>> {
+  const toBlock = await client.getBlockNumber();
+  const seeded = new Map<string, string>();
+  for (const event of [RESERVED_EVENT, REGISTERED_EVENT]) {
+    const logs = await readEventLogs(client, {
+      address: registry,
+      event,
+      fromBlock,
+      toBlock,
+    });
+    for (const log of logs) {
+      const args = log.args as { labelHash?: string; label?: string };
+      if (!args.labelHash) continue;
+      seeded.set(args.labelHash.toLowerCase(), args.label ?? "");
+    }
+  }
+  return seeded;
+}
+
+// The v2 registry keys entries by a canonical id whose low 32 bits are a version
+// counter. A raw v1 labelhash is accepted as a lookup id because the registry zeroes
+// those bits internally, but a token id read back out carries them — so comparisons
+// between the two sides must happen on the canonical form, never on a token id.
+function canonicalLabelId(labelhash: string): bigint {
+  return BigInt(labelhash) & ~0xffffffffn;
+}
+
+function toLabelhashHex(id: bigint): string {
+  return `0x${id.toString(16).padStart(64, "0")}`;
+}
+
+type ReconcileResult = {
+  claimable: number;
+  reserved: number;
+  registered: number;
+  missing: string[];
+  expiryMismatched: string[];
+  unexpected: string[];
+  /// Names the exporter could not decode a label for, so pre-migration cannot seed
+  /// them: `BatchRegistrar.batchRegister` takes a plaintext label.
+  unmigratableNoLabel: number;
+  /// Wrapped names whose `CANNOT_TRANSFER` fuse is burned. They can be reserved on
+  /// v2, but their owner can never move the token to a migration controller, so the
+  /// reservation is unclaimable through the transfer-based path.
+  unmigratableCannotTransfer: number | null;
+  /// Live-name counts from each source, when both are available. Two independent
+  /// indexers disagreeing means one of them is wrong.
+  crossSource: { csv: number; index: number } | null;
+};
+
+// Compares the v1 name set against what v2 actually holds, in both directions.
+//
+// The CSV-driven check can only ever confirm the names it was told about, so a name
+// missing from the CSV is invisible to it. This starts from an independently-built
+// index of v1 instead, which is what makes "nothing was missed" answerable.
+export async function reconcilePreMigration(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  mainnetRpcUrl?: string;
+  chainId?: string;
+  workDir: string;
+  csvFile?: string;
+  registry?: Address;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  bonusPeriodDays?: string;
+  expectedStatus?: "reserved" | "reserved-or-registered";
+  reportOnly?: boolean;
+  fromBlock?: string;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  // Count names whose CANNOT_TRANSFER fuse is burned. One wrapper read per claimable
+  // name, so opt-in.
+  checkFuses?: boolean;
+  // How far the CSV's and the index's claimable counts may differ before the
+  // reconciliation fails. Defaults to no difference.
+  crossSourceTolerance?: string;
+}): Promise<ReconcileResult> {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chainId = parseNumber(opts.chainId, NETWORKS[opts.network].chain.id);
+  const chain = forkChain(opts.network, chainId, opts.rpcUrl);
+  const client = publicClient(opts.rpcUrl, chain);
+  const v1Client = publicClient(opts.mainnetRpcUrl ?? opts.rpcUrl, chain);
+
+  const index = loadV1NameIndex(opts.workDir);
+  if (opts.csvFile) {
+    assertCompleteCsv(opts.csvFile);
+    assertIndependentSource(index.meta.source, opts.csvFile);
+  }
+
+  const registry = resolveRegistry({
+    registry: opts.registry,
+    deploymentsDir,
+    deploymentNetwork,
+  });
+  const registryAddress = registry.address;
+
+  // Claimability is judged against chain time, not wall-clock time: on a fork pinned
+  // to a past block the two disagree, and a wall-clock "now" would mark names
+  // eligible that the chain considers long released.
+  const v1Now = BigInt((await v1Client.getBlock()).timestamp);
+  // The index's own filter has to reach at least as far back as this reconciliation
+  // does, or names it dropped are absent here and pass unexamined.
+  assertIndexCoversChainTime(index.meta, v1Now);
+  const bonusPeriodSeconds =
+    BigInt(parseNumber(opts.bonusPeriodDays, 62)) * SEC_PER_DAY;
+  const expectedStatus = opts.expectedStatus ?? "reserved";
+
+  const claimable: Array<{ id: string; expiry: bigint }> = [];
+  for (const [id, expiry] of index.expiries) {
+    if (isClaimableOnV1(expiry, v1Now)) claimable.push({ id, expiry });
+  }
+
+  const result: ReconcileResult = {
+    claimable: claimable.length,
+    reserved: 0,
+    registered: 0,
+    missing: [],
+    expiryMismatched: [],
+    unexpected: [],
+    unmigratableNoLabel: 0,
+    unmigratableCannotTransfer: null,
+    crossSource: null,
+  };
+
+  // Two independent views of the same chain should agree on how many names are
+  // live. A disagreement means one of them is wrong, and it is far cheaper to learn
+  // that here than after the freeze.
+  if (opts.csvFile && existsSync(opts.csvFile)) {
+    const csv = countClaimableCsvRows(opts.csvFile, v1Now);
+    result.crossSource = { csv: csv.count, index: claimable.length };
+    console.log(
+      csv.filtered
+        ? `cross-source: CSV holds ${csv.count} claimable label(s)${csv.unknownExpiry > 0 ? ` (${csv.unknownExpiry} of them with no expiry recorded, counted as claimable)` : ""}, the index has ${claimable.length} claimable name(s)`
+        : `cross-source: CSV holds ${csv.count} label(s) and records no expiries, so this is every row it carries and not a claimable count; the index has ${claimable.length} claimable name(s)`,
+    );
+    // Only a CSV that records expiries produces a claimable count; without them the
+    // number above is every row it carries, which is not the same quantity and
+    // cannot be compared.
+    if (csv.filtered) {
+      const drift = Math.abs(csv.count - claimable.length);
+      const tolerance = parseNumber(opts.crossSourceTolerance, 0);
+      if (drift > tolerance && !opts.reportOnly) {
+        // Thrown here rather than collected with the per-name problems: a count
+        // disagreement says one of the two sources is incomplete, so the passes below
+        // would be examining the wrong set of names. It is also the cheapest evidence
+        // available, which is the whole point of taking it before the reads.
+        throw new Error(
+          `cross-source: the CSV and the index disagree on how many names are live by ${drift} (CSV ${csv.count}, index ${claimable.length}); one of the two is incomplete, and which one decides whether a name is stranded. Re-export or rebuild, or pass --cross-source-tolerance to accept a known difference`,
+        );
+      }
+    }
+  }
+
+  console.log(
+    `v1 index: ${index.expiries.size} names @ block ${index.meta.block} (${index.meta.source})`,
+  );
+  console.log(`claimable v1 names: ${claimable.length}`);
+
+  // Forward: every claimable v1 name must exist on v2 with the bonus-adjusted expiry.
+  for (
+    let start = 0;
+    start < claimable.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
+    const batch = claimable.slice(
+      start,
+      start + PREMIGRATION_VERIFY_BATCH_SIZE,
+    );
+    const states = await client.multicall({
+      allowFailure: true,
+      contracts: batch.map(
+        (entry) =>
+          ({
+            address: registryAddress,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [BigInt(entry.id)],
+          }) as const,
+      ),
+    });
+
+    for (let index = 0; index < batch.length; index++) {
+      const entry = batch[index];
+      const state = states[index];
+      if (state.status === "failure") {
+        result.missing.push(`${entry.id} state lookup failed: ${state.error}`);
+        continue;
+      }
+      const { status, expiry: actualExpiry } = state.result;
+
+      // Nothing on v2 at all: the name was never seeded.
+      if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
+        result.missing.push(entry.id);
+        continue;
+      }
+      // Computed with the same cap pre-migration applies, or every name near the
+      // uint64 ceiling reads as a permanent mismatch and the gate never opens.
+      const expectedExpiry = bonusAdjustedExpiry(
+        entry.expiry,
+        bonusPeriodSeconds,
+      );
+      if (actualExpiry !== expectedExpiry) {
+        result.expiryMismatched.push(
+          `${entry.id} v2=${actualExpiry} expected=${expectedExpiry}`,
+        );
+        continue;
+      }
+      if (status === STATUS.RESERVED) {
+        result.reserved++;
+      } else if (status === STATUS.REGISTERED) {
+        result.registered++;
+        // Before migration opens no name can legitimately be claimed on v2, so a
+        // REGISTERED entry in that window is an anomaly rather than a user action.
+        if (expectedStatus === "reserved") {
+          result.unexpected.push(
+            `${entry.id} is REGISTERED before migration opened`,
+          );
+        }
+      } else {
+        result.missing.push(`${entry.id} has status ${status}`);
+      }
+    }
+  }
+
+  // Reverse: anything seeded onto v2 that no claimable v1 name accounts for. This is
+  // what catches a stray registrar writing into the registry, or a seed run against
+  // the wrong data.
+  const fromBlock =
+    opts.fromBlock !== undefined
+      ? BigInt(opts.fromBlock)
+      : (readDeploymentBlock(
+          deploymentsDir,
+          deploymentNetwork,
+          "ETHRegistry",
+        ) ?? 0n);
+  const seeded = await discoverV2SeededLabelhashes(
+    client,
+    registryAddress,
+    fromBlock,
+  );
+  const claimableIds = new Set(
+    claimable.map((entry) => toLabelhashHex(canonicalLabelId(entry.id))),
+  );
+  // An entry whose v1 name has passed grace since it was seeded is expected — it was
+  // claimable at the time. But "v1 once knew this labelhash" is not enough on its own:
+  // a seed written after the name became unclaimable, or written with the wrong
+  // expiry, would be waved through on the strength of the labelhash alone. A
+  // legitimate seed carries the bonus-adjusted v1 expiry whether or not the name has
+  // since lapsed, so that is what distinguishes the two.
+  const staleSeeds = [...seeded.keys()].filter(
+    (labelhash) =>
+      !claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash))) &&
+      index.expiries.has(labelhash),
+  );
+  const staleStates = await readV2StatesInBatches(
+    client,
+    registryAddress,
+    staleSeeds,
+  );
+  for (const [labelhash, label] of seeded) {
+    if (claimableIds.has(toLabelhashHex(canonicalLabelId(labelhash)))) continue;
+    const known = index.expiries.get(labelhash);
+    if (known !== undefined) {
+      const expected = bonusAdjustedExpiry(known, bonusPeriodSeconds);
+      const actual = staleStates.get(labelhash);
+      if (actual === expected) continue;
+      result.unexpected.push(
+        `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 with expiry ${actual ?? "unreadable"}, but its v1 name lapsed carrying ${expected}`,
+      );
+      continue;
+    }
+    result.unexpected.push(
+      `${labelhash}${label ? ` (${label}.eth)` : ""} is on v2 but not a v1 name`,
+    );
+  }
+
+  // Names whose owner can never hand the token to a migration controller. Off by
+  // default because it is one wrapper read per claimable name, which is a large
+  // scan on mainnet — but the number matters, since these owners keep a reservation
+  // they cannot claim through the transfer-based path.
+  if (opts.checkFuses) {
+    const nameWrapper = loadV1Deployment(opts.network, "NameWrapper", opts);
+    if (!nameWrapper) {
+      console.log("no NameWrapper artifact; skipping CANNOT_TRANSFER scan");
+    } else if (!opts.csvFile || !existsSync(opts.csvFile)) {
+      // NameWrapper keys tokens by namehash, which can only be derived from a
+      // plaintext label. The index holds labelhashes by design, so the labels have
+      // to come from the CSV. Refusing is the honest answer: querying by labelhash
+      // reads empty records and would report zero however many names are affected.
+      throw new Error(
+        "--check-fuses needs --csv-file: NameWrapper is keyed by namehash, which requires the plaintext label",
+      );
+    } else {
+      const labelByHash = new Map<string, string>();
+      for (const label of readLabelsFromCsv(opts.csvFile)) {
+        labelByHash.set(
+          toLabelhashHex(canonicalLabelId(toLabelhashHex(labelId(label)))),
+          label,
+        );
+      }
+
+      const resolvable: Array<{ id: string; label: string }> = [];
+      let unmappable = 0;
+      for (const entry of claimable) {
+        const label = labelByHash.get(
+          toLabelhashHex(canonicalLabelId(entry.id)),
+        );
+        if (label === undefined) unmappable++;
+        else resolvable.push({ id: entry.id, label });
+      }
+
+      let cannotTransfer = 0;
+      let unreadable = 0;
+      for (
+        let start = 0;
+        start < resolvable.length;
+        start += PREMIGRATION_VERIFY_BATCH_SIZE
+      ) {
+        const batch = resolvable.slice(
+          start,
+          start + PREMIGRATION_VERIFY_BATCH_SIZE,
+        );
+        // Through the v1 client: NameWrapper is a v1 contract, and every other
+        // eligibility read here uses that endpoint. Asking the v2 endpoint for it
+        // fails on every entry where the two differ, and the failures were being
+        // skipped — which reports zero burned fuses rather than an error.
+        const results = await v1Client.multicall({
+          allowFailure: true,
+          contracts: batch.map((entry) => ({
+            address: nameWrapper.address,
+            abi: nameWrapper.abi,
+            functionName: "getData",
+            args: [BigInt(namehash(`${entry.label}.eth`))],
+          })),
+        });
+        for (const outcome of results) {
+          if (outcome.status === "failure") {
+            unreadable++;
+            continue;
+          }
+          const [, fuses] = outcome.result as [Address, number, bigint];
+          if ((Number(fuses) & FUSES.CANNOT_TRANSFER) !== 0) cannotTransfer++;
+        }
+      }
+      // A scan that could not read the wrapper has not established that no fuse is
+      // burned; reporting zero would be the same vacuous pass the labelhash bug gave.
+      if (unreadable > 0) {
+        throw new Error(
+          `could not read NameWrapper ${nameWrapper.address} for ${unreadable} of ${resolvable.length} name(s); the CANNOT_TRANSFER count would be meaningless. Check --mainnet-rpc-url points at the chain the wrapper is on.`,
+        );
+      }
+      result.unmigratableCannotTransfer = cannotTransfer;
+      console.log(
+        `unmigratable (CANNOT_TRANSFER burned): ${cannotTransfer} of ${resolvable.length} checked`,
+      );
+      if (unmappable > 0) {
+        // Not silently treated as fuse-free: these are names the CSV has no label
+        // for, so their fuses are simply unknown.
+        result.unmigratableNoLabel = unmappable;
+        console.log(
+          `fuses unknown (no label in the CSV for this labelhash): ${unmappable}`,
+        );
+      }
+    }
+  }
+
+  console.log(`v2 reserved: ${result.reserved}`);
+  console.log(`v2 registered: ${result.registered}`);
+  console.log(`missing from v2: ${result.missing.length}`);
+  console.log(`expiry mismatches: ${result.expiryMismatched.length}`);
+  console.log(`unexpected on v2: ${result.unexpected.length}`);
+
+  const problems = [
+    ...result.missing.map((entry) => `missing: ${entry}`),
+    ...result.expiryMismatched.map((entry) => `expiry: ${entry}`),
+    ...result.unexpected.map((entry) => `unexpected: ${entry}`),
+  ];
+  if (problems.length > 0) {
+    // A failing reconciliation must revoke any earlier pass, not just decline to
+    // record a new one: phase 3 would otherwise read the stale success and permit
+    // the irreversible freeze despite the latest evidence showing incompleteness.
+    clearVerification(
+      resolve(deploymentsDir),
+      deploymentNetwork,
+      PRECONDITION_RECONCILE,
+    );
+  } else {
+    // Phase 3 freezes v1. Recording the pass lets it refuse to run when the
+    // reconciliation that proves nothing was missed has not been done.
+    //
+    // The block recorded is the index's, not the chain head: names registered after
+    // the index was built were never examined, so the index is what limits how much
+    // of the chain this pass actually covers. Recording the head instead would let a
+    // week-old index be read as a brand-new pass, and the freshness bound the freeze
+    // applies would have nothing to bite on.
+    //
+    // A rehearsal reconciles a fork, and a fork answers for its parent on everything
+    // the record would otherwise hold: the same chain id, and the same history below
+    // the fork point. The pass is still recorded — an operator wants to see that the
+    // rehearsal ran, and a later failure has to revoke an earlier pass either way —
+    // but it is stamped with what answered it, and the gate refuses that.
+    const v1RpcUrl = opts.mainnetRpcUrl ?? opts.rpcUrl;
+    const simulatedEndpoint =
+      (await describeSimulatedEndpoint(v1Client, v1RpcUrl)) ??
+      (await describeSimulatedEndpoint(client, opts.rpcUrl));
+    if (simulatedEndpoint) {
+      console.log(
+        `recorded as a rehearsal, which phase 3 will not accept: ${simulatedEndpoint}`,
+      );
+    }
+
+    const indexBlock = BigInt(index.meta.block);
+    const indexBlockHash = (
+      await v1Client.getBlock({ blockNumber: indexBlock })
+    ).hash;
+    // Read from the chain rather than from `--chain-id`, so that the id recorded is
+    // the one that answered the reads.
+    const observedChainId = await v1Client.getChainId();
+    const headBlockNumber =
+      (await v1Client.getBlockNumber()) - PHASE_GATE_HEAD_CONFIRMATIONS;
+    const headBlockHash = (
+      await v1Client.getBlock({ blockNumber: headBlockNumber })
+    ).hash;
+    recordVerification(resolve(deploymentsDir), deploymentNetwork, {
+      check: PRECONDITION_RECONCILE,
+      chainId: observedChainId,
+      blockNumber: indexBlock.toString(),
+      blockHash: indexBlockHash,
+      headBlockNumber: headBlockNumber.toString(),
+      headBlockHash,
+      ...(simulatedEndpoint ? { simulatedEndpoint } : {}),
+      verifiedAt: new Date().toISOString(),
+      details: {
+        claimable: result.claimable,
+        reserved: result.reserved,
+        registered: result.registered,
+        rpcHead: (await client.getBlockNumber()).toString(),
+      },
+    });
+  }
+  if (problems.length > 0) {
+    console.error(problems.slice(0, 20).join("\n"));
+    if (problems.length > 20) {
+      console.error(`...and ${problems.length - 20} more`);
+    }
+    if (!opts.reportOnly) {
+      throw new Error(`reconciliation failed for ${problems.length} names`);
+    }
+  }
+  return result;
+}
+
+// Current v2 expiry per labelhash, batched. Used by the reverse pass, which has to
+// judge a seed by what it carries rather than by the fact that it exists.
+async function readV2StatesInBatches(
+  client: ReturnType<typeof publicClient>,
+  registryAddress: Address,
+  labelhashes: string[],
+): Promise<Map<string, bigint>> {
+  const expiries = new Map<string, bigint>();
+  for (
+    let start = 0;
+    start < labelhashes.length;
+    start += PREMIGRATION_VERIFY_BATCH_SIZE
+  ) {
+    const batch = labelhashes.slice(
+      start,
+      start + PREMIGRATION_VERIFY_BATCH_SIZE,
+    );
+    const states = await client.multicall({
+      allowFailure: true,
+      contracts: batch.map(
+        (labelhash) =>
+          ({
+            address: registryAddress,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [BigInt(labelhash)],
+          }) as const,
+      ),
+    });
+    for (const [index, labelhash] of batch.entries()) {
+      const state = states[index];
+      if (state.status === "failure") continue;
+      expiries.set(labelhash, state.result.expiry);
+    }
+  }
+  return expiries;
 }
 
 type ContractRef = { address: Address; abi: readonly any[] };
@@ -1667,8 +1564,6 @@ const V1_REGISTRATION_CONTROLLER_NAMES = [
   "NameWrapper",
 ] as const;
 
-const V1_BASE_REGISTRAR_NAME = "BaseRegistrarImplementation";
-
 // v1 reverse registrars a migration is granted control of: the premigration
 // registrar writes reverse records on a registrant's behalf, and the adapters
 // forward reverse updates for the accounts they are allowed to name. These are
@@ -1704,6 +1599,16 @@ const V1_HANDOFF_CONTROLLERS: Record<
 };
 
 const V1_HANDOFF_CONTROLLER_ENTRIES = Object.entries(V1_HANDOFF_CONTROLLERS);
+
+/// Handoff contracts every deployment carries, whatever the network. The testnet
+/// premigration helper is deliberately absent: it exists only where a testnet needs a
+/// permissionless v1 registrar, so its absence is not evidence of an incomplete set.
+const V1_REQUIRED_HANDOFF_CONTROLLER_NAMES = [
+  "ETHRenewerV1",
+  "Graveyard",
+  "ReverseRegistrarAdapter",
+  "DefaultReverseRegistrarAdapter",
+] as const;
 
 // Every handoff contract name once, so each namespace's artifact is read a single
 // time regardless of how many v1 surfaces it is authorized on.
@@ -1761,6 +1666,16 @@ function v1ControllersToRemove(audit: V1ControllerAudit): V1ControllerState[] {
   return audit.controllers.filter(
     (controller) =>
       controller.enabled && !controller.keep && !controller.foreign,
+  );
+}
+
+// Grants the active deployment depends on that are not in place. The revoke-side
+// filter cannot see these: it tests `enabled` first, so a missing grant is indexed
+// as "already revoked" and the audit passes over it. A revoked adapter stops reverse
+// records being written and nothing else reports it.
+function v1ControllersMissing(audit: V1ControllerAudit): V1ControllerState[] {
+  return audit.controllers.filter(
+    (controller) => controller.keep && !controller.enabled,
   );
 }
 
@@ -1841,45 +1756,42 @@ function siblingDeploymentNamespaces(opts: {
 // value rather than as a demand for a narrower one.
 const LOG_SCAN_MIN_SPAN = 1_000n;
 
-// Refusals of the span rather than of the query: the block range or the result count
-// exceeded a server-side cap. Both are answered by requesting a narrower span.
-const LOG_SCAN_SPAN_REFUSALS = [
-  "block range",
-  "range exceeds",
-  // Some providers put the offending count between the words, e.g. Infura's
-  // "range 11390003 exceeds limit of 10000", which "range exceeds" misses —
-  // without this entry that refusal is rethrown as fatal instead of bisected.
-  "exceeds limit",
-  "narrow your filter",
-  "query returned more than",
-  "more than 10000 results",
-  "log response size",
-  "response size exceeded",
-  "query timeout exceeded",
-];
+// A decoded log with the position fields a consumer needs to order results or
+// resume a scan. Decoded arguments stay untyped: the shape follows the event the
+// caller passed, so each consumer narrows it to that event's parameters.
+type ScannedLog = {
+  args: Record<string, unknown>;
+  blockNumber: bigint;
+  logIndex: number;
+  transactionHash: `0x${string}`;
+};
 
 function isLogSpanRefusal(error: unknown): boolean {
-  const message = errorMessageChain(error).join(" ").toLowerCase();
-  return LOG_SCAN_SPAN_REFUSALS.some((refusal) => message.includes(refusal));
+  return isLogSpanRefusalMessage(errorMessageChain(error).join(" "));
 }
 
-// Every `controller` address one event has ever carried on a contract. Providers cap
+// One event's logs over a block range, in ascending block order. Providers cap
 // `eth_getLogs` by block span or by result count, and a load-balanced endpoint may
 // apply a cap to only some requests, so a refused span is bisected and each half
 // requested in turn. The widest span the provider has accepted is carried across the
 // scan, so the cap is discovered once rather than rediscovered per subrange. The
 // blocks covered are the same either way; a refusal at the smallest span, or any
 // error that is not about the span, raises.
-async function readControllerEventAddresses(
+async function readEventLogs(
   client: ReturnType<typeof publicClient>,
-  args: { address: Address; event: AbiEvent; toBlock: bigint },
-): Promise<Address[]> {
+  args: {
+    address: Address;
+    event: AbiEvent;
+    fromBlock?: bigint;
+    toBlock: bigint;
+  },
+): Promise<ScannedLog[]> {
   let acceptedSpan: bigint | undefined;
 
   const readSpan = async (
     fromBlock: bigint,
     toBlock: bigint,
-  ): Promise<Address[]> => {
+  ): Promise<ScannedLog[]> => {
     const span = toBlock - fromBlock + 1n;
     const bisect = () => {
       const mid = fromBlock + span / 2n;
@@ -1898,15 +1810,24 @@ async function readControllerEventAddresses(
       });
       if (acceptedSpan === undefined || span > acceptedSpan)
         acceptedSpan = span;
-      return logs.map((log) =>
-        getAddress((log.args as { controller: Address }).controller),
-      );
+      return logs as unknown as ScannedLog[];
     } catch (error) {
       if (!isLogSpanRefusal(error) || span <= LOG_SCAN_MIN_SPAN) throw error;
       return bisect();
     }
   };
-  return readSpan(0n, args.toBlock);
+  return readSpan(args.fromBlock ?? 0n, args.toBlock);
+}
+
+// Every `controller` address one event has ever carried on a contract.
+async function readControllerEventAddresses(
+  client: ReturnType<typeof publicClient>,
+  args: { address: Address; event: AbiEvent; toBlock: bigint },
+): Promise<Address[]> {
+  const logs = await readEventLogs(client, args);
+  return logs.map((log) =>
+    getAddress((log.args as { controller: Address }).controller),
+  );
 }
 
 // Every address a v1 surface has ever had as a controller, across the whole chain.
@@ -1969,7 +1890,7 @@ async function filterHandoffControllersByBackReference(
           abi,
           functionName: getterName,
         })) as Address;
-        return getAddress(backReference) === getAddress(surface.address);
+        return sameAddress(backReference, surface.address);
       } catch (error) {
         if (!isContractProbeRejection(error)) throw error;
         return false;
@@ -2037,7 +1958,16 @@ async function auditV1Controllers(
     }
     return candidates;
   };
-  const keepAddresses = new Set<Address>();
+  // Keyed by v1 surface: a handoff contract is authorized on the surfaces its entry
+  // in the map names and no others, so an address kept on the ReverseRegistrar must
+  // not also be kept on the BaseRegistrar, where a grant it never needed would be
+  // left standing.
+  const keepAddressesBySurface = new Map<string, Set<Address>>();
+  const keepOn = (surface: string, address: Address) => {
+    const existing = keepAddressesBySurface.get(surface);
+    if (existing) existing.add(getAddress(address));
+    else keepAddressesBySurface.set(surface, new Set([getAddress(address)]));
+  };
   const addCandidate = (
     map: Map<Address, string>,
     address: Address,
@@ -2064,11 +1994,11 @@ async function auditV1Controllers(
       const controller = maybeLoadV2Deployment(deploymentsDir, namespace, name);
       if (!controller) continue;
       found += 1;
-      if (isActiveNamespace) keepAddresses.add(getAddress(controller.address));
       const label = `${name} (${namespace})`;
       for (const [surface, handoffNames] of V1_HANDOFF_CONTROLLER_ENTRIES) {
         if (handoffNames.includes(name)) {
           addCandidate(candidatesFor(surface), controller.address, label);
+          if (isActiveNamespace) keepOn(surface, controller.address);
         }
       }
     }
@@ -2099,6 +2029,9 @@ async function auditV1Controllers(
     registrarSecurityController,
   });
   const surfaces: Array<{
+    /// Deployment name of the surface, which is how its candidates and its keep set
+    /// are keyed. Distinct from `surface`, which is the label shown to an operator.
+    key: string;
     surface: string;
     authority: JsonDeployment;
     target: JsonDeployment;
@@ -2112,6 +2045,7 @@ async function auditV1Controllers(
     backReferenceGetter?: string;
   }> = [
     {
+      key: V1_BASE_REGISTRAR_NAME,
       surface: "v1 BaseRegistrar",
       authority: baseRegistrar,
       target: registrarRoute.target,
@@ -2125,6 +2059,7 @@ async function auditV1Controllers(
   for (const name of V1_REVERSE_REGISTRAR_NAMES) {
     const reverseRegistrar = requireV1Deployment(opts.network, name, opts);
     surfaces.push({
+      key: name,
       surface: `v1 ${name}`,
       authority: reverseRegistrar,
       target: reverseRegistrar,
@@ -2188,7 +2123,7 @@ async function auditV1Controllers(
         name,
         address,
         enabled: flags[index],
-        keep: keepAddresses.has(address),
+        keep: keepAddressesBySurface.get(surface.key)?.has(address) ?? false,
         foreign: foreignAddresses.has(address),
         target: surface.target,
         revokeFunctionName: surface.revokeFunctionName,
@@ -2205,10 +2140,65 @@ export async function disableV1Registrars(
     privateKey?: `0x${string}`;
     impersonateOwner?: boolean;
     calldataOnly?: boolean;
+    // Proceed without the reconciliation gate. Needed for a rehearsal on a chain
+    // whose reconciliation cannot run, and as an operator escape hatch.
+    skipPreconditions?: boolean;
+    // How old the reconciliation pass may be, in blocks. Roughly a day by default.
+    maxReconcileAgeBlocks?: string;
   },
 ) {
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  // This is the irreversible step: once v1 registration is frozen, a name that
+  // pre-migration missed cannot be picked up by re-running it. So it will not run
+  // until the reconciliation that proves nothing was missed has passed.
+  if (!opts.skipPreconditions) {
+    const deploymentsDir = resolve(
+      opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+    );
+    const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+    const failure = await checkPrecondition({
+      record: readVerification(
+        deploymentsDir,
+        deploymentNetwork,
+        PRECONDITION_RECONCILE,
+      ),
+      chainId: chain.id,
+      currentBlock: await client.getBlockNumber(),
+      // Proves the recorded block belongs to the chain about to be frozen. A
+      // reconciliation run on a fork reports this chain's id, and the freeze cannot
+      // be undone, so the record has to name a block this chain actually has.
+      canonicalBlockHash: async (blockNumber) => {
+        try {
+          return (await client.getBlock({ blockNumber })).hash;
+        } catch {
+          return null;
+        }
+      },
+      // A pass says the chain looked complete at the block it observed. Names keep
+      // being registered on v1 until the freeze, so a pass from long ago says
+      // nothing about now — re-run it rather than freezing on stale evidence.
+      //
+      // A count of zero means zero tolerance, not "unbounded": an operator tightening
+      // the gate must not get the opposite of what they asked for. Lifting the bound
+      // takes the explicit word.
+      maxAgeBlocks:
+        opts.maxReconcileAgeBlocks === RECONCILE_AGE_UNBOUNDED
+          ? undefined
+          : BigInt(parseNumber(opts.maxReconcileAgeBlocks, 7200)),
+    });
+    if (failure) {
+      throw new Error(
+        `refusing to freeze v1 registrations: ${describePreconditionFailure(
+          PRECONDITION_RECONCILE,
+          failure,
+        )}`,
+      );
+    }
+    console.log(`precondition satisfied: ${PRECONDITION_RECONCILE}`);
+  }
+
   const audit = await auditV1Controllers({ ...opts, client });
 
   for (const controller of audit.controllers) {
@@ -2413,7 +2403,7 @@ async function activateV1Graveyard(opts: {
   });
 }
 
-async function activateV1HandoffControllers(opts: {
+export async function activateV1HandoffControllers(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -2502,7 +2492,7 @@ async function reclaimV1RegistrarOwnership(opts: {
     abi: baseRegistrar.abi,
     functionName: "owner",
   })) as Address;
-  if (getAddress(currentOwner) === getAddress(opts.v1Owner)) return;
+  if (sameAddress(currentOwner, opts.v1Owner)) return;
 
   const code = await client.getCode({ address: currentOwner });
   if (!code || code === "0x") {
@@ -2523,7 +2513,7 @@ async function reclaimV1RegistrarOwnership(opts: {
   );
   if (
     registrarSecurityController &&
-    getAddress(currentOwner) === getAddress(registrarSecurityController.address)
+    sameAddress(currentOwner, registrarSecurityController.address)
   ) {
     console.log(
       `v1 BaseRegistrar owner ${currentOwner} is the RegistrarSecurityController, not a prior renewer; skipping reclaim`,
@@ -2562,14 +2552,14 @@ async function reclaimV1RegistrarOwnership(opts: {
     abi: baseRegistrar.abi,
     functionName: "owner",
   })) as Address;
-  if (getAddress(updatedOwner) !== getAddress(opts.v1Owner)) {
+  if (!sameAddress(updatedOwner, opts.v1Owner)) {
     throw new Error(
       `v1 BaseRegistrar ownership reclaim failed; owner is ${updatedOwner}`,
     );
   }
 }
 
-async function authorizeV1Renewer(opts: {
+export async function authorizeV1Renewer(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -2602,7 +2592,7 @@ async function authorizeV1Renewer(opts: {
   return ethRenewerV1;
 }
 
-async function activateV1RenewerAndTransferOwnership(opts: {
+export async function activateV1RenewerAndTransferOwnership(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
@@ -2636,7 +2626,7 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     functionName: "owner",
   })) as Address;
   console.log(`v1 BaseRegistrar owner: ${currentOwner}`);
-  if (getAddress(currentOwner) === getAddress(ethRenewerV1)) return;
+  if (sameAddress(currentOwner, ethRenewerV1)) return;
 
   const route = await resolveRegistrarControlRoute({
     client,
@@ -2667,7 +2657,7 @@ async function activateV1RenewerAndTransferOwnership(opts: {
     functionName: "owner",
   })) as Address;
   console.log(`v1 BaseRegistrar owner after phase: ${updatedOwner}`);
-  if (getAddress(updatedOwner) !== getAddress(ethRenewerV1)) {
+  if (!sameAddress(updatedOwner, ethRenewerV1)) {
     throw new Error(`unexpected v1 BaseRegistrar owner: ${updatedOwner}`);
   }
 }
@@ -2677,7 +2667,13 @@ async function activateV1RenewerAndTransferOwnership(opts: {
 // controllers. Anything enabled that the active deployment did not authorize can mint
 // or mutate v1 names and so fails the check.
 export async function verifyV1RegistrarsDisabled(
-  opts: V1ControllerAuditOptions,
+  opts: V1ControllerAuditOptions & {
+    // Also assert the active deployment's own grants are present. Off by default
+    // because the handoff contracts are authorized across two phases: the reverse
+    // adapters in phase 1, and ETHRenewerV1 with the Graveyard in phase 4. Turn it
+    // on once the last of them has run.
+    requireActiveGrants?: boolean;
+  },
 ) {
   const chain = migrationChain(opts);
   const client = publicClient(opts.rpcUrl, chain, opts.provider);
@@ -2690,7 +2686,9 @@ export async function verifyV1RegistrarsDisabled(
         : controller.keep
           ? "enabled (authorized by active deployment)"
           : "ENABLED"
-      : "disabled";
+      : controller.keep
+        ? "MISSING (expected to be authorized by active deployment)"
+        : "disabled";
     console.log(`${describeV1Controller(controller)}: ${state}`);
   }
 
@@ -2702,6 +2700,1193 @@ export async function verifyV1RegistrarsDisabled(
         .join(", ")}`,
     );
   }
+
+  // Everything above is driven by the audit, so it inherits whatever the candidate
+  // discovery missed: a registration controller the scan never surfaced is reported
+  // as neither enabled nor disabled, and an empty candidate set and a frozen v1 read
+  // the same. The named registration controllers are therefore asserted directly.
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+  const stillEnabled: string[] = [];
+  for (const name of V1_REGISTRATION_CONTROLLER_NAMES) {
+    const controller = loadV1Deployment(opts.network, name, opts);
+    if (!controller) continue;
+    const enabled = (await client.readContract({
+      address: baseRegistrar.address,
+      abi: baseRegistrar.abi,
+      functionName: "controllers",
+      args: [controller.address],
+    })) as boolean;
+    console.log(
+      `v1 registration controller ${name} ${controller.address}: ${enabled ? "ENABLED" : "disabled"}`,
+    );
+    if (enabled) stillEnabled.push(`${name} ${controller.address}`);
+  }
+  if (stillEnabled.length > 0) {
+    throw new Error(
+      `v1 registration controllers still enabled: ${stillEnabled.join(", ")}`,
+    );
+  }
+
+  if (opts.requireActiveGrants) {
+    // Only a contract with an artifact ever becomes a candidate, so an absent
+    // artifact narrows the assertion to what happens to be on disk instead of
+    // failing. Checked first: a missing adapter would otherwise read as "disabled"
+    // and pass, and nothing else reports a reverse adapter that was never granted.
+    const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+    const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+    const absent = V1_REQUIRED_HANDOFF_CONTROLLER_NAMES.filter(
+      (name) => !maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+    );
+    if (absent.length > 0) {
+      throw new Error(
+        `cannot assert the active deployment's v1 authorizations: ${deploymentNetwork} has no artifact for ${absent.join(", ")}, so their grants would go unchecked`,
+      );
+    }
+
+    const missing = v1ControllersMissing(audit);
+    if (missing.length > 0) {
+      throw new Error(
+        `active deployment authorizations missing: ${missing
+          .map(describeV1Controller)
+          .join(", ")}`,
+      );
+    }
+  }
+}
+
+// Gives an address a balance of a real ERC-20 on a fork.
+//
+// Mainnet whitelists real USDC/DAI instead of the free-mint mocks, so every
+// paid-registration smoke is skipped there and the entire ETHRegistrar payment path
+// goes unexercised on the one network it matters most for. Writing the balance
+// directly lets the same smokes run against the real token.
+//
+// Tenderly exposes a purpose-built method. On Anvil the balances mapping has to be
+// located first: its slot is an implementation detail that differs per token (and
+// per proxy), so candidate slots are written and read back until `balanceOf` agrees.
+async function setErc20Balance(opts: {
+  client: ReturnType<typeof publicClient>;
+  token: Address;
+  account: Address;
+  amount: bigint;
+  tenderly: boolean;
+}): Promise<void> {
+  const readBalance = async () =>
+    (await opts.client.readContract({
+      address: opts.token,
+      abi: Artifact_MockERC20.abi,
+      functionName: "balanceOf",
+      args: [opts.account],
+    })) as bigint;
+
+  if (opts.tenderly) {
+    await requestAny(opts.client, [
+      {
+        method: "tenderly_setErc20Balance",
+        params: [opts.token, opts.account, `0x${opts.amount.toString(16)}`],
+      },
+    ]);
+    if ((await readBalance()) < opts.amount) {
+      throw new Error(
+        `tenderly_setErc20Balance did not fund ${opts.account} with ${opts.token}`,
+      );
+    }
+    return;
+  }
+
+  const original = await readBalance();
+  const value = `0x${opts.amount.toString(16).padStart(64, "0")}` as const;
+  for (let slot = 0; slot < 32; slot++) {
+    const key = keccak256(
+      encodeAbiParameters(
+        [{ type: "address" }, { type: "uint256" }],
+        [opts.account, BigInt(slot)],
+      ),
+    );
+    const previous = (await opts.client.request({
+      method: "eth_getStorageAt" as never,
+      params: [opts.token, key, "latest"] as never,
+    })) as `0x${string}`;
+    await requestAny(opts.client, [
+      { method: "anvil_setStorageAt", params: [opts.token, key, value] },
+      { method: "hardhat_setStorageAt", params: [opts.token, key, value] },
+    ]);
+    if ((await readBalance()) === opts.amount) return;
+    // Wrong slot: put back exactly what was there rather than leaving a stray write.
+    await requestAny(opts.client, [
+      { method: "anvil_setStorageAt", params: [opts.token, key, previous] },
+      { method: "hardhat_setStorageAt", params: [opts.token, key, previous] },
+    ]);
+  }
+  throw new Error(
+    `could not locate the balances slot for ${opts.token} (balance still ${original})`,
+  );
+}
+
+// Resolves a set of names through a Universal Resolver and records every answer.
+// Used to capture the pre-cutover state and to re-read it afterwards, so phase 7 can
+// be verified by comparison rather than by checking that resolution returns
+// something non-zero.
+async function captureResolutionSnapshot(opts: {
+  client: ReturnType<typeof publicClient>;
+  universalResolver: Address;
+  names: string[];
+  coinTypes?: readonly bigint[];
+  textKeys?: readonly string[];
+  // Ask exactly the records a previous snapshot captured, per name, instead of the
+  // configured set. Verification uses this so both halves answer the same questions.
+  recordsByName?: Map<string, string[]>;
+}): Promise<ResolutionSnapshot> {
+  const names: NameSnapshot[] = [];
+
+  for (const name of opts.names) {
+    const previous = opts.recordsByName?.get(name);
+    const queries = previous
+      ? queriesFromSnapshot(name, previous)
+      : recordQueries(name, {
+          coinTypes: opts.coinTypes,
+          textKeys: opts.textKeys,
+        });
+    const records: Record<string, Hex | null> = {};
+    let resolver: Address = zeroAddress;
+
+    for (const query of queries) {
+      try {
+        const [answer, usedResolver] = (await opts.client.readContract({
+          address: opts.universalResolver,
+          abi: Artifact_UniversalResolverV2.abi,
+          functionName: "resolve",
+          args: [dnsEncodeName(name), query.call],
+        })) as [Hex, Address];
+        records[query.label] = answer;
+        if (usedResolver) resolver = usedResolver;
+      } catch {
+        // A record a name does not carry reverts, which is a legitimate answer and
+        // recorded as such — the comparison cares whether it *changes*.
+        records[query.label] = null;
+      }
+    }
+    names.push({ name, resolver, records });
+  }
+
+  return {
+    capturedAt: new Date().toISOString(),
+    chainId: await opts.client.getChainId(),
+    resolverAddress: opts.universalResolver,
+    names,
+  };
+}
+
+// How many candidate names to probe, and how many resolvable ones to keep. The pool
+// is larger than the sample because most names carry no records at all.
+const RESOLUTION_CANDIDATE_POOL = 25;
+const RESOLUTION_SAMPLE_SIZE = 5;
+
+// Picks names that actually carry records, so the cutover comparison has something
+// to compare. Candidates are probed with the address lookups alone rather than the
+// full record set, keeping the cost proportional to the pool size rather than to the
+// records per name.
+//
+// A name past v1's grace period is excluded even when it still resolves. Its records
+// survive on v1 until someone re-registers it, but pre-migration will not reserve it
+// — it is not claimable — so after the cutover it has no v2 entry and resolves to
+// nothing. That is the migration working, not a regression, and sampling such a name
+// puts an expected change into the one report whose whole purpose is to show that
+// nothing changed.
+export async function selectResolvableNames(opts: {
+  client: ReturnType<typeof publicClient>;
+  universalResolver: Address;
+  candidates: string[];
+  limit: number;
+  v1Client: ReturnType<typeof publicClient>;
+  v1BaseRegistrar: JsonDeployment;
+  v1Now: bigint;
+}): Promise<string[]> {
+  const chosen: string[] = [];
+  for (const name of opts.candidates) {
+    if (chosen.length >= opts.limit) break;
+    const label = name.replace(/\.eth$/, "");
+    const expiry = (await opts.v1Client.readContract({
+      address: opts.v1BaseRegistrar.address,
+      abi: opts.v1BaseRegistrar.abi,
+      functionName: "nameExpires",
+      args: [labelId(label)],
+    })) as bigint;
+    if (!isClaimableOnV1(expiry, opts.v1Now)) continue;
+    const probe = await captureResolutionSnapshot({
+      client: opts.client,
+      universalResolver: opts.universalResolver,
+      names: [name],
+      coinTypes: [],
+      textKeys: [],
+    });
+    if (snapshotCarriesRecords(probe)) chosen.push(name);
+  }
+  return chosen;
+}
+
+export async function snapshotResolution(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  names: string;
+  universalResolver?: Address;
+  outFile: string;
+  coinTypes?: string;
+  textKeys?: string;
+}) {
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const names = opts.names
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length === 0) throw new Error("no names given to snapshot");
+
+  const snapshot = await captureResolutionSnapshot({
+    client,
+    universalResolver:
+      opts.universalResolver ?? DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+    names,
+    coinTypes: opts.coinTypes
+      ? opts.coinTypes.split(",").map((value) => BigInt(value.trim()))
+      : undefined,
+    textKeys: opts.textKeys
+      ? opts.textKeys.split(",").map((value) => value.trim())
+      : undefined,
+  });
+
+  writeFileSync(opts.outFile, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  const recordCount = snapshot.names.reduce(
+    (total, entry) => total + Object.keys(entry.records).length,
+    0,
+  );
+  console.log(
+    `captured ${snapshot.names.length} name(s), ${recordCount} record(s) -> ${opts.outFile}`,
+  );
+  return snapshot;
+}
+
+export async function verifyResolution(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  snapshotFile: string;
+  universalResolver?: Address;
+  reportOnly?: boolean;
+}) {
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const before = JSON.parse(
+    readFileSync(opts.snapshotFile, "utf8"),
+  ) as ResolutionSnapshot;
+
+  const after = await captureResolutionSnapshot({
+    client,
+    universalResolver:
+      opts.universalResolver ??
+      (before.resolverAddress as Address) ??
+      DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
+    names: before.names.map((entry) => entry.name),
+    // Re-ask exactly the questions the snapshot answered. Falling back to the
+    // defaults would compare a different record set: anything captured under custom
+    // coin types or text keys would be absent here and read as a revert.
+    recordsByName: new Map(
+      before.names.map((entry) => [entry.name, Object.keys(entry.records)]),
+    ),
+  });
+
+  // A snapshot in which nothing resolved compares equal to another in which nothing
+  // resolved, so an empty capture reports the cutover as unchanged having examined no
+  // record at all. The rehearsal already refuses this; the command an operator runs
+  // against mainnet has to as well.
+  if (!snapshotCarriesRecords(before)) {
+    throw new Error(
+      `${opts.snapshotFile} holds no resolved records, so comparing against it proves nothing about the cutover; re-take it against a resolver that answers`,
+    );
+  }
+
+  const differences = diffResolutionSnapshots(before, after);
+  console.log(
+    `compared ${before.names.length} name(s) against ${opts.snapshotFile}`,
+  );
+  if (differences.length === 0) {
+    console.log("resolution unchanged across the cutover");
+    return differences;
+  }
+
+  for (const difference of differences.slice(0, 40)) {
+    console.error(describeDifference(difference));
+  }
+  if (differences.length > 40) {
+    console.error(`...and ${differences.length - 40} more`);
+  }
+  if (!opts.reportOnly) {
+    throw new Error(
+      `resolution changed across the cutover for ${differences.length} record(s)`,
+    );
+  }
+  return differences;
+}
+
+// Name of the reconciliation gate, shared by the check that records it and the
+// phase that requires it.
+/// Lifts the freshness bound on a recorded pass. Spelled as a word so that no
+/// numeric value can turn the bound off by accident.
+const RECONCILE_AGE_UNBOUNDED = "none";
+
+const PRECONDITION_RECONCILE = "premigration-reconcile";
+
+const EAC_ROLES_CHANGED_EVENT = parseAbiItem(
+  "event EACRolesChanged(uint256 indexed resource, address indexed account, uint256 previousRoles, uint256 newRoles)",
+);
+
+// Registries whose role matrix is audited, and the contracts expected to hold roles
+// on each. Derived from the deploy scripts rather than from the README table, which
+// documents contracts that are never deployed and omits grants that are.
+const AUDITED_REGISTRIES = ["RootRegistry", "ETHRegistry"] as const;
+
+// Root-scope grants each deploy script makes, keyed by the registry they land on.
+// `deployer` is the constructor's initial role holder; the rest are explicit grants.
+//
+// Expectations are the bitmaps as granted, not as effective. An admin bit does not
+// add the regular role to what an account *holds* — `withAdminRolesApplied` governs
+// what an account may grant or revoke for others
+// (`EnhancedAccessControl._getSettableRoles`), not `roles()`. The distinction is
+// worth stating because it is not a privilege boundary: an account holding
+// REGISTRAR_ADMIN can grant itself REGISTRAR at any time, which is exactly what the
+// devnet fixture does. Treat an admin bit as implying the regular one when reasoning
+// about authority, while still auditing the two separately.
+const EXPECTED_ROOT_ROLES: Record<
+  (typeof AUDITED_REGISTRIES)[number],
+  Array<{ deployment: string; roles: bigint; onlyBeforeHandoff?: boolean }>
+> = {
+  RootRegistry: [
+    { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT },
+    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+  ],
+  ETHRegistry: [
+    { deployment: "@deployer", roles: DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT },
+    { deployment: "@owner", roles: ROLES.REGISTRY.CAN_NAME },
+    {
+      deployment: "ETHRegistrar",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+    },
+    // BatchRegistrar seeds pre-migration reservations and is stripped of its roles
+    // in phase 6, so what it should hold depends on where the migration is.
+    {
+      deployment: "BatchRegistrar",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+      onlyBeforeHandoff: true,
+    },
+    { deployment: "ETHRenewerV1", roles: DEPLOYMENT_ROLES.ETH_RENEWER_V1_ROOT },
+    {
+      deployment: "UnlockedMigrationController",
+      roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+    },
+    {
+      deployment: "LockedMigrationController",
+      roles: DEPLOYMENT_ROLES.MIGRATION_CONTROLLER_ROOT,
+    },
+    {
+      deployment: "TestnetV1PremigrationRegistrar",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+    },
+    {
+      deployment: "FastETHRegistrar",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+    },
+    {
+      deployment: "MockPremigrator",
+      roles: DEPLOYMENT_ROLES.ETH_REGISTRAR_ROOT,
+    },
+  ],
+};
+
+// Token-scoped grants the deploy scripts make, keyed by the registry they land on.
+// `register` grants its role bitmap to the new owner at the *token's* resource, not
+// at the root, so none of these appear in a root-only audit.
+//
+// Only RootRegistry is audited this way. Its token set is the TLDs the deployment
+// creates, so an unexpected scoped grant there means something. ETHRegistry's token
+// set is the whole namespace — every registered name grants its owner roles at its
+// own resource — so the same sweep would report the entire namespace as unexpected.
+const EXPECTED_TOKEN_ROLES: Record<
+  (typeof AUDITED_REGISTRIES)[number],
+  Array<{ label: string; deployment: string; roles: bigint }>
+> = {
+  RootRegistry: [
+    // 01_ETHRegistry.ts registers `eth` to the deployer.
+    {
+      label: "eth",
+      deployment: "@deployer",
+      roles: DEPLOYMENT_ROLES.ETH_TOKEN,
+    },
+    // 01_ReverseMirror.ts registers `reverse` to the owner.
+    {
+      label: "reverse",
+      deployment: "@owner",
+      roles: DEPLOYMENT_ROLES.REVERSE_REGISTRY_ROOT,
+    },
+  ],
+  ETHRegistry: [],
+};
+
+const AUDIT_TOKEN_SCOPES: Record<(typeof AUDITED_REGISTRIES)[number], boolean> =
+  { RootRegistry: true, ETHRegistry: false };
+
+// Every (resource, account) a role has ever been granted at on a registry. Used only
+// to decide who to ask about — what they actually hold is read live, because expiry
+// and re-registration change effective authority without emitting anything.
+//
+// The resource is kept rather than discarded: a grant scoped to a token is invisible
+// at the root, so dropping it here is what let a scoped privilege go unexamined.
+async function discoverRoleGrants(
+  client: ReturnType<typeof publicClient>,
+  registry: Address,
+  fromBlock: bigint,
+): Promise<Array<{ resource: bigint; account: Address }>> {
+  const toBlock = await client.getBlockNumber();
+  const logs = await readEventLogs(client, {
+    address: registry,
+    event: EAC_ROLES_CHANGED_EVENT,
+    fromBlock,
+    toBlock,
+  });
+  const grants = new Map<string, { resource: bigint; account: Address }>();
+  for (const log of logs) {
+    const args = log.args as { resource?: bigint; account?: Address };
+    if (!args.account || args.resource === undefined) continue;
+    const account = getAddress(args.account);
+    grants.set(`${args.resource}|${account.toLowerCase()}`, {
+      resource: args.resource,
+      account,
+    });
+  }
+  return [...grants.values()];
+}
+
+// How a resource is named in the audit output. The root is the root; a token scope is
+// named by its label where the deployment defines one, and by its resource id where
+// it does not.
+function describeScope(
+  resource: bigint,
+  labelByResource: Map<string, string>,
+): string {
+  if (resource === 0n) return "root";
+  return labelByResource.get(resource.toString()) ?? `resource ${resource}`;
+}
+
+export async function verifyV2Roles(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  deployer?: Address;
+  owner?: Address;
+  fromBlock?: string;
+  reportOnly?: boolean;
+  // Audit the state before phase 6 revokes the seeding roles, where BatchRegistrar
+  // still holds the roles it seeds reservations with.
+  preHandoff?: boolean;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  const owner = opts.owner ?? NETWORKS[opts.network].defaultOwner;
+  // Falling back to the owner here made the audit compare every constructor grant
+  // against the wrong address: on a live deployment the deployer and the owner
+  // differ, so the real deployer was reported as unexpected and the owner as missing
+  // the roles it never had. The deploy transaction recorded in the namespace names
+  // the deployer; where no record carries one, say so rather than guess.
+  const deployer =
+    opts.deployer ??
+    AUDITED_REGISTRIES.map((name) =>
+      maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+    )
+      .map((record) => record && deploymentOrigin(record))
+      .find((address): address is Address => address !== undefined);
+  if (!deployer) {
+    throw new Error(
+      `cannot determine the deployer for ${deploymentNetwork}: no deployment record carries its deploy transaction. Pass --deployer.`,
+    );
+  }
+
+  console.log(
+    `auditing the ${opts.preHandoff ? "pre-handoff" : "post-handoff"} role matrix (pass --pre-handoff to audit before phase 6)`,
+  );
+
+  const holders: RoleHolder[] = [];
+  const expectations: RoleExpectation[] = [];
+
+  for (const registryName of AUDITED_REGISTRIES) {
+    const registry = maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      registryName,
+    );
+    if (!registry) continue;
+
+    const resolveAccount = (deployment: string): Address | undefined => {
+      if (deployment === "@deployer") return deployer;
+      if (deployment === "@owner") return owner;
+      return maybeLoadV2Deployment(
+        deploymentsDir,
+        deploymentNetwork,
+        deployment,
+      )?.address;
+    };
+
+    for (const entry of EXPECTED_ROOT_ROLES[registryName]) {
+      // A pre-handoff-only grant must be absent once phase 6 has run, so after the
+      // handoff it is expected to hold nothing rather than simply not being checked.
+      if (entry.onlyBeforeHandoff && !opts.preHandoff) continue;
+      const address = resolveAccount(entry.deployment);
+      // A contract this deployment does not include simply has no expectation; the
+      // discovery pass below still reports it if it somehow holds roles.
+      if (!address) continue;
+      expectations.push({
+        contract: registryName,
+        scope: "root",
+        account: getAddress(address),
+        roles: entry.roles,
+      });
+    }
+
+    // The resource a token's grants live at moves when the name expires or is
+    // re-registered, so it is resolved live rather than taken from the grant event.
+    const labelByResource = new Map<string, string>();
+    const wanted = new Map<string, { resource: bigint; account: Address }>();
+    const want = (resource: bigint, account: Address) => {
+      wanted.set(`${resource}|${account.toLowerCase()}`, { resource, account });
+    };
+
+    for (const entry of EXPECTED_TOKEN_ROLES[registryName]) {
+      const address = resolveAccount(entry.deployment);
+      if (!address) continue;
+      const resource = (await client.readContract({
+        address: registry.address,
+        abi: Artifact_PermissionedRegistry.abi,
+        functionName: "getResource",
+        args: [labelId(entry.label)],
+      })) as bigint;
+      labelByResource.set(resource.toString(), entry.label);
+      expectations.push({
+        contract: registryName,
+        scope: entry.label,
+        account: getAddress(address),
+        roles: entry.roles,
+      });
+      want(resource, getAddress(address));
+    }
+
+    const fromBlock =
+      opts.fromBlock !== undefined
+        ? BigInt(opts.fromBlock)
+        : (readDeploymentBlock(
+            deploymentsDir,
+            deploymentNetwork,
+            registryName,
+          ) ?? 0n);
+    const discovered = await discoverRoleGrants(
+      client,
+      registry.address,
+      fromBlock,
+    );
+
+    // Everyone ever granted anything here is asked about the root, whichever scope
+    // they were discovered at: a token grantee may hold root roles too.
+    const rootAccounts = new Set<Address>([
+      ...discovered.map((grant) => grant.account),
+      ...expectations
+        .filter((expectation) => expectation.contract === registryName)
+        .map((expectation) => getAddress(expectation.account as Address)),
+    ]);
+    for (const account of rootAccounts) want(0n, account);
+
+    // A scoped grant survives in storage after the name it belongs to is expired or
+    // re-registered, but the resource it sits at is no longer the one the registry
+    // consults, so the roles cannot be exercised. Reporting those would be noise;
+    // the current resource is the only one that carries authority.
+    if (AUDIT_TOKEN_SCOPES[registryName]) {
+      const scoped = discovered.filter((grant) => grant.resource !== 0n);
+      const resources = [...new Set(scoped.map((grant) => grant.resource))];
+      const current = await client.multicall({
+        allowFailure: true,
+        contracts: resources.map(
+          (resource) =>
+            ({
+              address: registry.address,
+              abi: REGISTRY_BATCH_ABI,
+              functionName: "getResource",
+              args: [resource],
+            }) as const,
+        ),
+      });
+      const live = new Set<string>();
+      let orphaned = 0;
+      for (const [index, resource] of resources.entries()) {
+        const result = current[index];
+        if (result.status === "failure") continue;
+        if (result.result === resource) live.add(resource.toString());
+        else orphaned++;
+      }
+      for (const grant of scoped) {
+        if (live.has(grant.resource.toString())) {
+          want(grant.resource, grant.account);
+        }
+      }
+      if (orphaned > 0) {
+        console.log(
+          `${registryName}: ${orphaned} scoped grant resource(s) superseded by a re-registration, so no longer reachable`,
+        );
+      }
+    }
+
+    // Reading live is what makes the audit sound: a replay of the discovery events
+    // would report grants that expiry or a version bump has since made unreachable.
+    const pairs = [...wanted.values()];
+    const results = await client.multicall({
+      allowFailure: true,
+      contracts: pairs.map(
+        (pair) =>
+          ({
+            address: registry.address,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "roles",
+            args: [pair.resource, pair.account],
+          }) as const,
+      ),
+    });
+
+    for (const [index, pair] of pairs.entries()) {
+      const result = results[index];
+      const scope = describeScope(pair.resource, labelByResource);
+      if (result.status === "failure") {
+        throw new Error(
+          `${registryName}: roles(${scope}, ${pair.account}) failed: ${result.error}`,
+        );
+      }
+      const roles = result.result;
+      if (roles === 0n) continue;
+      holders.push({
+        contract: registryName,
+        address: registry.address,
+        scope,
+        account: pair.account,
+        roles,
+      });
+    }
+  }
+
+  for (const holder of holders) {
+    console.log(
+      `${holder.contract} [${holder.scope}] ${holder.account}: ${describeRoleBitmap(holder.roles)}`,
+    );
+  }
+
+  const findings = diffRoleMatrix(holders, expectations);
+  if (findings.length === 0) {
+    console.log(`role audit passed: ${holders.length} holder(s) as expected`);
+    return findings;
+  }
+
+  for (const finding of findings) {
+    console.error(describeRoleFinding(finding));
+  }
+  if (!opts.reportOnly) {
+    throw new Error(`role audit failed: ${findings.length} finding(s)`);
+  }
+  return findings;
+}
+
+// Compares a transaction about to be signed against the prepared one it claims to be.
+//
+// The owner-gated phases emit calldata that travels by hand into a Safe. Nothing
+// checks that what gets signed is what was produced, and a wrong target or argument
+// is invisible by inspection. This is the check that makes "verified the calldata"
+// a real statement.
+export async function verifyOwnerTransaction(opts: {
+  file: string;
+  to: string;
+  data: string;
+  value?: string;
+  role?: string;
+}) {
+  const prepared = readPreparedOwnerTransactions(opts.file, opts.role);
+  if (prepared.length === 0) {
+    throw new Error(`No prepared owner transactions found in ${opts.file}`);
+  }
+
+  const actual = { to: opts.to, data: opts.data, value: opts.value };
+
+  // The Safe transaction should correspond to exactly one prepared call. Reporting
+  // the closest near-miss is what makes a mismatch diagnosable rather than just a
+  // refusal.
+  let closest: { label: string; verdict: CalldataVerdict } | null = null;
+  for (const candidate of prepared) {
+    const verdict = compareCalldata(
+      { to: candidate.to, data: candidate.data, value: candidate.value },
+      actual,
+    );
+    const label = preparedOwnerTransactionLabel(candidate);
+    if (verdict.kind === "match") {
+      console.log(`${describeVerdict(verdict)}: ${label}`);
+      console.log(`  to:   ${candidate.to}`);
+      console.log(`  data: ${candidate.data}`);
+      return { matched: label };
+    }
+    // A same-target mismatch is a closer near-miss than a different-target one, so
+    // it wins when reporting what went wrong.
+    if (closest === null || verdict.kind !== "target-mismatch") {
+      closest = { label, verdict };
+    }
+  }
+
+  console.error(
+    `no prepared transaction in ${opts.file} matches this one (${prepared.length} candidate(s))`,
+  );
+  if (closest) {
+    console.error(`closest was ${closest.label}:`);
+    console.error(describeVerdict(closest.verdict));
+  }
+  throw new Error(
+    "the transaction about to be signed does not match any prepared transaction",
+  );
+}
+
+// Checks that the registrar can actually take money for a name.
+//
+// Nothing verifies this today, and it fails quietly: the registrar is enabled, roles
+// are correct, every wiring check passes — and registration still reverts because
+// the price oracle rejects the payment token, or succeeds while sending the fee to an
+// address nobody controls. On mainnet the tokens are real USDC/DAI, which the fork
+// rehearsal skipped until now, so this had no coverage at all.
+export async function verifyRegistrarEconomics(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  expectedBeneficiary?: Address;
+  paymentTokens?: string;
+  reportOnly?: boolean;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  const ethRegistrar = loadV2Deployment(
+    deploymentsDir,
+    deploymentNetwork,
+    "ETHRegistrar",
+  );
+  const problems: string[] = [];
+
+  const oracle = (await client.readContract({
+    address: ethRegistrar.address,
+    abi: ethRegistrar.abi,
+    functionName: "rentPriceOracle",
+  })) as Address;
+  console.log(`ETHRegistrar rent price oracle: ${oracle}`);
+  if (sameAddress(oracle, zeroAddress)) {
+    problems.push("rent price oracle is the zero address");
+  } else if ((await client.getCode({ address: oracle })) === undefined) {
+    problems.push(`rent price oracle ${oracle} has no code`);
+  }
+
+  const beneficiary = (await client.readContract({
+    address: ethRegistrar.address,
+    abi: ethRegistrar.abi,
+    functionName: "BENEFICIARY",
+  })) as Address;
+  console.log(`ETHRegistrar beneficiary: ${beneficiary}`);
+  // Registration fees are transferred here. A zero beneficiary means every payment
+  // is burned, which no other check would notice.
+  if (sameAddress(beneficiary, zeroAddress)) {
+    problems.push(
+      "beneficiary is the zero address; registration fees would be burnt",
+    );
+  }
+  if (
+    opts.expectedBeneficiary &&
+    !sameAddress(beneficiary, opts.expectedBeneficiary)
+  ) {
+    problems.push(
+      `beneficiary is ${beneficiary}, expected ${opts.expectedBeneficiary}`,
+    );
+  }
+
+  // Every token a user is expected to be able to pay with must be accepted by the
+  // oracle, and must actually quote a price.
+  const tokens = (
+    opts.paymentTokens
+      ? opts.paymentTokens.split(",").map((value) => value.trim())
+      : [
+          maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockUSDC")
+            ?.address,
+          maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, "MockDAI")
+            ?.address,
+          // The free-mint mocks are testnet-only (00_MockTokens returns early where
+          // the DAO owns the deployment), so on mainnet the real tokens the oracle is
+          // configured with are the whole list. Both of them: checking only one
+          // leaves the other able to be unaccepted or unpriceable and still pass.
+          ...(opts.network === "mainnet" ? [MAINNET_USDC, MAINNET_DAI] : []),
+        ]
+  ).filter((token): token is string => Boolean(token));
+
+  if (tokens.length === 0) {
+    problems.push("no payment tokens to check");
+  }
+  for (const token of tokens) {
+    const address = getAddress(token as Address);
+    const accepted = (await client.readContract({
+      address: oracle,
+      abi: Artifact_StandardRentPriceOracle.abi,
+      functionName: "isPaymentToken",
+      args: [address],
+    })) as boolean;
+    if (!accepted) {
+      problems.push(`payment token ${address} is not accepted by the oracle`);
+      continue;
+    }
+    // Accepting a token is not the same as being able to price in it.
+    try {
+      const price = (await client.readContract({
+        address: ethRegistrar.address,
+        abi: ethRegistrar.abi,
+        functionName: "getRegisterPrice",
+        args: ["averagelengthname", V2_REGISTRATION_DURATION, address],
+      })) as [bigint, bigint];
+      const total = price[0] + price[1];
+      console.log(`payment token ${address}: accepted, price ${total}`);
+      if (total === 0n) {
+        problems.push(`payment token ${address} prices a name at zero`);
+      }
+    } catch (error) {
+      problems.push(
+        `payment token ${address} accepted but pricing failed: ${errorMessageChain(error)[0]}`,
+      );
+    }
+  }
+
+  for (const problem of problems) console.error(problem);
+  if (problems.length > 0 && !opts.reportOnly) {
+    throw new Error(
+      `registrar economics verification failed: ${problems.length} problem(s)`,
+    );
+  }
+  if (problems.length === 0) {
+    console.log(
+      `registrar economics verified: ${tokens.length} payment token(s)`,
+    );
+  }
+  return problems;
+}
+
+// Checks that every contract a namespace describes is actually the contract running
+// at that address, and that its cross-contract references stay inside the namespace.
+//
+// Deploying fresh onto an already-migrated chain archives the previous namespace and
+// leaves it on-chain. An address leaking from the archive into the live set is the
+// failure mode that invites, and it is invisible to every other check: the wrong
+// contract answers calls perfectly well, it is just the wrong one.
+export async function verifyDeployment(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  reportOnly?: boolean;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = resolve(
+    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
+  );
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  const namespaceDir = join(deploymentsDir, deploymentNetwork);
+  if (!existsSync(namespaceDir)) {
+    throw new Error(`no deployment namespace at ${namespaceDir}`);
+  }
+  const files = readdirSync(namespaceDir).filter(
+    (name) => name.endsWith(".json") && !name.startsWith("."),
+  );
+  if (files.length === 0) {
+    throw new Error(`no deployment records under ${namespaceDir}`);
+  }
+
+  // Addresses this namespace owns. Any reference to something outside it — and not
+  // to a v1 contract — points at another deployment.
+  const ownAddresses = new Map<string, string>();
+  type DeploymentRecord = {
+    address?: Address;
+    deployedBytecode?: string;
+    immutableReferences?: ImmutableReferences;
+    argsData?: string;
+    receipt?: unknown;
+    transaction?: unknown;
+  };
+  const byName = new Map<string, DeploymentRecord>();
+  const records: Array<{ name: string; record: DeploymentRecord }> = [];
+  for (const file of files) {
+    const name = file.slice(0, -".json".length);
+    const record = JSON.parse(
+      readFileSync(join(namespaceDir, file), "utf8"),
+    ) as (typeof records)[number]["record"];
+    byName.set(name, record);
+    if (!record.address) continue;
+    records.push({ name, record });
+    ownAddresses.set(getAddress(record.address).toLowerCase(), name);
+  }
+
+  // Addresses recorded by the *other* namespaces under the same deployments
+  // directory — archived deployments, and rehearsal namespaces. An immutable
+  // pointing into one of these is the leak this check exists to find.
+  const foreignAddresses = new Map<string, string>();
+  for (const entry of readdirSync(deploymentsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === deploymentNetwork) continue;
+    const dir = join(deploymentsDir, entry.name);
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".json") || file.startsWith(".")) continue;
+      let foreign: { address?: Address };
+      try {
+        foreign = JSON.parse(readFileSync(join(dir, file), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!foreign.address) continue;
+      const key = getAddress(foreign.address).toLowerCase();
+      if (ownAddresses.has(key) || foreignAddresses.has(key)) continue;
+      foreignAddresses.set(
+        key,
+        `${entry.name}/${file.slice(0, -".json".length)}`,
+      );
+    }
+  }
+
+  const problems: string[] = [];
+  let matched = 0;
+  let skipped = 0;
+  let immutablesChecked = 0;
+
+  // The bytecode comparison blanks the immutable ranges, so a record leaking a
+  // contract of the same type from an archived namespace matches on every byte it
+  // looks at. The constructor-set addresses are read back out of the deployed code
+  // and checked against the namespaces on disk, which is the only place the leak
+  // shows.
+  const auditImmutables = (
+    name: string,
+    address: Address,
+    onChain: string,
+    immutableReferences: ImmutableReferences | undefined,
+  ) => {
+    for (const immutable of extractImmutableValues(
+      onChain,
+      immutableReferences,
+    )) {
+      if (immutable.inconsistent) {
+        problems.push(
+          `${name} ${address}: immutable ${immutable.astId} differs between its copies in the deployed code`,
+        );
+        continue;
+      }
+      const referenced = immutableAsAddress(immutable);
+      if (!referenced) continue;
+      immutablesChecked++;
+      // Set membership is what decides whether these bytes are a wiring at all: a
+      // scalar immutable has the same shape as an address and will never collide
+      // with a deployed one, so anything the namespaces do not know is left alone.
+      const foreign = foreignAddresses.get(referenced.toLowerCase());
+      if (foreign) {
+        problems.push(
+          `${name} ${address}: immutable at byte ${immutable.offsets[0]} points at ${referenced}, recorded in namespace ${foreign} rather than ${deploymentNetwork}`,
+        );
+      }
+    }
+  };
+
+  for (const { name, record } of records) {
+    const address = getAddress(record.address as Address);
+    if (!record.deployedBytecode || record.deployedBytecode === "0x") {
+      skipped++;
+      continue;
+    }
+    // An address this deployment adopted rather than deployed — the reused URPs, for
+    // instance — has no deploy transaction here. Its artifact describes a contract
+    // built elsewhere, so comparing bytecode compares two different builds.
+    if (!record.receipt && !record.transaction) {
+      skipped++;
+      continue;
+    }
+    // A proxy-backed record holds the *implementation's* bytecode at the *proxy's*
+    // address, so the proxy's own artifact is what runs there.
+    const proxyRecord = byName.get(`${name}_Proxy`);
+    const expected =
+      proxyRecord && proxyRecord.deployedBytecode ? proxyRecord : record;
+
+    const onChain = await client.getCode({ address });
+    const comparison = compareDeployedBytecode({
+      onChain,
+      artifact: expected.deployedBytecode,
+      immutableReferences: expected.immutableReferences,
+    });
+    if (comparison.kind === "match") {
+      matched++;
+      auditImmutables(
+        name,
+        address,
+        onChain ?? "",
+        expected.immutableReferences,
+      );
+      continue;
+    }
+    problems.push(describeComparison(name, address, comparison));
+  }
+
+  console.log(
+    `deployment integrity: ${matched} verified, ${skipped} without comparable bytecode, ${problems.length} problem(s)`,
+  );
+  console.log(
+    `immutable wiring: ${immutablesChecked} constructor-set value(s) checked against ${foreignAddresses.size} address(es) recorded outside ${deploymentNetwork}`,
+  );
+  for (const problem of problems) console.error(problem);
+
+  if (problems.length > 0 && !opts.reportOnly) {
+    throw new Error(
+      `deployment verification failed for ${problems.length} contract(s)`,
+    );
+  }
+  // Every record skipped for want of comparable bytecode is a contract this did not
+  // check, so a namespace of adopted addresses verifies nothing and says so only in
+  // a count nobody reads.
+  if (matched === 0 && skipped > 0 && !opts.reportOnly) {
+    throw new Error(
+      `deployment verification compared no bytecode: all ${skipped} record(s) in ${deploymentNetwork} lack a deploy transaction to compare against`,
+    );
+  }
+  return { matched, skipped, problems };
+}
+
+// The reverse adapters are what let v2 write reverse records on the v1 registrars.
+// They are granted in phase 1 and must stay granted for the rest of the migration,
+// but the controller audit is one-sided — it only looks for grants that should be
+// gone — so a revoked adapter passes it silently. This asserts the other direction.
+export async function verifyReverseAdapters(opts: {
+  network: MigrationNetwork;
+  rpcUrl: string;
+  chainId?: string;
+  provider?: RpcProvider;
+  deploymentsDir?: string;
+  deploymentNetwork?: string;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+}) {
+  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
+  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
+  const chain = migrationChain(opts);
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+
+  // Each adapter, the v1 registrar it should be a controller on, and the getter it
+  // exposes naming that registrar — so a mismatched pair is caught as well as a
+  // missing grant.
+  const pairs = [
+    {
+      adapterName: "ReverseRegistrarAdapter",
+      registrarName: "ReverseRegistrar",
+      backReference: "REVERSE_REGISTRAR",
+    },
+    {
+      adapterName: "DefaultReverseRegistrarAdapter",
+      registrarName: "DefaultReverseRegistrar",
+      backReference: "DEFAULT_REVERSE_REGISTRAR",
+    },
+  ] as const;
+
+  const problems: string[] = [];
+  let checked = 0;
+
+  for (const pair of pairs) {
+    const adapter = maybeLoadV2Deployment(
+      deploymentsDir,
+      deploymentNetwork,
+      pair.adapterName,
+    );
+    // Not every deployment carries both adapters; only what was deployed is checked.
+    if (!adapter) continue;
+    const registrar = loadV1Deployment(opts.network, pair.registrarName, opts);
+    if (!registrar) {
+      problems.push(`${pair.registrarName}: no v1 deployment artifact`);
+      continue;
+    }
+    checked++;
+
+    const enabled = (await client.readContract({
+      address: registrar.address,
+      abi: registrar.abi,
+      functionName: "controllers",
+      args: [adapter.address],
+    })) as boolean;
+    console.log(
+      `${pair.registrarName}: ${pair.adapterName} ${adapter.address} controller=${enabled}`,
+    );
+    if (!enabled) {
+      problems.push(
+        `${pair.adapterName} ${adapter.address} is not a ${pair.registrarName} controller`,
+      );
+      continue;
+    }
+
+    // An adapter granted on the wrong registrar would still read as enabled, so
+    // confirm it points back at the registrar holding the grant.
+    try {
+      const target = (await client.readContract({
+        address: adapter.address,
+        abi: [
+          parseAbiItem(
+            `function ${pair.backReference}() view returns (address)`,
+          ),
+        ],
+        functionName: pair.backReference,
+      })) as Address;
+      if (!sameAddress(target, registrar.address)) {
+        problems.push(
+          `${pair.adapterName} forwards to ${target}, not ${pair.registrarName} ${registrar.address}`,
+        );
+      }
+    } catch (error) {
+      if (!isContractProbeRejection(error)) throw error;
+      problems.push(
+        `${pair.adapterName} ${adapter.address} did not answer ${pair.backReference}()`,
+      );
+    }
+  }
+
+  if (checked === 0) {
+    throw new Error(
+      `no reverse adapters found under ${join(resolve(deploymentsDir), deploymentNetwork)}`,
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `reverse adapter verification failed: ${problems.join(", ")}`,
+    );
+  }
+  console.log(`reverse adapters verified: ${checked}`);
 }
 
 export async function setV1ReverseDefaultResolver(opts: {
@@ -2738,7 +3923,7 @@ export async function setV1ReverseDefaultResolver(opts: {
     functionName: "defaultResolver",
   })) as Address;
   console.log(`v1 reverse registrar default resolver: ${currentResolver}`);
-  if (getAddress(currentResolver) === getAddress(publicResolver.address)) {
+  if (sameAddress(currentResolver, publicResolver.address)) {
     return;
   }
 
@@ -2770,7 +3955,7 @@ export async function setV1ReverseDefaultResolver(opts: {
   console.log(
     `v1 reverse registrar default resolver after update: ${updatedResolver}`,
   );
-  if (getAddress(updatedResolver) !== getAddress(publicResolver.address)) {
+  if (!sameAddress(updatedResolver, publicResolver.address)) {
     throw new Error(
       `unexpected v1 reverse default resolver: ${updatedResolver}`,
     );
@@ -2798,7 +3983,14 @@ function resolveRegistry(opts: {
 }
 
 // Read whether an account holds the registrar/renew root roles on the registry.
-async function readHasRegistrarRoles(
+/// Whether the account holds *every* registrar role, which is what a completed grant
+/// looks like.
+///
+/// `hasRootRoles` is all-or-nothing (`roles & bitmap == bitmap`), so it answers "did
+/// the grant land in full" and not "can this account still write". The two questions
+/// differ for a partially-granted or partially-revoked account, and asking the wrong
+/// one reads a contract that still holds REGISTRAR as disabled.
+async function holdsAllRegistrarRoles(
   client: ReturnType<typeof publicClient>,
   registry: ContractRef,
   account: Address,
@@ -2811,17 +4003,56 @@ async function readHasRegistrarRoles(
   })) as boolean;
 }
 
-async function enableV2Registrar(opts: {
+/// Whether the account holds *any* registrar role, which is what still being able to
+/// write looks like. A revocation is only complete when this is false.
+///
+/// Asked one role at a time because `hasRootRoles` answers all-or-nothing, and the
+/// registry's own `roles(anyId, …)` resolves its argument through `getResource`, so it
+/// cannot be handed the root resource directly.
+async function holdsAnyRegistrarRole(
+  client: ReturnType<typeof publicClient>,
+  registry: ContractRef,
+  account: Address,
+): Promise<boolean> {
+  for (const role of [ROLES.REGISTRY.REGISTRAR, ROLES.REGISTRY.RENEW]) {
+    const held = (await client.readContract({
+      address: registry.address,
+      abi: registry.abi,
+      functionName: "hasRootRoles",
+      args: [role, account],
+    })) as boolean;
+    if (held) return true;
+  }
+  return false;
+}
+
+/// Where a contract's registrar roles are being taken, and how to tell it arrived.
+///
+/// Granting and revoking are the same operation in opposite directions, but they are
+/// not asking the same question of the result. A grant has landed when the account
+/// holds *every* role; a revocation only when it holds *none*. `hasRootRoles` answers
+/// the first, so using it for both reports a half-revoked account as disabled.
+type RegistrarRolesTarget = {
+  deployment: string;
+  address?: Address;
+  /// True to grant the roles, false to revoke them.
+  grant: boolean;
+  label: string;
+};
+
+type RegistrarRolesOptions = {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
   registry?: Address;
-  ethRegistrar?: Address;
   deploymentsDir?: string;
   deploymentNetwork?: string;
-  privateKey?: `0x${string}`;
-  impersonateAccount?: Address;
-}) {
+};
+
+function resolveRegistrarRolesTarget(
+  opts: RegistrarRolesOptions,
+  target: RegistrarRolesTarget,
+) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
@@ -2831,122 +4062,113 @@ async function enableV2Registrar(opts: {
     deploymentsDir,
     deploymentNetwork,
   });
-  const ethRegistrar = resolveDeploymentAddress(
-    opts.ethRegistrar,
+  const account = resolveDeploymentAddress(
+    target.address,
     deploymentsDir,
     deploymentNetwork,
-    "ETHRegistrar",
+    target.deployment,
   );
-  const beforeEnabled = await readHasRegistrarRoles(
-    client,
-    registry,
-    ethRegistrar,
-  );
-  console.log(`v2 registrar already enabled: ${beforeEnabled}`);
-  if (beforeEnabled) return;
+  const holds = target.grant ? holdsAllRegistrarRoles : holdsAnyRegistrarRole;
+  return { chain, client, registry, account, holds };
+}
+
+async function setRegistrarRoles(
+  opts: RegistrarRolesOptions & {
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+  target: RegistrarRolesTarget,
+) {
+  const { chain, client, registry, account, holds } =
+    resolveRegistrarRolesTarget(opts, target);
+
+  const before = await holds(client, registry, account);
+  console.log(`${target.label} before phase: ${before}`);
+  // Already where it is being taken. Read in the direction of travel, so a partial
+  // grant is not mistaken for a complete one, nor a partial revocation for none.
+  if (before === target.grant) return;
 
   await sendAdminWrite({
     client,
     chain,
     rpcUrl: opts.rpcUrl,
     target: registry,
-    functionName: "grantRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar],
-    receiptLabel: "enable v2 registrar",
+    functionName: target.grant ? "grantRootRoles" : "revokeRootRoles",
+    args: [REGISTRAR_ROLES, account],
+    receiptLabel: `${target.grant ? "enable" : "disable"} ${target.deployment} ${account}`,
     privateKey: opts.privateKey,
     impersonateAccount: opts.impersonateAccount,
   });
-  const afterEnabled = await readHasRegistrarRoles(
-    client,
-    registry,
-    ethRegistrar,
-  );
-  console.log(`v2 registrar enabled after phase: ${afterEnabled}`);
+
+  const after = await holds(client, registry, account);
+  console.log(`${target.label} after phase: ${after}`);
+  if (after !== target.grant) {
+    throw new Error(
+      target.grant
+        ? `${target.deployment} ${account} does not hold registrar/renew roles after the grant`
+        : `${target.deployment} ${account} still has registrar/renew roles`,
+    );
+  }
 }
 
-async function disableBatchRegistrar(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  registry?: Address;
-  batchRegistrar?: Address;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-  privateKey?: `0x${string}`;
-  impersonateAccount?: Address;
-}) {
-  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
-    deploymentsDir,
-    deploymentNetwork,
-  });
-  const batchRegistrar = resolveDeploymentAddress(
-    opts.batchRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "BatchRegistrar",
+async function verifyRegistrarRoles(
+  opts: RegistrarRolesOptions,
+  target: RegistrarRolesTarget,
+) {
+  const { client, registry, account, holds } = resolveRegistrarRolesTarget(
+    opts,
+    target,
   );
-  const beforeEnabled = await readHasRegistrarRoles(
-    client,
-    registry,
-    batchRegistrar,
-  );
-  console.log(`batch registrar enabled before phase: ${beforeEnabled}`);
-  if (!beforeEnabled) return;
-
-  await sendAdminWrite({
-    client,
-    chain,
-    rpcUrl: opts.rpcUrl,
-    target: registry,
-    functionName: "revokeRootRoles",
-    args: [REGISTRAR_ROLES, batchRegistrar],
-    receiptLabel: `disable batch registrar ${batchRegistrar}`,
-    privateKey: opts.privateKey,
-    impersonateAccount: opts.impersonateAccount,
-  });
-  const afterEnabled = await readHasRegistrarRoles(
-    client,
-    registry,
-    batchRegistrar,
-  );
-  console.log(`batch registrar enabled after phase: ${afterEnabled}`);
-  if (afterEnabled)
-    throw new Error("batch registrar still has registrar/renew roles");
+  const held = await holds(client, registry, account);
+  console.log(`${target.label}: ${held}`);
+  if (held !== target.grant) {
+    throw new Error(
+      target.grant
+        ? `${target.deployment} ${account} does not hold registrar/renew roles`
+        : `${target.deployment} ${account} still has registrar/renew roles`,
+    );
+  }
 }
 
-async function verifyBatchRegistrarDisabled(opts: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chainId?: string;
-  registry?: Address;
-  batchRegistrar?: Address;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-}) {
-  const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
-  const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
-  const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
-    deploymentsDir,
-    deploymentNetwork,
+async function enableV2Registrar(
+  opts: RegistrarRolesOptions & {
+    ethRegistrar?: Address;
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+) {
+  await setRegistrarRoles(opts, {
+    deployment: "ETHRegistrar",
+    address: opts.ethRegistrar,
+    grant: true,
+    label: "v2 registrar enabled",
   });
-  const batchRegistrar = resolveDeploymentAddress(
-    opts.batchRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "BatchRegistrar",
-  );
-  const enabled = await readHasRegistrarRoles(client, registry, batchRegistrar);
-  console.log(`batch registrar enabled: ${enabled}`);
-  if (enabled)
-    throw new Error("batch registrar still has registrar/renew roles");
+}
+
+async function disableBatchRegistrar(
+  opts: RegistrarRolesOptions & {
+    batchRegistrar?: Address;
+    privateKey?: `0x${string}`;
+    impersonateAccount?: Address;
+  },
+) {
+  await setRegistrarRoles(opts, {
+    deployment: "BatchRegistrar",
+    address: opts.batchRegistrar,
+    grant: false,
+    label: "batch registrar enabled",
+  });
+}
+
+async function verifyBatchRegistrarDisabled(
+  opts: RegistrarRolesOptions & { batchRegistrar?: Address },
+) {
+  await verifyRegistrarRoles(opts, {
+    deployment: "BatchRegistrar",
+    address: opts.batchRegistrar,
+    grant: false,
+    label: "batch registrar enabled",
+  });
 }
 
 export async function checkBatchRegistrarOwner(opts: {
@@ -2978,7 +4200,7 @@ export async function checkBatchRegistrarOwner(opts: {
   console.log(`batch registrar owner: ${owner}`);
   if (
     opts.expectedOwner !== undefined &&
-    getAddress(owner) !== getAddress(opts.expectedOwner)
+    !sameAddress(owner, opts.expectedOwner)
   ) {
     throw new Error(
       `unexpected BatchRegistrar owner: expected ${opts.expectedOwner}, got ${owner}`,
@@ -3005,7 +4227,7 @@ function preMigrationSigner(account: Address): {
   privateKey?: `0x${string}`;
   account?: Address;
 } {
-  return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
+  return sameAddress(account, DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { account };
 }
@@ -3014,38 +4236,77 @@ function adminSigner(account: Address): {
   privateKey?: `0x${string}`;
   impersonateAccount?: Address;
 } {
-  return getAddress(account) === getAddress(DEFAULT_ANVIL_DEPLOYER)
+  return sameAddress(account, DEFAULT_ANVIL_DEPLOYER)
     ? { privateKey: DEFAULT_ANVIL_KEY }
     : { impersonateAccount: account };
 }
 
-async function verifyV2Registrar(opts: {
+async function verifyV2Registrar(
+  opts: RegistrarRolesOptions & { ethRegistrar?: Address },
+) {
+  await verifyRegistrarRoles(opts, {
+    deployment: "ETHRegistrar",
+    address: opts.ethRegistrar,
+    grant: true,
+    label: "v2 registrar enabled",
+  });
+}
+
+// Asserts the state a renewal through `ETHRenewerV1` actually needs, which is more
+// than the controller grant: `renew()` syncs the `NameWrapper` expiry through the
+// owner-gated `addController`, so the renewer has to own the v1 `BaseRegistrar` as
+// well. Checking only the controller bit reports a phase that cannot renew as done.
+export async function verifyV1Renewer(opts: {
   network: MigrationNetwork;
   rpcUrl: string;
   chainId?: string;
-  registry?: Address;
-  ethRegistrar?: Address;
+  provider?: RpcProvider;
   deploymentsDir?: string;
   deploymentNetwork?: string;
+  v1DeploymentsDir?: string;
+  v1DeploymentNetwork?: string;
+  ethRenewerV1?: Address;
 }) {
   const deploymentNetwork = opts.deploymentNetwork ?? opts.network;
   const deploymentsDir = opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR;
   const chain = migrationChain(opts);
-  const client = publicClient(opts.rpcUrl, chain);
-  const registry = resolveRegistry({
-    registry: opts.registry,
+  const client = publicClient(opts.rpcUrl, chain, opts.provider);
+  const ethRenewerV1 = resolveDeploymentAddress(
+    opts.ethRenewerV1,
     deploymentsDir,
     deploymentNetwork,
-  });
-  const ethRegistrar = resolveDeploymentAddress(
-    opts.ethRegistrar,
-    deploymentsDir,
-    deploymentNetwork,
-    "ETHRegistrar",
+    "ETHRenewerV1",
   );
-  const enabled = await readHasRegistrarRoles(client, registry, ethRegistrar);
-  console.log(`v2 registrar enabled: ${enabled}`);
-  if (!enabled) throw new Error("v2 registrar is not enabled");
+  const baseRegistrar = requireV1Deployment(
+    opts.network,
+    V1_BASE_REGISTRAR_NAME,
+    opts,
+  );
+
+  const authorized = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "controllers",
+    args: [ethRenewerV1],
+  })) as boolean;
+  console.log(`ETHRenewerV1 v1 registrar controller: ${authorized}`);
+  if (!authorized) {
+    throw new Error(
+      `ETHRenewerV1 ${ethRenewerV1} is not an authorized v1 BaseRegistrar controller`,
+    );
+  }
+
+  const registrarOwner = (await client.readContract({
+    address: baseRegistrar.address,
+    abi: baseRegistrar.abi,
+    functionName: "owner",
+  })) as Address;
+  console.log(`v1 BaseRegistrar owner: ${registrarOwner}`);
+  if (!sameAddress(registrarOwner, ethRenewerV1)) {
+    throw new Error(
+      `v1 BaseRegistrar is owned by ${registrarOwner}, not ETHRenewerV1 ${ethRenewerV1}; renewals would revert in syncWrapper`,
+    );
+  }
 }
 
 async function verifyUrp(opts: {
@@ -3095,7 +4356,7 @@ async function verifyUrp(opts: {
 
   if (
     opts.expectedTopImplementation &&
-    getAddress(topImplementation) !== getAddress(opts.expectedTopImplementation)
+    !sameAddress(topImplementation, opts.expectedTopImplementation)
   ) {
     throw new Error("top URP implementation does not match expected address");
   }
@@ -3141,7 +4402,7 @@ async function switchTopUrpToManaged(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "implementation",
   })) as Address;
-  if (getAddress(currentTopImplementation) === getAddress(managedUrp)) {
+  if (sameAddress(currentTopImplementation, managedUrp)) {
     console.log(`top URP already fronts managed URP: ${managedUrp}`);
     return;
   }
@@ -3169,7 +4430,7 @@ async function switchTopUrpToManaged(opts: {
     client,
   });
   const actualImplementation = (await top.read.implementation()) as Address;
-  if (getAddress(actualImplementation) !== getAddress(managedUrp)) {
+  if (!sameAddress(actualImplementation, managedUrp)) {
     throw new Error(`top URP implementation mismatch: ${actualImplementation}`);
   }
   console.log(`top URP implementation: ${actualImplementation}`);
@@ -3212,7 +4473,7 @@ async function upgradeManagedUrp(opts: {
     abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "implementation",
   })) as Address;
-  if (getAddress(currentImplementation) === getAddress(implementation)) {
+  if (sameAddress(currentImplementation, implementation)) {
     console.log(`managed URP already at implementation: ${implementation}`);
     return;
   }
@@ -3240,7 +4501,7 @@ async function upgradeManagedUrp(opts: {
     client,
   });
   const actualImplementation = (await managed.read.implementation()) as Address;
-  if (getAddress(actualImplementation) !== getAddress(implementation)) {
+  if (!sameAddress(actualImplementation, implementation)) {
     throw new Error(
       `managed URP implementation mismatch: ${actualImplementation}`,
     );
@@ -3328,6 +4589,10 @@ type RunForkFullOptions = {
   urManager?: Address;
   urManagerPrivateKey?: `0x${string}`;
   resumeFromPhase?: string;
+  // Fail rather than silently running a reduced set of smoke checks.
+  requireFullCoverage?: boolean;
+  // Extra names to snapshot across the resolution cutover, comma-separated.
+  resolutionNames?: string;
 };
 
 type RunCleanTestnetFullOptions = Omit<
@@ -3432,9 +4697,8 @@ function signerKeyForAccount(
 ): `0x${string}` | undefined {
   const keys = candidates.filter((key): key is `0x${string}` => Boolean(key));
   if (!target) return keys[0];
-  return keys.find(
-    (key) =>
-      getAddress(privateKeyToAccount(key).address) === getAddress(target),
+  return keys.find((key) =>
+    sameAddress(privateKeyToAccount(key).address, target),
   );
 }
 
@@ -3639,12 +4903,15 @@ function buildDeployV1RockethConfig(
     signerAccountDefinition(opts.ownerPrivateKey, opts.owner),
   );
 
+  // `allow_unsafe` is deliberately absent: it widens the DNS suffix batches past
+  // what the fixed gas cap on the TLD-enabling batch can pay for, which leaves no
+  // suffix enabled. The narrow batches cost more requests but estimate their own
+  // gas and check each suffix first.
   const tags = uniqueTags([
     "test",
     "legacy",
     "use_root",
     opts.tenderly ? "tenderly" : undefined,
-    opts.tenderly ? "allow_unsafe" : undefined,
   ]);
 
   return {
@@ -3671,23 +4938,14 @@ function buildDeployV1RockethConfig(
       ...(baseConfig.environments ?? {}),
       [deploymentNetwork]: {
         chain: chainId,
-        scripts: ["lib/ens-contracts/deploy"],
+        // Our own v1 steps come first so they can seed a deployment the bundled
+        // scripts then skip, which is how a bundled step is corrected without
+        // modifying the submodule.
+        scripts: ["deploy-v1", "lib/ens-contracts/deploy"],
         overrides: { tags },
       },
     },
   };
-}
-
-async function waitForSuccessfulReceipt(
-  client: ReturnType<typeof publicClient>,
-  hash: `0x${string}`,
-  label: string,
-) {
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status === "reverted") {
-    throw new Error(`${label} reverted: ${hash}`);
-  }
-  return receipt;
 }
 
 // Normalize the provider (RPC-compatibility shim, chain-id override) and resolve
@@ -3865,24 +5123,28 @@ export async function deployV2(opts: DeployV2Options) {
     "StandaloneHCAImplementation",
   ]);
 
-  // Refresh the generated address table for a persisted deploy so the docs
-  // track the namespace just written. That table describes the network's
-  // canonical deployment, so it is only rewritten by a run that actually
-  // deployed it: a fork rehearsal points at another tree, and `clean-testnet`
-  // writes a `sepolia-clean-*` namespace into the canonical tree, so the
-  // namespace has to match the network as well as the directory. Without the
-  // second half of this check a throwaway testnet overwrites the real table.
-  if (
-    persist &&
-    deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
-    deploymentNetwork === opts.network
-  ) {
-    const docPath = await generateAddressMarkdown({
-      deploymentsDir,
-      namespace: deploymentNetwork,
-      docName: opts.network,
-    });
-    console.log(`address docs: ${docPath}`);
+  // Refresh the generated address table, but only for a deploy into the network's
+  // canonical namespace inside the canonical tree. The doc is named after the
+  // network while its contents come from the namespace, so generating it for any
+  // other namespace — a `-fork` rehearsal, a `-clean-` run, a custom
+  // `--deployment-network` — or from a scratch deployments directory overwrites the
+  // real network's published addresses with throwaway ones.
+  if (persist) {
+    if (
+      deploymentsDir === resolve(DEFAULT_DEPLOYMENTS_DIR) &&
+      deploymentNetwork === opts.network
+    ) {
+      const docPath = await generateAddressMarkdown({
+        deploymentsDir,
+        namespace: deploymentNetwork,
+        docName: opts.network,
+      });
+      console.log(`address docs: ${docPath}`);
+    } else {
+      console.log(
+        `address docs: skipped (namespace ${deploymentNetwork} in ${deploymentsDir} is not the canonical ${opts.network} deployment)`,
+      );
+    }
   }
 
   // Every persisted deploy also carries its address table next to its own
@@ -3928,588 +5190,69 @@ export async function deployV2(opts: DeployV2Options) {
   return env;
 }
 
-async function registerViaV1Controller({
-  network,
-  rpcUrl,
-  chain,
-  provider,
-  v1DeploymentsDir,
-  v1DeploymentNetwork,
-  label,
-  owner,
-  privateKey,
-  account,
-  useRpcStateControls = true,
-}: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chain: Chain;
-  provider?: RpcProvider;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-  label: string;
-  owner: Address;
-  privateKey?: `0x${string}`;
-  account?: Address;
-  useRpcStateControls?: boolean;
-}) {
-  const client = publicClient(rpcUrl, chain, provider);
-  const wallet = walletClient({ rpcUrl, chain, privateKey, account, provider });
-  const controller = requireV1Deployment(network, "ETHRegistrarController", {
-    v1DeploymentsDir,
-    v1DeploymentNetwork,
-  });
-  const registration = {
-    label,
-    owner,
-    duration: V1_REGISTRATION_DURATION,
-    secret: zeroHash,
-    resolver: zeroAddress,
-    data: [],
-    reverseRecord: 0,
-    referrer: zeroHash,
-  };
-  const commitment = (await client.readContract({
-    address: controller.address,
-    abi: controller.abi,
-    functionName: "makeCommitment",
-    args: [registration],
-  })) as `0x${string}`;
-  let hash = await wallet.writeContract({
-    address: controller.address,
-    abi: controller.abi,
-    functionName: "commit",
-    args: [commitment],
-  });
-  await waitForSuccessfulReceipt(client, hash, `v1 commit ${label}.eth`);
-  const minCommitmentAge = (await client.readContract({
-    address: controller.address,
-    abi: controller.abi,
-    functionName: "minCommitmentAge",
-  })) as bigint;
-  await waitForCommitmentAge(
-    client,
-    minCommitmentAge + 1n,
-    useRpcStateControls,
-  );
-  const price = (await client.readContract({
-    address: controller.address,
-    abi: controller.abi,
-    functionName: "rentPrice",
-    args: [label, V1_REGISTRATION_DURATION],
-  })) as { base: bigint; premium: bigint };
-  const registerRequest = {
-    address: controller.address,
-    abi: controller.abi,
-    functionName: "register" as const,
-    args: [registration],
-    value: price.base + price.premium,
-    account: wallet.account,
-  };
-  // The estimate is the exact gas the call needs in isolation, which a nested
-  // call can exceed under EIP-150's 63/64 rule once it runs for real — the
-  // transaction then burns the whole limit and reverts. A buffer absorbs that.
-  hash = await wallet.writeContract({
-    ...registerRequest,
-    gas: await bufferedGas(client, registerRequest),
-  } as never);
-  await waitForSuccessfulReceipt(client, hash, `v1 register ${label}.eth`);
-}
+// Contracts every v2 namespace describes, keyed by the field the migration code
+// refers to them by.
+const V2_REQUIRED_DEPLOYMENTS = {
+  ethRegistry: "ETHRegistry",
+  batchRegistrar: "BatchRegistrar",
+  ensV1Resolver: "ENSV1Resolver",
+  ethRegistrar: "ETHRegistrar",
+  unlockedMigrationController: "UnlockedMigrationController",
+  lockedMigrationController: "LockedMigrationController",
+  migrationHelper: "MigrationHelper",
+  universalResolverV2: "UniversalResolverV2",
+  managedUrp: "ManagedUniversalResolverProxy",
+  topUrp: "UpgradableUniversalResolverProxy",
+  graveyard: "Graveyard",
+} as const;
 
-async function assertV1Owner({
-  network,
-  rpcUrl,
-  chain,
-  provider,
-  v1DeploymentsDir,
-  v1DeploymentNetwork,
-  label,
-  owner,
-}: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chain: Chain;
-  provider?: RpcProvider;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-  label: string;
-  owner: Address;
-}) {
-  const actualOwner = await readV1Owner({
-    network,
-    rpcUrl,
-    chain,
-    provider,
-    v1DeploymentsDir,
-    v1DeploymentNetwork,
-    label,
-  });
-  if (getAddress(actualOwner) !== getAddress(owner)) {
-    throw new Error(`unexpected v1 owner for ${label}.eth: ${actualOwner}`);
-  }
-}
-
-async function readV1Owner({
-  network,
-  rpcUrl,
-  chain,
-  provider,
-  v1DeploymentsDir,
-  v1DeploymentNetwork,
-  label,
-}: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chain: Chain;
-  provider?: RpcProvider;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-  label: string;
-}) {
-  const client = publicClient(rpcUrl, chain, provider);
-  const baseRegistrar = requireV1Deployment(network, V1_BASE_REGISTRAR_NAME, {
-    v1DeploymentsDir,
-    v1DeploymentNetwork,
-  });
-  return (await client.readContract({
-    address: baseRegistrar.address,
-    abi: baseRegistrar.abi,
-    functionName: "ownerOf",
-    args: [labelId(label)],
-  })) as Address;
-}
-
-function errorMessageChain(error: unknown): string[] {
-  const messages: string[] = [];
-  let current: unknown = error;
-  while (current !== undefined && current !== null && messages.length < 10) {
-    messages.push(current instanceof Error ? current.message : String(current));
-    current = current instanceof Error ? current.cause : undefined;
-  }
-  return messages;
-}
-
-/**
- * Asserts that `promise` rejects. When `expectedError` is given, the rejection's
- * message/cause chain must match it; otherwise unrelated failures (RPC outages,
- * wrong signer, ...) would make a negative test "pass" for the wrong reason.
- */
-async function assertRejected(
-  promise: Promise<unknown>,
-  message: string,
-  expectedError?: string | RegExp,
-) {
-  let rejection: unknown;
-  let rejected = false;
-  try {
-    await promise;
-  } catch (error) {
-    rejection = error;
-    rejected = true;
-  }
-  if (!rejected) {
-    throw new Error(message.replace("rejected", "did not reject"));
-  }
-  const chain = errorMessageChain(rejection);
-  if (expectedError !== undefined) {
-    const matches = chain.some((candidate) =>
-      typeof expectedError === "string"
-        ? candidate.includes(expectedError)
-        : expectedError.test(candidate),
-    );
-    if (!matches) {
-      console.error(`unexpected rejection: ${chain.join(" <- ")}`);
-      throw new Error(
-        `${message.replace("rejected", "rejected for an unexpected reason")}; expected ${expectedError}, got: ${chain[0] ?? String(rejection)}`,
-      );
-    }
-  }
-  console.log(message);
-  console.log(`  rejection: ${chain[0] ?? String(rejection)}`);
-}
-
-async function assertV2State({
-  rpcUrl,
-  chain,
-  ethRegistry,
-  label,
-  status,
-  owner,
-}: {
-  rpcUrl: string;
-  chain: Chain;
-  ethRegistry: JsonDeployment;
-  label: string;
-  status: number;
-  owner?: Address;
-}) {
-  const client = publicClient(rpcUrl, chain);
-  const state = (await client.readContract({
-    address: ethRegistry.address,
-    abi: ethRegistry.abi,
-    functionName: "getState",
-    args: [labelId(label)],
-  })) as { status: number; latestOwner: Address };
-  if (Number(state.status) !== status) {
-    throw new Error(`unexpected v2 status for ${label}.eth: ${state.status}`);
-  }
-  if (owner && getAddress(state.latestOwner) !== getAddress(owner)) {
-    throw new Error(
-      `unexpected v2 owner for ${label}.eth: ${state.latestOwner}`,
-    );
-  }
-}
-
-async function migrateUnwrappedV1Name({
-  network,
-  rpcUrl,
-  chain,
-  provider,
-  v1DeploymentsDir,
-  v1DeploymentNetwork,
-  label,
-  owner,
-  privateKey,
-  account,
-  impersonateAccount,
-  migrationController,
-}: {
-  network: MigrationNetwork;
-  rpcUrl: string;
-  chain: Chain;
-  provider?: RpcProvider;
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-  label: string;
-  owner: Address;
-  privateKey?: `0x${string}`;
-  account?: Address;
-  impersonateAccount?: Address;
-  migrationController: JsonDeployment;
-}) {
-  const client = publicClient(rpcUrl, chain, provider);
-  if (impersonateAccount) await impersonate(client, impersonateAccount);
-  const wallet = walletClient({
-    rpcUrl,
-    chain,
-    privateKey,
-    account: account ?? impersonateAccount,
-    provider,
-  });
-  const v1Deployments = { v1DeploymentsDir, v1DeploymentNetwork };
-  const registry = requireV1Deployment(network, "ENSRegistry", v1Deployments);
-  const baseRegistrar = requireV1Deployment(
-    network,
-    V1_BASE_REGISTRAR_NAME,
-    v1Deployments,
-  );
-  const resolver = (await client.readContract({
-    address: registry.address,
-    abi: registry.abi,
-    functionName: "resolver",
-    args: [namehash(`${label}.eth`)],
-  })) as Address;
-  const data = encodeAbiParameters(
-    [{ type: "tuple", components: migrationDataComponents }],
-    [{ label, owner, subregistry: zeroAddress, resolver }],
-  );
-  const hash = await wallet.writeContract({
-    address: baseRegistrar.address,
-    abi: baseRegistrar.abi,
-    functionName: "safeTransferFrom",
-    args: [owner, migrationController.address, labelId(label), data],
-  });
-  await waitForSuccessfulReceipt(client, hash, `v2 commit ${label}.eth`);
-}
-
-async function registerViaV2Registrar({
-  rpcUrl,
-  chain,
-  label,
-  owner,
-  privateKey,
-  ethRegistrar,
-  mockUsdc,
-  useRpcStateControls = true,
-}: {
-  rpcUrl: string;
-  chain: Chain;
-  label: string;
-  owner: Address;
-  privateKey: `0x${string}`;
-  ethRegistrar: JsonDeployment;
-  mockUsdc: JsonDeployment;
-  useRpcStateControls?: boolean;
-}) {
-  const client = publicClient(rpcUrl, chain);
-  const wallet = walletClient({ rpcUrl, chain, privateKey });
-  const payer = privateKeyToAccount(privateKey).address;
-  const commitment = (await client.readContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "makeCommitment",
-    args: [
-      label,
-      owner,
-      zeroHash,
-      zeroAddress,
-      zeroAddress,
-      V2_REGISTRATION_DURATION,
-      zeroHash,
-    ],
-  })) as `0x${string}`;
-  let hash = await wallet.writeContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "commit",
-    args: [commitment],
-  });
-  await waitForSuccessfulReceipt(client, hash, `v2 commit ${label}.eth`);
-  const minCommitmentAge = (await client.readContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "MIN_COMMITMENT_AGE",
-  })) as bigint;
-  await waitForCommitmentAge(
-    client,
-    minCommitmentAge + 1n,
-    useRpcStateControls,
-  );
-  const [base, premium] = (await client.readContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "getRegisterPrice",
-    args: [label, V2_REGISTRATION_DURATION, mockUsdc.address],
-  })) as [bigint, bigint];
-  hash = await wallet.writeContract({
-    address: mockUsdc.address,
-    abi: mockUsdc.abi,
-    functionName: "mint",
-    args: [payer, base + premium],
-  });
-  await waitForSuccessfulReceipt(
-    client,
-    hash,
-    `mint payment token for ${label}.eth`,
-  );
-  hash = await wallet.writeContract({
-    address: mockUsdc.address,
-    abi: mockUsdc.abi,
-    functionName: "approve",
-    args: [ethRegistrar.address, base + premium],
-  });
-  await waitForSuccessfulReceipt(
-    client,
-    hash,
-    `approve payment token for ${label}.eth`,
-  );
-  hash = await wallet.writeContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "register",
-    args: [
-      label,
-      owner,
-      zeroHash,
-      zeroAddress,
-      zeroAddress,
-      V2_REGISTRATION_DURATION,
-      mockUsdc.address,
-      zeroHash,
-    ],
-  });
-  await waitForSuccessfulReceipt(client, hash, `v2 register ${label}.eth`);
-}
-
-type V2RegistrarSmokeOptions = {
-  network: MigrationNetwork;
-  rpcUrl?: string;
-  chainId?: string;
-  deploymentsDir?: string;
-  deploymentNetwork?: string;
-  label?: string;
-  owner?: Address;
-  privateKey: `0x${string}`;
-  rpcStateControls?: boolean;
-};
-
-export async function runV2RegistrarSmoke(opts: V2RegistrarSmokeOptions) {
-  const network = NETWORKS[opts.network];
-  const rpcUrl = requireRpcUrl(opts, opts.network);
-  const chainId = parseNumber(opts.chainId, network.chain.id);
-  const chain = forkChain(opts.network, chainId, rpcUrl);
-  const deploymentsDir = resolve(
-    opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
-  );
-  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
-  const client = publicClient(rpcUrl, chain);
-  const owner = opts.owner ?? privateKeyToAccount(opts.privateKey).address;
-  const label =
-    opts.label ??
-    `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}v2ok`;
-  const ethRegistry = loadV2Deployment(
-    deploymentsDir,
-    deploymentNetwork,
-    "ETHRegistry",
-  );
-  const ethRegistrar = loadV2Deployment(
-    deploymentsDir,
-    deploymentNetwork,
-    "ETHRegistrar",
-  );
-  const mockUsdc = maybeLoadV2Deployment(
-    deploymentsDir,
-    deploymentNetwork,
-    "MockUSDC",
-  );
-  if (!mockUsdc) {
-    throw new Error(
-      `v2 registrar smoke needs a mintable mock payment token, which is not deployed for ${deploymentNetwork}; on networks with real payment tokens, fund a whitelisted token and register directly`,
-    );
-  }
-
-  const enabled = (await client.readContract({
-    address: ethRegistry.address,
-    abi: ethRegistry.abi,
-    functionName: "hasRootRoles",
-    args: [REGISTRAR_ROLES, ethRegistrar.address],
-  })) as boolean;
-  if (!enabled) {
-    throw new Error(`ETHRegistrar is not enabled for ${deploymentNetwork}`);
-  }
-
-  const available = (await client.readContract({
-    address: ethRegistrar.address,
-    abi: ethRegistrar.abi,
-    functionName: "isAvailable",
-    args: [label],
-  })) as boolean;
-  if (!available) {
-    throw new Error(`${label}.eth is not available for v2 registration smoke`);
-  }
-
-  console.log(
-    `smoke: registering ${label}.eth via ETHRegistrar ${ethRegistrar.address}`,
-  );
-  await registerViaV2Registrar({
-    rpcUrl,
-    chain,
-    label,
-    owner,
-    privateKey: opts.privateKey,
-    ethRegistrar,
-    mockUsdc,
-    useRpcStateControls: opts.rpcStateControls ?? false,
-  });
-  await assertV2State({
-    rpcUrl,
-    chain,
-    ethRegistry,
-    label,
-    status: STATUS.REGISTERED,
-    owner,
-  });
-  console.log(`v2 registrar registered ${label}.eth for ${owner}`);
-}
+// Contracts only some networks or deploy modes carry: the mock payment tokens exist
+// where no real ones are whitelisted, and the testnet helpers only on testnets.
+const V2_OPTIONAL_DEPLOYMENTS = {
+  ethRenewerV1: "ETHRenewerV1",
+  mockUsdc: "MockUSDC",
+  testnetV1PremigrationRegistrar: "TestnetV1PremigrationRegistrar",
+} as const;
 
 type V2MigrationDeployments = {
-  ethRegistry: JsonDeployment;
-  batchRegistrar: JsonDeployment;
-  ensV1Resolver: JsonDeployment;
-  ethRegistrar: JsonDeployment;
-  ethRenewerV1: JsonDeployment | null;
-  mockUsdc: JsonDeployment | null;
-  unlockedMigrationController: JsonDeployment;
-  universalResolverV2: JsonDeployment;
-  managedUrp: JsonDeployment;
-  topUrp: JsonDeployment;
-  graveyard: JsonDeployment;
-  testnetV1PremigrationRegistrar: JsonDeployment | null;
+  [K in keyof typeof V2_REQUIRED_DEPLOYMENTS]: JsonDeployment;
+} & {
+  [K in keyof typeof V2_OPTIONAL_DEPLOYMENTS]: JsonDeployment | null;
 };
+
+// Build the deployment set from whichever pair of lookups the caller has: reading
+// artifacts off disk, or querying a live deploy environment.
+function mapV2MigrationDeployments(
+  required: (name: string) => JsonDeployment,
+  optional: (name: string) => JsonDeployment | null,
+): V2MigrationDeployments {
+  const deployments: Record<string, JsonDeployment | null> = {};
+  for (const [field, name] of Object.entries(V2_REQUIRED_DEPLOYMENTS)) {
+    deployments[field] = required(name);
+  }
+  for (const [field, name] of Object.entries(V2_OPTIONAL_DEPLOYMENTS)) {
+    deployments[field] = optional(name);
+  }
+  return deployments as V2MigrationDeployments;
+}
 
 function loadV2MigrationDeployments(
   deploymentsDir: string,
   deploymentNetwork: string,
 ): V2MigrationDeployments {
-  return {
-    ethRegistry: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "ETHRegistry",
-    ),
-    batchRegistrar: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "BatchRegistrar",
-    ),
-    ensV1Resolver: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "ENSV1Resolver",
-    ),
-    ethRegistrar: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "ETHRegistrar",
-    ),
-    ethRenewerV1: maybeLoadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "ETHRenewerV1",
-    ),
-    mockUsdc: maybeLoadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "MockUSDC",
-    ),
-    unlockedMigrationController: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "UnlockedMigrationController",
-    ),
-    universalResolverV2: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "UniversalResolverV2",
-    ),
-    managedUrp: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "ManagedUniversalResolverProxy",
-    ),
-    topUrp: loadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "UpgradableUniversalResolverProxy",
-    ),
-    graveyard: loadV2Deployment(deploymentsDir, deploymentNetwork, "Graveyard"),
-    testnetV1PremigrationRegistrar: maybeLoadV2Deployment(
-      deploymentsDir,
-      deploymentNetwork,
-      "TestnetV1PremigrationRegistrar",
-    ),
-  };
+  return mapV2MigrationDeployments(
+    (name) => loadV2Deployment(deploymentsDir, deploymentNetwork, name),
+    (name) => maybeLoadV2Deployment(deploymentsDir, deploymentNetwork, name),
+  );
 }
 
 function collectV2MigrationDeployments(
   deployEnv: Awaited<ReturnType<typeof deployV2>>,
 ): V2MigrationDeployments {
-  return {
-    ethRegistry: deployEnv.get("ETHRegistry"),
-    batchRegistrar: deployEnv.get("BatchRegistrar"),
-    ensV1Resolver: deployEnv.get("ENSV1Resolver"),
-    ethRegistrar: deployEnv.get("ETHRegistrar"),
-    ethRenewerV1: deployEnv.getOrNull("ETHRenewerV1"),
-    mockUsdc: deployEnv.getOrNull("MockUSDC"),
-    unlockedMigrationController: deployEnv.get("UnlockedMigrationController"),
-    universalResolverV2: deployEnv.get("UniversalResolverV2"),
-    managedUrp: deployEnv.get("ManagedUniversalResolverProxy"),
-    topUrp: deployEnv.get("UpgradableUniversalResolverProxy"),
-    graveyard: deployEnv.get("Graveyard"),
-    testnetV1PremigrationRegistrar: deployEnv.getOrNull(
-      "TestnetV1PremigrationRegistrar",
-    ),
-  };
+  return mapV2MigrationDeployments(
+    (name) => deployEnv.get(name),
+    (name) => deployEnv.getOrNull(name),
+  );
 }
 
 async function disableAndVerifyBatchRegistrar(opts: {
@@ -4525,6 +5268,74 @@ async function disableAndVerifyBatchRegistrar(opts: {
 }) {
   await disableBatchRegistrar(opts);
   await verifyBatchRegistrarDisabled(opts);
+}
+
+// The smoke checks a rehearsal reports on. Naming each once keeps the "not
+// exercised" and "still exercised" lists describing the same check in the same
+// words, so a reader can line the two up.
+const SMOKE_CHECKS = {
+  v1Registration: "live v1 registration before the phase 3 freeze",
+  freezeRejection:
+    "the phase 3 freeze rejecting a registration that previously succeeded",
+  reservedAssertions: "the pre-migration RESERVED assertions",
+  migration: "the v1 → v2 migration smoke, unwrapped and wrapped",
+  reservedRejection: "the phase 6 rejection of a pre-migrated reserved name",
+  renewal:
+    "the ETHRenewerV1 renewal smoke, and with it the v1 ↔ v2 expiry-sync invariant",
+  preEnableRejection:
+    "the v2 registrar rejecting a registration before phase 6 grants it REGISTRAR",
+  paidRegistration:
+    "every paid-registration smoke — the ETHRegistrar commit/reveal, pricing, and ERC-20 payment path",
+  deployAndPreMigration:
+    "the deploy, and pre-migration of the CSV names into v2 (phases 1, 2 and 5)",
+  freezeAndHandoff:
+    "the phase 3 freeze of the v1 registrars, and the v1 authorization handoff",
+  renewerAuthorization:
+    "phase 4 authorizing ETHRenewerV1 and handing it the v1 BaseRegistrar, the state a renewal needs",
+  freshV2Registration:
+    "a fresh v2 registration through the ETHRegistrar commit/reveal and ERC-20 payment path",
+} as const;
+
+// One condition that stopped a rehearsal from covering everything, together with
+// the checks it cost and the way to exercise them. Skips are filed under their
+// cause rather than listed flat: several checks usually fall to a single condition,
+// and a flat list reads as several independent problems.
+type CoverageGap = {
+  /** Short name for the condition, also used to merge later skips into it. */
+  cause: string;
+  why: string[];
+  checks: string[];
+  remedy: string[];
+};
+
+// Renders the end-of-run coverage report: the cause first, then what it cost, then
+// what still ran, then what to run instead. A reader reaching this line has just
+// watched a long rehearsal report success and needs to know how much that is worth.
+function reportCoverage(opts: {
+  skipped: CoverageGap[];
+  covered: string[];
+}): void {
+  console.log("");
+  if (opts.skipped.length === 0) {
+    console.log("coverage: all smoke checks ran");
+    return;
+  }
+  console.log("coverage: this rehearsal ran a reduced set of smoke checks.");
+  for (const gap of opts.skipped) {
+    console.log("");
+    console.log(`  why: ${gap.why[0]}`);
+    for (const line of gap.why.slice(1)) console.log(`  ${line}`);
+    console.log("");
+    console.log("  not exercised:");
+    for (const check of gap.checks) console.log(`    - ${check}`);
+    console.log("");
+    for (const line of gap.remedy) console.log(`  ${line}`);
+  }
+  if (opts.covered.length > 0) {
+    console.log("");
+    console.log("  still exercised:");
+    for (const check of opts.covered) console.log(`    - ${check}`);
+  }
 }
 
 // Options selecting an optional ENSv1 fixture cohort for a rehearsal. Absent
@@ -4656,7 +5467,21 @@ export async function runForkFull(opts: RunForkFullOptions) {
   const deploymentsDir = resolve(
     opts.deploymentsDir ?? DEFAULT_DEPLOYMENTS_DIR,
   );
-  const deploymentNetwork = opts.deploymentNetwork ?? network.environment;
+  // A rehearsal deploys into its own namespace rather than the canonical one. The
+  // live namespace describes contracts that exist on the real chain — including
+  // proxies whose admin is a real account — so deploying into it makes phase 1 try
+  // to adopt and upgrade them, which fails on a fork with an opaque proxy-ownership
+  // error. `-fork` namespaces are already gitignored for exactly this purpose.
+  const deploymentNetwork =
+    opts.deploymentNetwork ?? `${network.environment}-fork`;
+  // Phase 3's controller audit reads the active deployment's handoff contracts off
+  // disk to tell them apart from a superseded deployment's, so a rehearsal has to
+  // persist them — whichever namespace it deployed into. Gating this on the
+  // automatic `-fork` namespace meant a run given `--deployment-network` wrote no
+  // artifacts and then threw in phase 3 for want of them. Writing into the
+  // throwaway `-fork` namespace costs nothing either: it is gitignored and
+  // re-created by the next run.
+  const saveDeployments = true;
   const v1Deployments = {
     v1DeploymentsDir: opts.v1DeploymentsDir,
     v1DeploymentNetwork: opts.v1DeploymentNetwork,
@@ -4756,6 +5581,12 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await setBalance(client, owner);
       await setBalance(client, v1Owner);
       await setBalance(client, urManager);
+      await clearAccountDelegations(client, [
+        { address: DEFAULT_ANVIL_DEPLOYER, label: "default deployer" },
+        { address: deployer, label: "deployer" },
+        { address: owner, label: "owner" },
+        { address: v1Owner, label: "v1 owner" },
+      ]);
     }
     const generatedSmokePrivateKey = useRpcStateControls
       ? generatePrivateKey()
@@ -4784,7 +5615,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await impersonate(client, urManager);
     } else if (
       useRpcStateControls &&
-      getAddress(deployer) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      !sameAddress(deployer, DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, deployer);
     }
@@ -4806,23 +5637,118 @@ export async function runForkFull(opts: RunForkFullOptions) {
     // live-v1 smokes must be skipped. Detect that from the controller state: a
     // pristine chain (mainnet today) still exercises them while an
     // already-migrated chain (sepolia, or a repeat mainnet run) does not.
-    const v1Controller = loadV1Deployment(
-      opts.network,
-      "ETHRegistrarController",
-      v1Deployments,
-    );
-    const postMigration = v1Controller
-      ? !((await client.readContract({
-          address: v1BaseRegistrar.address,
-          abi: v1BaseRegistrar.abi,
-          functionName: "controllers",
-          args: [v1Controller.address],
-        })) as boolean)
-      : false;
+    //
+    // Every known registration controller is checked, not just the bundled
+    // `ETHRegistrarController`. If ENS rotates that one, reading it alone reports a
+    // pristine chain as already migrated, which silently drops most of the
+    // rehearsal's assertions while it still reports success.
+    const v1RegistrationControllers: Array<{
+      name: string;
+      deployment: JsonDeployment;
+    }> = [];
+    for (const name of V1_REGISTRATION_CONTROLLER_NAMES) {
+      const deployment = loadV1Deployment(opts.network, name, v1Deployments);
+      if (deployment) v1RegistrationControllers.push({ name, deployment });
+    }
+    if (v1RegistrationControllers.length === 0) {
+      throw new Error(
+        "no v1 registration controller artifacts found: cannot tell a pristine chain from an already-migrated one",
+      );
+    }
+    const enabledV1Controllers: string[] = [];
+    for (const entry of v1RegistrationControllers) {
+      const enabled = (await client.readContract({
+        address: v1BaseRegistrar.address,
+        abi: v1BaseRegistrar.abi,
+        functionName: "controllers",
+        args: [entry.deployment.address],
+      })) as boolean;
+      if (enabled) enabledV1Controllers.push(entry.name);
+    }
+    const postMigration = enabledV1Controllers.length === 0;
+
+    // Records what a run did and did not cover, so a rehearsal cannot report success
+    // while silently having proven far less than it appears to.
+    const skippedCoverage: CoverageGap[] = [];
+    const coveredChecks: string[] = [];
+    const recordSkipped = (gap: CoverageGap) => {
+      const existing = skippedCoverage.find(
+        (entry) => entry.cause === gap.cause,
+      );
+      if (existing) existing.checks.push(...gap.checks);
+      else skippedCoverage.push(gap);
+    };
+    // The paid smokes and the renewal smoke share this condition, so they share one
+    // entry rather than appearing as two unrelated problems.
+    const noPaymentTokenGap = (checks: string[]): CoverageGap => ({
+      cause: "no mintable payment token",
+      why: [
+        `no free-mint mock token is deployed on ${opts.network} and real USDC could not be`,
+        "funded on this fork, so nothing can pay the v2 registrar. This is not expected on a",
+        "fork with state controls, which writes a USDC balance for the smoke account directly.",
+      ],
+      checks,
+      remedy: [
+        "to exercise these, re-run against a local Anvil fork or a Tenderly virtual testnet, or",
+        "add --require-full-coverage to make a run that cannot fund the token fail outright.",
+      ],
+    });
     if (postMigration) {
       console.log(
-        "post-migration mode: v1 hand-off already complete; skipping live v1 registration smokes",
+        `post-migration mode: no v1 registration controller is authorized (checked ${v1RegistrationControllers
+          .map((entry) => entry.name)
+          .join(", ")}); skipping live v1 registration smokes`,
       );
+      recordSkipped({
+        cause: "post-migration mode",
+        why: [
+          `${opts.network} has already completed the v1 → v2 migration, so the fork starts from a`,
+          "chain where no v1 registration controller is authorized on the v1 BaseRegistrar.",
+          `Checked: ${v1RegistrationControllers.map((entry) => entry.name).join(", ")}.`,
+          "Nothing can register a v1 name, so every check that needs one was skipped. This is",
+          `expected on ${opts.network} and is not a failure; the code calls it post-migration mode.`,
+        ],
+        checks: [
+          SMOKE_CHECKS.v1Registration,
+          SMOKE_CHECKS.freezeRejection,
+          SMOKE_CHECKS.reservedAssertions,
+          SMOKE_CHECKS.migration,
+          SMOKE_CHECKS.reservedRejection,
+          SMOKE_CHECKS.renewal,
+        ],
+        remedy: [
+          "to exercise these, rehearse against a chain whose v1 is still live:",
+          "  bun run migration -- fork full --network mainnet --csv-file <csv>",
+          "  bun run migration -- clean-testnet --network sepolia --rpc-url <url> --deployer <addr>",
+        ],
+      });
+      if (opts.requireFullCoverage) {
+        throw new Error(
+          "post-migration mode detected but --require-full-coverage was set: the rehearsal would skip the live v1 registration, freeze, and migration smokes",
+        );
+      }
+    } else {
+      console.log(
+        `pristine chain: v1 registration controllers still authorized (${enabledV1Controllers.join(", ")})`,
+      );
+    }
+
+    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
+    // owned by the prior deployment's ETHRenewerV1, so every v1-owner-signed
+    // write to it reverts. Reclaim ownership before the first such write, which
+    // is phase 1's repointing of the v1 `.eth` resolver at ENSV2Resolver — not
+    // the phase 3 freeze. (No-op on a pristine chain. Live re-migrations use the
+    // standalone `phase reclaim-v1-registrar-ownership` command beforehand.)
+    if (useRpcStateControls) {
+      await reclaimV1RegistrarOwnership({
+        network: opts.network,
+        rpcUrl,
+        chainId: String(chainId),
+        provider,
+        ...v1Deployments,
+        v1Owner,
+        impersonateOwner: true,
+      });
     }
 
     let v2Deployments: V2MigrationDeployments;
@@ -4846,7 +5772,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         deploymentsDir,
         deploymentNetwork,
         ...v1Deployments,
-        saveDeployments: opts.saveDeployments,
+        saveDeployments,
         tenderly: opts.tenderly,
         includeTestnetPremigrationRegistrar:
           opts.includeTestnetPremigrationRegistrar,
@@ -4864,7 +5790,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         urManager,
         urManagerPrivateKey: opts.urManagerPrivateKey,
       });
-      if (opts.saveDeployments) {
+      if (saveDeployments) {
         console.log(
           `deployment files: ${join(deploymentsDir, deploymentNetwork)}`,
         );
@@ -4878,7 +5804,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ensV1Resolver,
       ethRegistrar,
       ethRenewerV1,
-      mockUsdc,
+      mockUsdc: deployedMockUsdc,
       unlockedMigrationController,
       universalResolverV2,
       managedUrp,
@@ -4886,6 +5812,33 @@ export async function runForkFull(opts: RunForkFullOptions) {
       graveyard,
       testnetV1PremigrationRegistrar,
     } = v2Deployments;
+
+    // Where no free-mint mock exists — mainnet, which whitelists real USDC/DAI — the
+    // real token stands in, funded directly on the fork. Without this every
+    // paid-registration and renewal smoke is skipped on the network they matter most
+    // for, and the ETHRegistrar payment path is never executed anywhere.
+    let mockUsdc = deployedMockUsdc;
+    let paymentTokenPreFunded = false;
+    if (!mockUsdc && useRpcStateControls) {
+      try {
+        await setErc20Balance({
+          client,
+          token: MAINNET_USDC,
+          account: privateKeyToAccount(smokeSignerPrivateKey).address,
+          amount: 10n ** 12n,
+          tenderly: isTenderlyVirtualRpc(rpcUrl),
+        });
+        mockUsdc = { address: MAINNET_USDC, abi: Artifact_MockERC20.abi };
+        paymentTokenPreFunded = true;
+        console.log(
+          `funded ${smokeAccount.address} with real USDC on the fork; paid smokes will run`,
+        );
+      } catch (error) {
+        console.log(
+          `could not fund a real payment token on this fork (${errorMessageChain(error)[0]}); paid smokes will be skipped`,
+        );
+      }
+    }
 
     const batchRegistrarOwner = await readBatchRegistrarOwner({
       network: opts.network,
@@ -4896,7 +5849,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
     console.log(`batch registrar owner: ${batchRegistrarOwner}`);
     if (
       useRpcStateControls &&
-      getAddress(batchRegistrarOwner) !== getAddress(DEFAULT_ANVIL_DEPLOYER)
+      !sameAddress(batchRegistrarOwner, DEFAULT_ANVIL_DEPLOYER)
     ) {
       await impersonate(client, batchRegistrarOwner);
     }
@@ -4927,6 +5880,19 @@ export async function runForkFull(opts: RunForkFullOptions) {
       ? { impersonateOwner: true }
       : { privateKey: requirePrivateKeyForAddress(v1Owner, keys, "v1 owner") };
 
+    // Every phase command takes the same description of where it is running and
+    // which artifacts describe it. Named once, so a call site below shows only what
+    // is particular to that phase.
+    const phaseCtx = {
+      network: opts.network,
+      rpcUrl,
+      chainId: String(chainId),
+      provider,
+      deploymentsDir,
+      deploymentNetwork,
+    };
+    const phaseV1Ctx = { ...phaseCtx, ...v1Deployments };
+
     // The migration wraps whatever the canonical top proxy currently serves.
     // When reusing a long-lived intermediate URP, the top proxy already fronts
     // it and the intermediate URP serves its own implementation (about to be
@@ -4937,8 +5903,10 @@ export async function runForkFull(opts: RunForkFullOptions) {
       abi: Artifact_UpgradableUniversalResolverProxy.abi,
       functionName: "implementation",
     })) as Address;
-    const topAlreadyFrontsManaged =
-      getAddress(baselineImplementation) === getAddress(managedUrp.address);
+    const topAlreadyFrontsManaged = sameAddress(
+      baselineImplementation,
+      managedUrp.address,
+    );
     await verifyUrp({
       network: opts.network,
       rpcUrl,
@@ -4952,17 +5920,22 @@ export async function runForkFull(opts: RunForkFullOptions) {
     });
 
     const smokePrefix = `${opts.network === "mainnet" ? "mf" : "sf"}${Date.now().toString(36)}`;
-    // Only the two reserved names have to survive a resume. The rest are chosen
-    // fresh each run because their assertions need names the chain has never
-    // seen, which a replayed run would no longer offer.
+    // Only the reserved names have to survive a resume: they were registered on v1
+    // and seeded onto v2 by the interrupted run, so a replacement would be a name v1
+    // never knew. The rest are chosen fresh each run because their assertions need
+    // names the chain has never seen, which a replayed run would no longer offer.
     const reservedSmokeFile = join(workDir, "smoke-labels.json");
     const reservedSmoke =
       resumeFromPhase === 2
         ? readReservedSmokeLabels(reservedSmokeFile)
-        : { migrate: `${smokePrefix}mig`, reservedOnly: `${smokePrefix}res` };
+        : {
+            migrate: `${smokePrefix}mig`,
+            reservedOnly: `${smokePrefix}res`,
+            migrateWrapped: `${smokePrefix}wrap`,
+          };
     if (resumeFromPhase === 2) {
       console.log(
-        `resumed smoke labels: ${reservedSmoke.migrate}.eth, ${reservedSmoke.reservedOnly}.eth`,
+        `resumed smoke labels: ${reservedSmoke.migrate}.eth, ${reservedSmoke.reservedOnly}.eth, ${reservedSmoke.migrateWrapped}.eth`,
       );
     } else {
       writeFileSync(
@@ -5021,13 +5994,19 @@ export async function runForkFull(opts: RunForkFullOptions) {
       await assertSmokeV1Owner(smokeLabels.migrate);
       await registerSmokeV1(smokeLabels.reservedOnly);
       await assertSmokeV1Owner(smokeLabels.reservedOnly);
+      // A wrapped name travels a different migration path than an unwrapped one, so
+      // the rehearsal needs one of each.
+      await registerSmokeV1(smokeLabels.migrateWrapped);
+      await assertSmokeV1Owner(smokeLabels.migrateWrapped);
       prependCsvLabels(transformedCsv, [
         smokeLabels.migrate,
         smokeLabels.reservedOnly,
+        smokeLabels.migrateWrapped,
       ]);
       console.log(
         `v1 registration succeeded before registrar disablement: ${smokeLabels.v1BeforeDisable}.eth`,
       );
+      coveredChecks.push(SMOKE_CHECKS.v1Registration);
     }
 
     // The corpus is seeded here rather than before phase 1: a third of it
@@ -5086,33 +6065,15 @@ export async function runForkFull(opts: RunForkFullOptions) {
         status: STATUS.RESERVED,
       });
       console.log(`smoke pre-migration reserved ${smokeLabels.migrate}.eth`);
-    }
-
-    // Re-running against an already-migrated chain leaves the v1 BaseRegistrar
-    // owned by the prior deployment's ETHRenewerV1; reclaim it to the v1 owner
-    // before any owner-signed controller change below, the earliest of which is
-    // the phase 3 freeze. (No-op on a pristine chain. Live re-migrations use the
-    // standalone `phase reclaim-v1-registrar-ownership` command beforehand.)
-    if (useRpcStateControls) {
-      await reclaimV1RegistrarOwnership({
-        network: opts.network,
-        rpcUrl,
-        chainId: String(chainId),
-        provider,
-        ...v1Deployments,
-        v1Owner,
-        impersonateOwner: true,
-      });
+      coveredChecks.push(SMOKE_CHECKS.reservedAssertions);
     }
 
     console.log("phase 3: disable v1 registrars");
     await disableV1Registrars({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      deploymentsDir,
-      deploymentNetwork,
+      // The rehearsal drives the phases itself and, on an already-migrated chain,
+      // cannot run the reconciliation that gates the live command.
+      skipPreconditions: true,
+      ...phaseCtx,
       ...v1Deployments,
       ...v1OwnerSigner,
     });
@@ -5124,38 +6085,95 @@ export async function runForkFull(opts: RunForkFullOptions) {
         // registration must fail with a revert (at simulation or in the receipt).
         /revert/i,
       );
+      coveredChecks.push(SMOKE_CHECKS.freezeRejection);
     }
 
     console.log(
-      "phase 4: authorize ETHRenewerV1 so unmigrated names stay renewable",
+      "phase 4: authorize ETHRenewerV1 and hand the v1 registrar over so unmigrated names stay renewable",
     );
     if (!ethRenewerV1) {
       throw new Error("missing ETHRenewerV1 deployment for phase 4");
     }
     await authorizeV1Renewer({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
+      ...phaseV1Ctx,
       ethRenewerV1: ethRenewerV1.address,
       ...v1OwnerSigner,
     });
-    {
-      const renewerAuthorized = (await client.readContract({
-        address: v1BaseRegistrar.address,
-        abi: v1BaseRegistrar.abi,
-        functionName: "controllers",
-        args: [ethRenewerV1.address],
-      })) as boolean;
-      if (!renewerAuthorized) {
-        throw new Error(
-          "ETHRenewerV1 was not authorized as a v1 BaseRegistrar controller in phase 4",
-        );
-      }
-      console.log("smoke ETHRenewerV1 authorized as a v1 renewal controller");
+
+    // Every remaining v1 authorization is granted here, while the v1 owner still
+    // holds the registrar. The ownership transfer below is what makes renewals
+    // work, and it is also the point after which the v1 owner can no longer manage
+    // controllers — so nothing that needs a grant may come after it.
+    if (testnetV1PremigrationRegistrar) {
+      console.log(
+        `testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`,
+      );
+    }
+    await activateV1HandoffControllers({
+      ...phaseV1Ctx,
+      graveyard: graveyard.address,
+      testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
+      ...v1OwnerSigner,
+    });
+
+    // Lock down the v1 BaseRegistrar by handing its ownership to ETHRenewerV1.
+    // A renewal calls `syncWrapper()`, which calls the owner-gated `addController`
+    // on the registrar, so the controller grant above does not make a name
+    // renewable on its own — this does.
+    await activateV1RenewerAndTransferOwnership({
+      ...phaseV1Ctx,
+      ethRenewerV1: ethRenewerV1.address,
+      ...v1OwnerSigner,
+    });
+    await verifyV1Renewer({
+      ...phaseV1Ctx,
+      ethRenewerV1: ethRenewerV1.address,
+    });
+    coveredChecks.push(SMOKE_CHECKS.renewerAuthorization);
+
+    // These are the last writes to touch v1 authorizations, so assert the resulting
+    // set here, in both directions: only the active deployment's contracts may hold
+    // a v1 grant, and every grant it depends on must be in place. The first catches
+    // a superseded deployment's controller surviving the freeze, which the phase 3
+    // registration smoke cannot see; the second catches an adapter or handoff
+    // contract that was never granted or was revoked, which otherwise reads as
+    // "disabled" and passes.
+    await verifyV1RegistrarsDisabled({
+      ...phaseV1Ctx,
+      requireActiveGrants: true,
+    });
+    coveredChecks.push(SMOKE_CHECKS.freezeAndHandoff);
+    await verifyReverseAdapters({
+      ...phaseV1Ctx,
+    });
+
+    // Being authorized does not prove a renewal works. Renewal is the only action a
+    // name owner has while a name is still unmigrated, and it must extend the v1
+    // registration, the v2 reservation, and the NameWrapper's copy of the expiry
+    // together — so actually perform one, here, where the phase claims it works.
+    if (!postMigration && mockUsdc) {
+      await renewViaEthRenewerV1({
+        rpcUrl,
+        chain,
+        label: smokeLabels.reservedOnly,
+        privateKey: smokeSignerPrivateKey,
+        ethRenewerV1,
+        ethRegistry,
+        v1BaseRegistrar,
+        nameWrapper: loadV1Deployment(
+          opts.network,
+          "NameWrapper",
+          v1Deployments,
+        ),
+        mockUsdc,
+        preFunded: paymentTokenPreFunded,
+      });
+      coveredChecks.push(SMOKE_CHECKS.renewal);
+    } else if (!postMigration) {
+      // Post-migration mode already accounts for this skip: the renewal needs the
+      // v1 name that mode could not register. Recording it again would name the
+      // same loss under a cause that is not the one that stopped it.
+      recordSkipped(noPaymentTokenGap([SMOKE_CHECKS.renewal]));
     }
 
     console.log("phase 5: sync remaining names and finish pre-migration");
@@ -5182,6 +6200,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       },
       existsSync(join(finalSyncWorkDir, CHECKPOINT_FILE)),
     );
+    coveredChecks.push(SMOKE_CHECKS.deployAndPreMigration);
     if (!postMigration) {
       await assertV2State({
         rpcUrl,
@@ -5222,10 +6241,43 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `smoke migration registered ${smokeLabels.migrate}.eth on v2`,
       );
+
+      // The wrapped path: the token is a NameWrapper 1155 keyed by namehash, not a
+      // registrar 721 keyed by labelhash, and it is what most `.eth` names actually
+      // hold. Nothing else in the rehearsal touches it.
+      console.log("smoke: migrate a wrapped v1 name to v2");
+      await migrateWrappedV1Name({
+        network: opts.network,
+        rpcUrl,
+        chain,
+        provider,
+        ...v1Deployments,
+        label: smokeLabels.migrateWrapped,
+        owner: smokeMigrationOwner,
+        privateKey: smokeMigrationPrivateKey,
+        ...(smokeMigrationPrivateKey === undefined
+          ? useRpcStateControls
+            ? { impersonateAccount: smokeMigrationOwner }
+            : { account: smokeMigrationOwner }
+          : {}),
+        migrationController: unlockedMigrationController,
+      });
+      await assertV2State({
+        rpcUrl,
+        chain,
+        ethRegistry,
+        label: smokeLabels.migrateWrapped,
+        status: STATUS.REGISTERED,
+        owner: smokeMigrationOwner,
+      });
+      console.log(
+        `smoke migration registered wrapped ${smokeLabels.migrateWrapped}.eth on v2`,
+      );
+      coveredChecks.push(SMOKE_CHECKS.migration);
     }
 
     console.log(
-      "phase 6: enable the v2 controller (disable batch registrar, hand off v1, enable v2 ETHRegistrar)",
+      "phase 6: enable the v2 controller (disable batch registrar, enable v2 ETHRegistrar)",
     );
     await disableAndVerifyBatchRegistrar({
       network: opts.network,
@@ -5236,53 +6288,6 @@ export async function runForkFull(opts: RunForkFullOptions) {
       deploymentsDir,
       deploymentNetwork,
       ...deploymentAdminSigner,
-    });
-    if (testnetV1PremigrationRegistrar) {
-      console.log(
-        `testnet premigration registrar remains enabled: ${testnetV1PremigrationRegistrar.address}`,
-      );
-    }
-
-    await activateV1HandoffControllers({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
-      graveyard: graveyard.address,
-      testnetV1PremigrationRegistrar: testnetV1PremigrationRegistrar?.address,
-      ...v1OwnerSigner,
-    });
-
-    // Final lock-down of the v1 BaseRegistrar: hand its ownership to
-    // ETHRenewerV1. This must follow the owner-signed handoff-controller grants
-    // above, since the EOA can no longer manage controllers once ownership moves.
-    await activateV1RenewerAndTransferOwnership({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
-      ethRenewerV1: ethRenewerV1.address,
-      ...v1OwnerSigner,
-    });
-
-    // The handoff grants above are the last thing to touch v1 authorizations, so
-    // assert the resulting set here: only the active deployment's contracts may hold
-    // a v1 grant. Catches a superseded deployment's controller surviving the freeze,
-    // which the phase 3 registration smoke test cannot see.
-    await verifyV1RegistrarsDisabled({
-      network: opts.network,
-      rpcUrl,
-      chainId: String(chainId),
-      provider,
-      ...v1Deployments,
-      deploymentsDir,
-      deploymentNetwork,
     });
 
     const beforeEnabled = await client.readContract({
@@ -5309,11 +6314,15 @@ export async function runForkFull(opts: RunForkFullOptions) {
           ethRegistrar,
           mockUsdc,
           useRpcStateControls,
+          preFunded: paymentTokenPreFunded,
         }),
         `v2 registrar rejected registration before enablement: ${smokeLabels.v2BeforeEnable}.eth`,
-        // The registrar lacks REGISTRAR/RENEW root roles until they are granted.
-        /revert/i,
+        // Assert the specific cause. Matching any revert would let a wrong price,
+        // an insufficient balance, or a bad nonce pass as proof the grant is absent.
+        // The registry raises this when the registrar lacks REGISTRAR at root.
+        /EACUnauthorizedAccountRoles/i,
       );
+      coveredChecks.push(SMOKE_CHECKS.preEnableRejection);
     }
     await enableV2Registrar({
       network: opts.network,
@@ -5337,11 +6346,17 @@ export async function runForkFull(opts: RunForkFullOptions) {
             ethRegistrar,
             mockUsdc,
             useRpcStateControls,
+            preFunded: paymentTokenPreFunded,
           }),
           `v2 registrar rejected pre-migrated reserved name after enablement: ${smokeLabels.reservedOnly}.eth`,
-          // The name is RESERVED from pre-migration, so registration must revert.
-          /revert/i,
+          // Pin the rejection to an availability failure rather than accepting any
+          // revert, which a payment or nonce problem would also satisfy. The
+          // registrar rejects a pre-migrated name in its own availability check, so
+          // the registry's reservation error is never reached; that the name is
+          // RESERVED rather than merely taken is asserted separately above.
+          /NameNotAvailable/i,
         );
+        coveredChecks.push(SMOKE_CHECKS.reservedRejection);
       }
       await registerViaV2Registrar({
         rpcUrl,
@@ -5352,6 +6367,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         ethRegistrar,
         mockUsdc,
         useRpcStateControls,
+        preFunded: paymentTokenPreFunded,
       });
       await assertV2State({
         rpcUrl,
@@ -5364,6 +6380,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         `v2 registrar registered ${smokeLabels.v2AfterEnable}.eth after enablement`,
       );
+      coveredChecks.push(SMOKE_CHECKS.freshV2Registration);
     } else {
       const afterEnabled = await client.readContract({
         address: ethRegistry.address,
@@ -5377,11 +6394,95 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(
         "v2 registrar enabled (paid-registration smoke skipped: no mintable payment token on this network)",
       );
+      recordSkipped(
+        noPaymentTokenGap([
+          SMOKE_CHECKS.paidRegistration,
+          SMOKE_CHECKS.preEnableRejection,
+        ]),
+      );
     }
+
+    // Being enabled is not the same as being able to take money. Reported rather
+    // than enforced here: a rehearsal may run against a network whose real payment
+    // tokens are not funded on the fork.
+    await verifyRegistrarEconomics({
+      ...phaseCtx,
+      reportOnly: true,
+    });
+
+    // Every later check trusts these records to name the right contracts, so confirm
+    // the code at each address is what the namespace claims before relying on them.
+    await verifyDeployment({
+      ...phaseCtx,
+      reportOnly: true,
+    });
+
+    // Phase 6 is the last step to change v2 authority, so audit the whole role
+    // matrix here rather than spot-checking one address. Reported, not enforced: a
+    // rehearsal runs against fixtures that legitimately hold extra grants, and
+    // failing on those would make the check something operators route around.
+    console.log("phase 6: v2 role matrix");
+    await verifyV2Roles({
+      ...phaseCtx,
+      deployer,
+      owner,
+      reportOnly: true,
+    });
 
     console.log(
       "phase 7: switch the Universal Resolver to v2 (resolution cutover)",
     );
+
+    // Capture how the sampled names resolve *before* the cutover. Phase 7 otherwise
+    // proves only that the proxy points somewhere new — nothing about whether names
+    // still resolve, or resolve to the same answers.
+    // The bare `eth` TLD is deliberately registered in the v2 root with no
+    // resolver, so it stops resolving at the cutover while every name under it
+    // is unaffected. Sampling it would report that accepted difference on every
+    // run, which trains readers to ignore an output whose whole purpose is to
+    // surface real regressions. Names are what the cutover has to preserve.
+    //
+    // The smoke names alone cannot carry the comparison: they are registered with no
+    // resolver, so every lookup reverts on both sides and the diff is empty however
+    // the cutover behaves. Names from the operator's CSV already existed on the
+    // forked chain with real records, which is precisely what the cutover must
+    // preserve. The source is the operator's CSV, not the transformed one, because
+    // phase 3 prepends the generated smoke labels to the latter.
+    const resolvableCsvNames = await selectResolvableNames({
+      client,
+      universalResolver: topUrp.address,
+      candidates: readLabelsFromCsv(
+        resolve(opts.csvFile),
+        RESOLUTION_CANDIDATE_POOL,
+      ).map((label) => `${label}.eth`),
+      limit: RESOLUTION_SAMPLE_SIZE,
+      v1Client: client,
+      v1BaseRegistrar,
+      // Chain time, for the same reason pre-migration uses it: on a fork the wall
+      // clock disagrees, and the two must judge claimability alike or the sample
+      // includes exactly the names pre-migration will drop.
+      v1Now: BigInt((await client.getBlock()).timestamp),
+    });
+    const resolutionNames = [
+      ...new Set(
+        [
+          smokeLabels.migrate && `${smokeLabels.migrate}.eth`,
+          smokeLabels.v2AfterEnable && `${smokeLabels.v2AfterEnable}.eth`,
+          ...resolvableCsvNames,
+          ...(opts.resolutionNames?.split(",").map((name) => name.trim()) ??
+            []),
+        ].filter((name): name is string => Boolean(name)),
+      ),
+    ];
+    const resolutionBefore = await captureResolutionSnapshot({
+      client,
+      universalResolver: topUrp.address,
+      names: resolutionNames,
+    });
+    console.log(
+      `captured pre-cutover resolution for ${resolutionBefore.names.length} name(s), ${resolvableCsvNames.length} of them carrying records before the switch`,
+    );
+
     // Reuse flow: the top URP already fronts the intermediate URP, so the switch
     // is skipped and only the intermediate URP is upgraded below. Bootstrap flow:
     // point the top URP at the freshly deployed managed URP first.
@@ -5395,7 +6496,7 @@ export async function runForkFull(opts: RunForkFullOptions) {
         abi: Artifact_UpgradableUniversalResolverProxy.abi,
         functionName: "admin",
       })) as Address;
-      if (getAddress(topUrpAdmin) === getAddress(zeroAddress)) {
+      if (sameAddress(topUrpAdmin, zeroAddress)) {
         throw new Error(
           "top URP admin is address(0); cannot impersonate admin for fork switch",
         );
@@ -5421,6 +6522,28 @@ export async function runForkFull(opts: RunForkFullOptions) {
       console.log(`top URP switched to managed URP: ${managedUrp.address}`);
     }
 
+    // On a reuse network the managed URP is adopted by address and its admin is a
+    // real account, not the rehearsal's deployer. Read the admin and impersonate it
+    // rather than requiring the operator to pass it: getting it wrong fails right at
+    // the end of a long run, with `CallerNotAdmin` and nothing pointing at the cause.
+    const managedUrpAdmin = (await client.readContract({
+      address: managedUrp.address,
+      abi: Artifact_UpgradableUniversalResolverProxy.abi,
+      functionName: "admin",
+    })) as Address;
+    const urManagerIsAdmin = sameAddress(managedUrpAdmin, urManager);
+    if (!urManagerIsAdmin) {
+      console.log(
+        `managed URP admin is ${managedUrpAdmin}, not the configured ur-manager ${urManager}`,
+      );
+      if (!useRpcStateControls) {
+        throw new Error(
+          `managed URP admin is ${managedUrpAdmin}; pass --ur-manager with that address and a matching key`,
+        );
+      }
+      await setBalance(client, managedUrpAdmin);
+      await impersonate(client, managedUrpAdmin);
+    }
     await upgradeManagedUrp({
       network: opts.network,
       rpcUrl,
@@ -5436,18 +6559,82 @@ export async function runForkFull(opts: RunForkFullOptions) {
               "managed URP admin",
             ),
           }
-        : urManager === DEFAULT_ANVIL_DEPLOYER
-          ? { privateKey: DEFAULT_ANVIL_KEY }
-          : { impersonateAccount: urManager }),
+        : !urManagerIsAdmin
+          ? { impersonateAccount: managedUrpAdmin }
+          : urManager === DEFAULT_ANVIL_DEPLOYER
+            ? { privateKey: DEFAULT_ANVIL_KEY }
+            : { impersonateAccount: urManager }),
     });
     console.log(`managed URP upgraded to: ${universalResolverV2.address}`);
+
+    // The cutover is only correct if the same questions still get the same answers.
+    // Reported rather than enforced: a rehearsal's smoke names are created during
+    // the run, so some legitimately change as the migration proceeds.
+    const resolutionAfter = await captureResolutionSnapshot({
+      client,
+      universalResolver: topUrp.address,
+      names: resolutionNames,
+    });
+    const resolutionDifferences = diffResolutionSnapshots(
+      resolutionBefore,
+      resolutionAfter,
+    );
+    // A sample that carried nothing on either side compares nothing and still
+    // reports success. Say that rather than letting a vacuous pass read like a
+    // verified cutover.
+    const resolvedAnything = [resolutionBefore, resolutionAfter].some(
+      snapshotCarriesRecords,
+    );
+    if (!resolvedAnything) {
+      console.log(
+        `resolution across the cutover was not verified: none of the ${resolutionNames.length} sampled name(s) resolved any record before or after, so there was nothing to compare — pass --resolution-names with a name that has records`,
+      );
+      console.log(`  sampled: ${resolutionNames.join(", ")}`);
+      coveredChecks.push(
+        "the phase 7 URP cutover, though resolution across it was not verified",
+      );
+    } else if (resolutionDifferences.length === 0) {
+      console.log(
+        `resolution unchanged across the cutover for ${resolutionNames.length} name(s)`,
+      );
+      coveredChecks.push(
+        `the phase 7 URP cutover, with resolution unchanged across it for ${resolutionNames.length} name(s)`,
+      );
+    } else {
+      console.log(
+        `resolution changed across the cutover for ${resolutionDifferences.length} record(s):`,
+      );
+      for (const difference of resolutionDifferences.slice(0, 20)) {
+        console.log(`  ${describeDifference(difference)}`);
+      }
+      coveredChecks.push(
+        `the phase 7 URP cutover, with ${resolutionDifferences.length} record(s) reported as changed across it`,
+      );
+    }
 
     if (opts.network === "mainnet") {
       console.log(
         `mainnet DAO simulation used owner/v1Owner impersonation: ${owner}`,
       );
     }
+
+    // A rehearsal that quietly covered less than it appears to is worse than one
+    // that fails, so what was not exercised is stated at the end rather than left in
+    // scrollback thousands of lines up.
+    reportCoverage({ skipped: skippedCoverage, covered: coveredChecks });
+    console.log("");
     console.log(`rehearsal work dir: ${workDir}`);
+    // Post-migration mode fails early, before the rehearsal runs. The conditions
+    // detected mid-run — a payment token that could not be funded — reach here
+    // instead, and the flag has to fail on those too or it enforces only the case
+    // that was already caught.
+    if (opts.requireFullCoverage && skippedCoverage.length > 0) {
+      throw new Error(
+        `--require-full-coverage was set but the rehearsal ran a reduced set of smoke checks: ${skippedCoverage
+          .map((gap) => gap.cause)
+          .join("; ")}`,
+      );
+    }
   } finally {
     if (anvil && !opts.keepAnvil) {
       anvil.kill();
@@ -5524,6 +6711,11 @@ export async function runCleanTestnetFull(opts: RunCleanTestnetFullOptions) {
     await setBalance(client, owner);
     await setBalance(client, v1Owner);
     await setBalance(client, urManager);
+    await clearAccountDelegations(client, [
+      { address: deployer, label: "deployer" },
+      { address: owner, label: "owner" },
+      { address: v1Owner, label: "v1 owner" },
+    ]);
     await impersonate(client, deployer);
     await impersonate(client, owner);
     await impersonate(client, v1Owner);
@@ -5718,6 +6910,9 @@ interface PreMigrationRunSummary {
   skippedExpiredPastGrace: number;
   invalidLabels: number;
   alreadyOnV2: number;
+  /// Reservations already carrying an expiry at least as long as this run would set,
+  /// so nothing was submitted for them. They are pre-migrated all the same.
+  upToDate: number;
   failed: number;
 }
 
@@ -5732,6 +6927,7 @@ interface PreMigrationMetadata {
     namesPreMigrated: number;
     newReservations: number;
     expiryResyncs: number;
+    alreadyCurrent: number;
     skippedNeverRegistered: number;
     skippedExpiredPastGrace: number;
     invalidLabels: number;
@@ -5756,14 +6952,18 @@ function checkpointToRunSummary(
     skippedExpiredPastGrace: checkpoint.skippedPastGraceCount,
     invalidLabels: checkpoint.invalidLabelCount,
     alreadyOnV2: checkpoint.alreadyRegisteredCount,
-    failed: checkpoint.failureCount,
+    upToDate: checkpoint.upToDateCount,
+    failed: checkpoint.failedLines.length,
   };
 }
 
 // The resolved roll-up reflects the run that finished most recently, which in
 // the phased flow is the final-sync pass that re-scans the whole corpus and so
-// represents the end state. `namesPreMigrated` = names currently reserved on v2
-// (newly reserved this run + already-reserved names whose expiry was re-synced).
+// represents the end state. `namesPreMigrated` = names currently reserved on v2:
+// newly reserved this run, already-reserved names whose expiry was re-synced, and
+// already-reserved names that needed no change. The last group is most of the corpus
+// by the final sync, and leaving it out made the published figure describe only what
+// the last run happened to touch rather than what is on v2.
 function resolveFromRuns(
   runs: PreMigrationRunSummary[],
 ): PreMigrationMetadata["resolved"] {
@@ -5771,9 +6971,10 @@ function resolveFromRuns(
   return {
     finishedAt: latest.finishedAt,
     totalNames: latest.totalExpected,
-    namesPreMigrated: latest.reserved + latest.renewed,
+    namesPreMigrated: latest.reserved + latest.renewed + latest.upToDate,
     newReservations: latest.reserved,
     expiryResyncs: latest.renewed,
+    alreadyCurrent: latest.upToDate,
     skippedNeverRegistered: latest.skippedNeverRegistered,
     skippedExpiredPastGrace: latest.skippedExpiredPastGrace,
     invalidLabels: latest.invalidLabels,
@@ -5884,11 +7085,6 @@ type DeploymentCliOptions = {
   deploymentsDir?: string;
 };
 
-type V1DeploymentCliOptions = {
-  v1DeploymentsDir?: string;
-  v1DeploymentNetwork?: string;
-};
-
 // Phase commands that broadcast (or print calldata) as the v1 owner.
 type V1OwnerWriteCliOptions = {
   privateKey?: `0x${string}`;
@@ -5904,7 +7100,7 @@ type AdminSignerCliOptions = {
 
 type PremigrationRunCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     privateKey?: `0x${string}`;
     csvFile: string;
     mainnetRpcUrl?: string;
@@ -5921,7 +7117,7 @@ type PremigrationRunCliOptions = NetworkCliOptions &
 
 type PremigrationVerifyCliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     csvFile: string;
     mainnetRpcUrl?: string;
     registry?: Address;
@@ -5934,7 +7130,7 @@ type PremigrationVerifyCliOptions = NetworkCliOptions &
 
 type DeployV2CliOptions = NetworkCliOptions &
   DeploymentCliOptions &
-  V1DeploymentCliOptions & {
+  V1DeploymentOptions & {
     resume?: boolean;
     includeTestnetPremigrationRegistrar?: boolean;
     deferV1OwnerTransactions?: boolean;
@@ -6008,8 +7204,15 @@ export async function main(argv = process.argv): Promise<void> {
         "mainnet",
       )
       .option("--batch-size <number>", "Rows per TheGraph request", "1000")
-      .option("--start-index <number>", "Pagination start index", "0")
+      .option(
+        "--start-id <labelhash>",
+        "Resume after this registration id (exclusive)",
+      )
       .option("--limit <number>", "Maximum registrations to fetch")
+      .option(
+        "--block <number>",
+        "Pin the export to this indexed block; defaults to the subgraph head",
+      )
       .option(
         "--output <file>",
         "Output CSV file",
@@ -6020,8 +7223,9 @@ export async function main(argv = process.argv): Promise<void> {
           thegraphApiKey?: string;
           network?: string;
           batchSize?: string;
-          startIndex?: string;
+          startId?: string;
           limit?: string;
+          block?: string;
           output: string;
         }) => {
           await runFetchData(opts);
@@ -6129,6 +7333,243 @@ export async function main(argv = process.argv): Promise<void> {
       });
     }),
   );
+
+  premigration.addCommand(
+    addV1DeploymentOptions(
+      new Command("build-index")
+        .description(
+          "Build an independent labelhash-keyed index of v1 names for reconciliation",
+        )
+        .requiredOption("--work-dir <path>", "Directory to hold the index")
+        .option(
+          "--network <network>",
+          "ENS registrations network: mainnet or sepolia",
+          "mainnet",
+        )
+        .option(
+          "--source <source>",
+          "Where to read v1 names from: subgraph (TheGraph) or rpc (v1 BaseRegistrar logs)",
+          "subgraph",
+        )
+        .option(
+          "--thegraph-api-key <key>",
+          "TheGraph Gateway API key; falls back to THEGRAPH_API_KEY or GRAPH_API_KEY",
+        )
+        .option("--batch-size <number>", "Rows per request", "1000")
+        .option(
+          "--block <number>",
+          "Pin the index to this block; defaults to the source's head",
+        )
+        .option(
+          "--resume",
+          "Continue a partial index instead of rebuilding",
+          false,
+        )
+        .option("--rpc-url <url>", "Network RPC URL (--source rpc)")
+        .option("--chain-id <id>", "Chain id override (--source rpc)")
+        .option(
+          "--v1-base-registrar <address>",
+          "v1 BaseRegistrar address (--source rpc)",
+        )
+        .option(
+          "--from-block <number>",
+          "First block to scan for registrations; defaults to the v1 BaseRegistrar deploy block (--source rpc)",
+        )
+        .option(
+          "--scan-range <number>",
+          "Blocks per log query before narrowing (--source rpc)",
+          "250000",
+        ),
+    ).action(
+      async (
+        opts: V1DeploymentOptions & {
+          workDir: string;
+          network?: string;
+          source?: string;
+          thegraphApiKey?: string;
+          batchSize?: string;
+          block?: string;
+          resume?: boolean;
+          rpcUrl?: string;
+          chainId?: string;
+          v1BaseRegistrar?: Address;
+          fromBlock?: string;
+          scanRange?: string;
+        },
+      ) => {
+        const network = parseENSRegistrationNetwork(opts.network ?? "mainnet");
+        const source = opts.source ?? "subgraph";
+        if (source !== "subgraph" && source !== "rpc") {
+          throw new Error(
+            `unknown --source ${source}: expected "subgraph" or "rpc"`,
+          );
+        }
+
+        const onProgress = (entries: number, cursor: string) => {
+          console.log(`indexed ${entries} names (at ${cursor})`);
+        };
+
+        const meta =
+          source === "rpc"
+            ? await (async () => {
+                const networkOpts = withNetworkRpc({
+                  ...opts,
+                  network,
+                } as NetworkCliOptions);
+                const chain = migrationChain(networkOpts);
+                const client = publicClient(networkOpts.rpcUrl, chain);
+                const baseRegistrar = requireV1Deployment(
+                  networkOpts.network,
+                  V1_BASE_REGISTRAR_NAME,
+                  opts,
+                );
+                // The registrar logged nothing before it existed, so its own
+                // deploy block is the only sensible floor for the scan; without
+                // it the walk starts at genesis and burns queries on empty
+                // ranges.
+                const fromBlock =
+                  opts.fromBlock !== undefined
+                    ? Number(opts.fromBlock)
+                    : deploymentBlockNumber(baseRegistrar);
+                if (fromBlock === undefined) {
+                  throw new Error(
+                    "cannot determine the v1 BaseRegistrar deploy block; pass --from-block",
+                  );
+                }
+                console.log(
+                  `scanning ${V1_BASE_REGISTRAR_NAME} ${baseRegistrar.address} from block ${fromBlock}`,
+                );
+                return buildV1NameIndexFromRpc(
+                  {
+                    network,
+                    workDir: opts.workDir,
+                    fromBlock,
+                    block: opts.block ? Number(opts.block) : undefined,
+                    scanRange: parseNumber(opts.scanRange, 250_000),
+                    batchSize: parseNumber(opts.batchSize, 500),
+                    resume: opts.resume,
+                    onProgress,
+                  },
+                  createRpcIndexClient({
+                    // viem's client satisfies the three calls the adapter makes;
+                    // its overloaded signatures do not line up structurally.
+                    client: client as unknown as Parameters<
+                      typeof createRpcIndexClient
+                    >[0]["client"],
+                    baseRegistrar:
+                      opts.v1BaseRegistrar ?? baseRegistrar.address,
+                  }),
+                );
+              })()
+            : await (async () => {
+                const thegraphApiKey =
+                  opts.thegraphApiKey ??
+                  envValue("THEGRAPH_API_KEY", "GRAPH_API_KEY");
+                if (!thegraphApiKey) {
+                  throw new Error(
+                    "Missing --thegraph-api-key or THEGRAPH_API_KEY/GRAPH_API_KEY",
+                  );
+                }
+                return buildV1NameIndex({
+                  thegraphApiKey,
+                  network,
+                  workDir: opts.workDir,
+                  batchSize: parseNumber(opts.batchSize, 1000),
+                  block: opts.block ? Number(opts.block) : undefined,
+                  resume: opts.resume,
+                  onProgress,
+                });
+              })();
+
+        console.log(
+          `index complete: ${meta.entries} names @ block ${meta.block} (${meta.source})`,
+        );
+      },
+    ),
+  );
+
+  premigration.addCommand(
+    new Command("index-status")
+      .description("Print the local v1 name index metadata")
+      .requiredOption("--work-dir <path>", "Directory holding the index")
+      .action(async (opts: { workDir: string }) => {
+        const meta = readV1NameIndexMeta(opts.workDir);
+        if (!meta) {
+          console.log(`no index in ${opts.workDir}`);
+          return;
+        }
+        console.log(JSON.stringify(meta, null, 2));
+      }),
+  );
+
+  premigration.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("reconcile")
+            .description(
+              "Reconcile the v1 name index against v2 state in both directions",
+            )
+            .requiredOption("--work-dir <path>", "Directory holding the index")
+            .option(
+              "--csv-file <path>",
+              "Seeding CSV; checked to ensure it did not come from the index's own source",
+            )
+            .option("--mainnet-rpc-url <url>", "RPC URL for v1 reads")
+            .option("--registry <address>", "v2 ETHRegistry address")
+            .option(
+              "--from-block <number>",
+              "Block to scan v2 registry events from; defaults to the registry's deploy block",
+            )
+            .option(
+              "--expected-status <status>",
+              "reserved (before migration opens) or reserved-or-registered",
+              "reserved",
+            )
+            .option(
+              "--report-only",
+              "Print the reconciliation without failing on discrepancies",
+              false,
+            )
+            .option(
+              "--check-fuses",
+              "Also count names whose CANNOT_TRANSFER fuse is burned, which cannot be claimed through the transfer path (one wrapper read per name)",
+              false,
+            )
+            .option(
+              "--bonus-period-days <days>",
+              "Days added to each name's v1 expiry to compute its expected v2 expiry",
+              "62",
+            )
+            .option(
+              "--cross-source-tolerance <count>",
+              "How far the CSV's and the index's claimable counts may differ before the reconciliation fails",
+              "0",
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions & {
+          workDir: string;
+          csvFile?: string;
+          mainnetRpcUrl?: string;
+          registry?: Address;
+          fromBlock?: string;
+          expectedStatus?: "reserved" | "reserved-or-registered";
+          reportOnly?: boolean;
+          checkFuses?: boolean;
+          bonusPeriodDays?: string;
+          crossSourceTolerance?: string;
+          deploymentsDir?: string;
+          deploymentNetwork?: string;
+        },
+      ) => {
+        await reconcilePreMigration({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
   program.addCommand(premigration);
 
   // Test-only ENSv1 fixture corpus. Seeded between phases 1 and 3; the subset of
@@ -6247,9 +7688,20 @@ export async function main(argv = process.argv): Promise<void> {
       addV1DeploymentOptions(
         addDeploymentOptions(
           addNetworkOptions(
-            new Command("disable-v1-registrars").description(
-              "Disable every v1 registrar controller the active deployment did not authorize",
-            ),
+            new Command("disable-v1-registrars")
+              .option(
+                "--skip-preconditions",
+                "Freeze v1 without requiring that premigration reconcile has passed (the reconciliation is what proves no claimable name was missed)",
+                false,
+              )
+              .option(
+                "--max-reconcile-age-blocks <blocks>",
+                'How old the reconciliation pass may be before it must be re-run (default ~1 day; 0 requires it in the current block, "none" removes the bound)',
+                "7200",
+              )
+              .description(
+                "Disable every v1 registrar controller the active deployment did not authorize",
+              ),
           ),
         ),
       ),
@@ -6257,8 +7709,11 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
-          V1OwnerWriteCliOptions,
+          V1DeploymentOptions &
+          V1OwnerWriteCliOptions & {
+            skipPreconditions?: boolean;
+            maxReconcileAgeBlocks?: string;
+          },
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await disableV1Registrars({
@@ -6278,9 +7733,7 @@ export async function main(argv = process.argv): Promise<void> {
       ),
     ).action(
       async (
-        opts: NetworkCliOptions &
-          V1DeploymentCliOptions &
-          V1OwnerWriteCliOptions,
+        opts: NetworkCliOptions & V1DeploymentOptions & V1OwnerWriteCliOptions,
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await setV1ReverseDefaultResolver({
@@ -6294,22 +7747,224 @@ export async function main(argv = process.argv): Promise<void> {
     addV1DeploymentOptions(
       addDeploymentOptions(
         addNetworkOptions(
-          new Command("verify-v1-registrars-disabled").description(
-            "Verify no v1 registrar controller outside the active deployment is enabled",
+          new Command("verify-v1-registrars-disabled")
+            .description(
+              "Verify no v1 registrar controller outside the active deployment is enabled",
+            )
+            .option(
+              "--require-active-grants",
+              "Also assert the active deployment's own v1 grants are in place (run after phase 4, once every handoff contract has been authorized)",
+              false,
+            ),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentOptions & { requireActiveGrants?: boolean },
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await verifyV1RegistrarsDisabled({
+          ...networkOpts,
+          requireActiveGrants: opts.requireActiveGrants,
+        });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addNetworkOptions(
+      new Command("snapshot-resolution")
+        .description(
+          "Record how names resolve today, to compare against after the phase 7 cutover",
+        )
+        .requiredOption("--names <list>", "Comma-separated names to resolve")
+        .requiredOption("--out-file <path>", "Where to write the snapshot")
+        .option(
+          "--universal-resolver <address>",
+          "Universal Resolver to resolve through; defaults to the deployed top proxy",
+        )
+        .option("--coin-types <list>", "Comma-separated coin types to record")
+        .option("--text-keys <list>", "Comma-separated text keys to record"),
+    ).action(
+      async (
+        opts: NetworkCliOptions & {
+          names: string;
+          outFile: string;
+          universalResolver?: Address;
+          coinTypes?: string;
+          textKeys?: string;
+        },
+      ) => {
+        await snapshotResolution({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addNetworkOptions(
+      new Command("verify-resolution")
+        .description(
+          "Re-resolve a snapshot's names and fail on any record that changed",
+        )
+        .requiredOption(
+          "--snapshot-file <path>",
+          "Snapshot written by snapshot-resolution",
+        )
+        .option(
+          "--universal-resolver <address>",
+          "Universal Resolver to resolve through; defaults to the snapshot's",
+        )
+        .option("--report-only", "Print differences without failing", false),
+    ).action(
+      async (
+        opts: NetworkCliOptions & {
+          snapshotFile: string;
+          universalResolver?: Address;
+          reportOnly?: boolean;
+        },
+      ) => {
+        await verifyResolution({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("verify-roles")
+          .description(
+            "Audit who holds which roles on the v2 registries against the deployment's intent",
+          )
+          .option(
+            "--deployer <address>",
+            "Deployer address; defaults to the network's configured owner",
+          )
+          .option(
+            "--owner <address>",
+            "Owner address; defaults to the network's configured owner",
+          )
+          .option(
+            "--from-block <number>",
+            "Block to discover role holders from; defaults to the registry's deploy block",
+          )
+          .option(
+            "--pre-handoff",
+            "Audit the state before phase 6, where BatchRegistrar still holds its seeding roles",
+            false,
+          )
+          .option("--report-only", "Print findings without failing", false),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            deployer?: Address;
+            owner?: Address;
+            fromBlock?: string;
+            reportOnly?: boolean;
+            preHandoff?: boolean;
+          },
+      ) => {
+        await verifyV2Roles({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("verify-registrar-economics")
+          .description(
+            "Verify the registrar can price and take payment: oracle, beneficiary, and accepted tokens",
+          )
+          .option(
+            "--expected-beneficiary <address>",
+            "Assert the registration-fee beneficiary is this address",
+          )
+          .option(
+            "--payment-tokens <list>",
+            "Comma-separated payment tokens to check; defaults to the deployed mocks plus real USDC on mainnet",
+          )
+          .option("--report-only", "Print findings without failing", false),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & {
+            expectedBeneficiary?: Address;
+            paymentTokens?: string;
+            reportOnly?: boolean;
+          },
+      ) => {
+        await verifyRegistrarEconomics({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addDeploymentOptions(
+      addNetworkOptions(
+        new Command("verify-deployment")
+          .description(
+            "Verify the code at every address in the namespace matches its artifact",
+          )
+          .option("--report-only", "Print findings without failing", false),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions & { reportOnly?: boolean },
+      ) => {
+        await verifyDeployment({ ...withNetworkRpc(opts) });
+      },
+    ),
+  );
+
+  phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify-reverse-adapters").description(
+            "Verify the active reverse-registrar adapters hold their v1 controller grants",
           ),
         ),
       ),
     ).action(
       async (
-        opts: NetworkCliOptions & DeploymentCliOptions & V1DeploymentCliOptions,
+        opts: NetworkCliOptions & DeploymentCliOptions & V1DeploymentOptions,
       ) => {
-        const networkOpts = withNetworkRpc(opts);
-        await verifyV1RegistrarsDisabled({
-          ...networkOpts,
-        });
+        await verifyReverseAdapters({ ...withNetworkRpc(opts) });
       },
     ),
   );
+  phase.addCommand(
+    new Command("verify-owner-tx")
+      .description(
+        "Check a transaction about to be signed against the prepared owner transactions",
+      )
+      .requiredOption(
+        "--file <path>",
+        "JSONL file of prepared owner transactions",
+      )
+      .requiredOption("--to <address>", "Target the Safe will call")
+      .requiredOption("--data <hex>", "Calldata the Safe will send")
+      .option("--value <wei>", "Value the Safe will send", "0")
+      .option("--role <role>", "Only consider transactions for this role")
+      .action(
+        async (opts: {
+          file: string;
+          to: string;
+          data: string;
+          value?: string;
+          role?: string;
+        }) => {
+          await verifyOwnerTransaction(opts);
+        },
+      ),
+  );
+
   phase.addCommand(
     addNetworkOptions(
       new Command("execute-owner-txs")
@@ -6324,6 +7979,15 @@ export async function main(argv = process.argv): Promise<void> {
         )
         .option("--private-key <key>", "Owner private key")
         .option(
+          "--journal-file <path>",
+          "Record of executed transactions, so a re-run does not re-send them (default: <file>.executed.json)",
+        )
+        .option(
+          "--force",
+          "Re-send transactions the journal already records as executed",
+          false,
+        )
+        .option(
           "--dry-run",
           "Print matching transactions without broadcasting",
           false,
@@ -6335,12 +7999,16 @@ export async function main(argv = process.argv): Promise<void> {
           role?: string;
           privateKey?: `0x${string}`;
           dryRun?: boolean;
+          journalFile?: string;
+          force?: boolean;
         },
       ) => {
         const networkOpts = withNetworkRpc(opts);
         await executePreparedOwnerTransactions({
           ...networkOpts,
           privateKey: opts.privateKey,
+          journalFile: opts.journalFile,
+          force: opts.force,
         });
       },
     ),
@@ -6398,7 +8066,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { registrar?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -6416,7 +8084,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-graveyard")
               .description(
-                "Phase 6: authorize Graveyard as a v1 BaseRegistrar controller",
+                "Phase 4: authorize Graveyard as a v1 BaseRegistrar controller",
               )
               .option("--graveyard <address>", "Graveyard address"),
           ),
@@ -6426,7 +8094,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { graveyard?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -6444,7 +8112,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-handoff-controllers")
               .description(
-                "Phase 6: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
+                "Phase 4: authorize Graveyard and the testnet premigration helper as v1 BaseRegistrar controllers",
               )
               .option("--graveyard <address>", "Graveyard address")
               .option(
@@ -6458,7 +8126,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & {
             graveyard?: Address;
             testnetV1PremigrationRegistrar?: Address;
@@ -6479,7 +8147,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("authorize-v1-renewer")
               .description(
-                "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller so unmigrated names stay renewable during the migration",
+                "Phase 4: authorize ETHRenewerV1 as a v1 BaseRegistrar controller (renewals also need activate-v1-renewer, which hands it the registrar)",
               )
               .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
           ),
@@ -6489,7 +8157,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -6507,7 +8175,7 @@ export async function main(argv = process.argv): Promise<void> {
           addNetworkOptions(
             new Command("activate-v1-renewer")
               .description(
-                "Phase 6: transfer v1 BaseRegistrar ownership to ETHRenewerV1 (re-authorizes it as a controller if needed)",
+                "Phase 4: transfer v1 BaseRegistrar ownership to ETHRenewerV1, which is what makes renewals work (re-authorizes it as a controller if needed)",
               )
               .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
           ),
@@ -6517,7 +8185,7 @@ export async function main(argv = process.argv): Promise<void> {
       async (
         opts: NetworkCliOptions &
           DeploymentCliOptions &
-          V1DeploymentCliOptions &
+          V1DeploymentOptions &
           V1OwnerWriteCliOptions & { ethRenewerV1?: Address },
       ) => {
         const networkOpts = withNetworkRpc(opts);
@@ -6549,7 +8217,7 @@ export async function main(argv = process.argv): Promise<void> {
     ).action(
       async (
         opts: NetworkCliOptions &
-          V1DeploymentCliOptions & {
+          V1DeploymentOptions & {
             v1Owner?: Address;
             privateKey?: `0x${string}`;
             impersonateOwner?: boolean;
@@ -6759,6 +8427,30 @@ export async function main(argv = process.argv): Promise<void> {
     ),
   );
   phase.addCommand(
+    addV1DeploymentOptions(
+      addDeploymentOptions(
+        addNetworkOptions(
+          new Command("verify-v1-renewer")
+            .description(
+              "Phase 4: verify ETHRenewerV1 is a v1 BaseRegistrar controller and owns the registrar, which is what a renewal needs",
+            )
+            .option("--eth-renewer-v1 <address>", "ETHRenewerV1 address"),
+        ),
+      ),
+    ).action(
+      async (
+        opts: NetworkCliOptions &
+          DeploymentCliOptions &
+          V1DeploymentOptions & { ethRenewerV1?: Address },
+      ) => {
+        const networkOpts = withNetworkRpc(opts);
+        await verifyV1Renewer({
+          ...networkOpts,
+        });
+      },
+    ),
+  );
+  phase.addCommand(
     addDeploymentOptions(
       addNetworkOptions(
         new Command("verify-v2-registrar")
@@ -6815,6 +8507,15 @@ export async function main(argv = process.argv): Promise<void> {
             .option(
               "--resume-from-phase <phase>",
               "Resume the full rehearsal from phase 2",
+            )
+            .option(
+              "--require-full-coverage",
+              "Fail instead of silently running a reduced set of smoke checks (post-migration mode, or a network with no mintable payment token)",
+              false,
+            )
+            .option(
+              "--resolution-names <list>",
+              "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
             )
             .option(
               "--save-deployments",
@@ -6964,6 +8665,15 @@ export async function main(argv = process.argv): Promise<void> {
             .option("--owner <address>", "Migration owner/admin address")
             .option("--v1-owner <address>", "V1 owner address")
             .option("--ur-manager <address>", "Managed URP admin address")
+            .option(
+              "--require-full-coverage",
+              "Fail instead of silently running a reduced set of smoke checks",
+              false,
+            )
+            .option(
+              "--resolution-names <list>",
+              "Extra comma-separated names to snapshot and re-check across the phase 7 cutover",
+            )
             .option("--debug-rpc", "Log JSON-RPC error responses", false),
         ),
       ),
@@ -7003,3 +8713,19 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
+
+export {
+  createRpcSnapshot,
+  isRetryableRpcRequest,
+  isTenderlyVirtualRpc,
+  saveRpcSnapshotFile,
+} from "./migrations/rpc.js";
+
+export {
+  migrateUnwrappedV1Name,
+  migrateWrappedV1Name,
+  renewViaEthRenewerV1,
+  runV2RegistrarSmoke,
+} from "./migrations/smoke.js";
+
+export { executePreparedOwnerTransactions } from "./migrations/ownerTx.js";

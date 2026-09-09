@@ -2,10 +2,10 @@
 
 import { Command } from "commander";
 import { getContract, isAddress, type Address, type Hex } from "viem";
-import { waitForSuccessfulTransactionReceipt } from "../test/utils/waitForSuccessfulTransactionReceipt.js";
-import { DEPLOYMENT_ROLES, ROLES } from "./deploy-constants.js";
-import { bold, cyan, dim, green, Logger, red, yellow } from "./logger.js";
-import { createV2Clients, loadArtifact } from "./scriptUtils.js";
+import { waitForSuccessfulTransactionReceipt } from "../../test/utils/waitForSuccessfulTransactionReceipt.js";
+import { DEPLOYMENT_ROLES, ROLES } from "../deploy-constants.js";
+import { bold, cyan, dim, green, Logger, red, yellow } from "../logger.js";
+import { createV2Clients, loadArtifact } from "../scriptUtils.js";
 
 class PrepareLogger extends Logger {
   line(msg: string): void {

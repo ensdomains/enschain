@@ -1,5 +1,35 @@
+diff --git a/dist/environment/index.js b/dist/environment/index.js
+index 8322d74aea4cf8dc59b29690836fd7fa97163255..3fd2107192d56a536ee2e6beb6f1442ebacee0ab 100644
+--- a/dist/environment/index.js
++++ b/dist/environment/index.js
+@@ -334,6 +334,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
+             // for backward compatibility
+             tags: context.tags,
+         },
++        // for backward compatibility with rocketh <0.15 deploy scripts (e.g. the
++        // ens-contracts DNS registrar scripts) that read `config.saveDeployments`;
++        // rocketh 0.19 moved this value onto `context`.
++        config: {
++            saveDeployments: context.saveDeployments,
++        },
+         extra: resolvedExecutionParams.extra || {},
+     };
+     // const signer = {
+@@ -553,6 +559,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
+         if (!receipt) {
+             throw new Error(`receipt for ${hash} not found`);
+         }
++        // a mined transaction that reverted yields a receipt with a zero status;
++        // surface it as a failure rather than reporting the transaction as applied
++        else if (receipt.status != null && Number(receipt.status) === 0) {
++            spinner.fail();
++            throw new Error(`transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`);
++        }
+         else {
+             spinner.succeed();
+         }
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 48eba2596a81afaa45cfbe2f3f655fdf150abdbc..2a909de3149d01735df331b3990c0f121ad5a2c6 100644
+index 48eba2596a81afaa45cfbe2f3f655fdf150abdbc..50af758c4ce444cc3e67cb6bf849ddf040b5fb45 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -2,4 +2,6 @@ export { setupDeployScripts, loadEnvironment, resolveConfig, resolveExecutionPar
@@ -9,11 +39,12 @@ index 48eba2596a81afaa45cfbe2f3f655fdf150abdbc..2a909de3149d01735df331b3990c0f12
 +export declare const setup: typeof setupDeployScripts;
 +export type * from './types.js';
  //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index 018a31ca31616c50679b1b566c1092b67857c47d..b21ab3736f81172de7ab5402e97f1390f807ca37 100644
+index 018a31ca31616c50679b1b566c1092b67857c47d..3ebebded0d87d356597406b9f090b7a4818b2ba1 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -3,4 +3,47 @@ export { createEnvironment, loadDeployments } from './environment/index.js';
+@@ -3,4 +3,52 @@ export { createEnvironment, loadDeployments } from './environment/index.js';
  // used by hardhat-deploy and instead of having hardhat-deploy depends on @rocketh/core we export it here as well
  export { enhanceEnvIfNeeded } from '@rocketh/core/environment';
  export { getChainConfigFromUserConfig } from './environment/chains.js';
@@ -55,26 +86,15 @@ index 018a31ca31616c50679b1b566c1092b67857c47d..b21ab3736f81172de7ab5402e97f1390
 +        catch {
 +        }
 +        if (receipt?.blockHash) {
++            // a mined transaction that reverted yields a receipt with a zero status;
++            // surface it as a failure rather than saving the deployment as applied
++            if (receipt.status != null && Number(receipt.status) === 0) {
++                throw new Error(`transaction ${hash} reverted (status 0) in block ${receipt.blockNumber}`);
++            }
 +            return receipt;
 +        }
 +        await new Promise((resolve) => setTimeout(resolve, 50));
 +    }
 +}
  //# sourceMappingURL=index.js.map
-diff --git a/dist/environment/index.js b/dist/environment/index.js
-index 8322d74aea4cf8dc59b29690836fd7fa97163255..1ba6ef786a445f3034ca0722372a01380394e737 100644
---- a/dist/environment/index.js
-+++ b/dist/environment/index.js
-@@ -334,6 +334,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
-             // for backward compatibility
-             tags: context.tags,
-         },
-+        // for backward compatibility with rocketh <0.15 deploy scripts (e.g. the
-+        // ens-contracts DNS registrar scripts) that read `config.saveDeployments`;
-+        // rocketh 0.19 moved this value onto `context`.
-+        config: {
-+            saveDeployments: context.saveDeployments,
-+        },
-         extra: resolvedExecutionParams.extra || {},
-     };
-     // const signer = {
+\ No newline at end of file
