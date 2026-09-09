@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { Command } from "commander";
 import { parseEther, zeroAddress, type Address } from "viem";
 
 import { isRetryableRpcRequest } from "../../script/migration.js";
@@ -13,6 +14,7 @@ import {
   fundingTargets,
 } from "../../script/migrationFixture/config.js";
 import {
+  addFixtureSubcommands,
   assertSeedable,
   refContext,
   reportReverseClaimOverlap,
@@ -477,5 +479,106 @@ describe("a subname's parent", () => {
       },
     } as unknown as FixtureEnvelope;
     expect(parentTransfer(flat)).toEqual([]);
+  });
+});
+
+describe("the fixture command line", () => {
+  /// Parses one command line the way the CLI does, and hands back the options
+  /// the command would have run with.
+  ///
+  /// The parse is the real one — an unregistered option throws here exactly as
+  /// it does for an operator — with only the action replaced, so a dry run does
+  /// not go looking for a corpus or an RPC. `exitOverride` turns a parse error
+  /// into a thrown error rather than an exit that would take the runner with it.
+  const run = async (argv: string[]): Promise<Record<string, unknown>> => {
+    const program = addFixtureSubcommands(new Command("migration-fixture"));
+    const silent = { writeErr: () => {}, writeOut: () => {} };
+    let parsed: Record<string, unknown> | undefined;
+    program.exitOverride().configureOutput(silent);
+    for (const command of program.commands) {
+      command
+        .exitOverride()
+        .configureOutput(silent)
+        .action((raw: Record<string, unknown>) => {
+          parsed = raw;
+        });
+    }
+    await program.parseAsync(argv, { from: "user" });
+    if (!parsed) throw new Error("no fixture command ran");
+    return parsed;
+  };
+
+  const argvFor = (command: string, ...rest: string[]) => [
+    command,
+    "--network",
+    "sepolia",
+    "--rpc-url",
+    "http://127.0.0.1:8545",
+    "--fixture-root",
+    "csv-data/migration-fixture",
+    "--work-dir",
+    ".dev/fixture",
+    "--fixture-actor-mnemonic",
+    MNEMONIC,
+    ...rest,
+  ];
+
+  const optionsOf = (command: string) => {
+    const program = addFixtureSubcommands(new Command("migration-fixture"));
+    const found = program.commands.find((c) => c.name() === command);
+    if (!found) throw new Error(`no such fixture command: ${command}`);
+    return found.options.map((o) => o.long);
+  };
+
+  it("carries the owner key from the dry run's argv through to the actors", async () => {
+    // The whole point of the dry run: the cohort it plans is the cohort seeding
+    // will register, down to which account each owner alias is.
+    const parsed = await run(
+      argvFor("verify", "--fixture-owner-key", OWNER_KEY),
+    );
+    expect(parsed.fixtureOwnerKey).toBe(OWNER_KEY);
+
+    const derived = accounts(parsed as never);
+    const address = (alias: string) =>
+      derived.find((a) => a.alias === alias)!.account.address;
+    for (const alias of ["owner_a", "owner_b", "owner_c"]) {
+      expect(address(alias)).toBe(KEY_ADDRESS);
+    }
+  });
+
+  it("plans the default three-owner layout when no wallet is nominated", async () => {
+    const parsed = await run(argvFor("verify"));
+    expect(parsed.fixtureOwnerKey).toBeUndefined();
+    // Five aliases, five accounts: the layout the dry run has always planned.
+    const derived = accounts(parsed as never);
+    expect(new Set(derived.map((a) => a.account.address)).size).toBe(5);
+  });
+
+  it("lets the dry run take every option the run it previews takes", () => {
+    // A plan is worth previewing only if it is the plan that will run. An
+    // option seeding accepts and the dry run rejects makes the two diverge with
+    // nothing to show for it, which is how --fixture-owner-key came to be
+    // previewable through its environment variable alone.
+    for (const long of optionsOf("seed-v1")) {
+      expect(optionsOf("verify")).toContain(long);
+    }
+  });
+
+  it("takes the owner key everywhere the owner aliases are resolved", async () => {
+    for (const command of ["verify", "fund-actors", "seed-v1"]) {
+      const parsed = await run(
+        argvFor(command, "--fixture-owner-key", OWNER_KEY),
+      );
+      expect(parsed.fixtureOwnerKey).toBe(OWNER_KEY);
+    }
+  });
+
+  it("refuses the owner key once the names exist, whose owner it cannot change", async () => {
+    // verify-v1 resolves each alias against the addresses the seeding run
+    // recorded, so a key here could only contradict them. Its refusal is also
+    // what proves this harness sees an unregistered option at all.
+    await expect(
+      run(argvFor("verify-v1", "--fixture-owner-key", OWNER_KEY)),
+    ).rejects.toThrow(/unknown option/);
   });
 });

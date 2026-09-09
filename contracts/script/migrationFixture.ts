@@ -596,10 +596,16 @@ async function verify(opts: CommonOptions): Promise<void> {
 
   // Placeholder addresses are enough to prove every action resolves, and keep
   // the check runnable without deployments or an RPC.
+  //
+  // The actors are the exception: they are derived, not deployed, so the plan
+  // is built against the very addresses a run will use. A placeholder per alias
+  // would give the three owner aliases three addresses even when a nominated
+  // wallet has collapsed them onto one, which is the difference between the
+  // preview and the run that a dry run exists to rule out.
   const placeholder = (n: number) =>
     `0x${n.toString(16).padStart(40, "0")}` as Address;
   const ctx: PlanContext = {
-    actors: new Map(actors.map((a, i) => [a.alias, placeholder(0x1000 + i)])),
+    actors: new Map(actors.map((a) => [a.alias, a.account.address])),
     fixtureContracts: Object.fromEntries(
       FIXTURE_ARTIFACTS.map((f, i) => [f.name, placeholder(0x2000 + i)]),
     ),
@@ -649,6 +655,9 @@ async function verify(opts: CommonOptions): Promise<void> {
     JSON.stringify(
       {
         selected: rows.length,
+        // Null unless a wallet is nominated, so a preview says whose the names
+        // will be rather than leaving it to be read off the command line.
+        owner: ownerAddress(opts),
         sourceScenarios: perVector.size,
         replicasPerVector: {
           min: Math.min(...perVector.values()),
@@ -1205,12 +1214,14 @@ function addCommon(command: Command): Command {
     );
 }
 
-/// Nominates the wallet that will own every seeded name. The commands up to and
-/// including registration take it: seeding registers to that wallet, and funding
-/// has to top up the accounts seeding will sign from, which once a wallet is
-/// nominated are that wallet rather than the mnemonic's owner accounts. Nothing
-/// after registration takes it, where it would instead read as a way to change
-/// who owns the names, which no command can do.
+/// Nominates the wallet that will own every seeded name. Every command up to and
+/// including registration takes it, because each resolves the owner aliases:
+/// planning resolves them to preview the layout seeding will register rather
+/// than the default three-owner one, seeding registers to that wallet, and
+/// funding has to top up the accounts seeding will sign from, which once a
+/// wallet is nominated are that wallet rather than the mnemonic's owner
+/// accounts. Nothing after registration takes it, where it would instead read as
+/// a way to change who owns the names, which no command can do.
 function addOwnerKeyOption(command: Command): Command {
   return command.option(
     "--fixture-owner-key <key>",
@@ -1257,9 +1268,11 @@ function normalizeOptions(raw: any): CommonOptions {
 /// drift apart on options or behaviour.
 export function addFixtureSubcommands(program: Command): Command {
   program.addCommand(
-    addCommon(
-      new Command("verify").description(
-        "Offline: validate the selection and plan every scenario's calls",
+    addOwnerKeyOption(
+      addCommon(
+        new Command("verify").description(
+          "Offline: validate the selection and plan every scenario's calls",
+        ),
       ),
     ).action((raw) => verify(normalizeOptions(raw))),
   );
