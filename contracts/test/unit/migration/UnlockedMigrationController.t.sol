@@ -25,7 +25,10 @@ import {IPermissionedRegistry} from "~src/registry/interfaces/IPermissionedRegis
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {REGISTRATION_ROLE_BITMAP} from "~src/registrar/ETHRegistrar.sol";
 import {UnlockedMigrationController} from "~src/migration/UnlockedMigrationController.sol";
-import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixture.sol";
+import {
+    MigrationControllerFixture,
+    MockResolver
+} from "~test/fixtures/MigrationControllerFixture.sol";
 
 contract UnlockedMigrationControllerTest is MigrationControllerFixture {
     UnlockedMigrationController migrationController;
@@ -550,12 +553,13 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
         vm.assume(count < 5);
         uint256[] memory ids = new uint256[](count);
         uint256[] memory amounts = new uint256[](count);
+        address[] memory resolvers = new address[](count);
         LibMigration.Data[] memory mds = new LibMigration.Data[](count);
         for (uint256 i; i < count; ++i) {
             testDuration = uint64(vm.randomUint(1, 1000 days));
             bytes memory name = registerWrappedETH2LD(_label(i), CAN_DO_EVERYTHING);
             LibMigration.Data memory md = _unlockedData(name);
-            md.resolver = address(uint160(i));
+            resolvers[i] = md.resolver = address(new MockResolver());
             mds[i] = md;
             ids[i] = uint256(NameCoder.namehash(name, 0));
             amounts[i] = 1;
@@ -579,7 +583,7 @@ contract UnlockedMigrationControllerTest is MigrationControllerFixture {
                 "expiry"
             );
             assertEq(ethRegistry.getResolver(md.label), md.resolver, "resolver");
-            checkResolution(NameCoder.ethName(md.label), address(ensV2Resolver), address(uint160(i)));
+            checkResolution(NameCoder.ethName(md.label), address(ensV2Resolver), resolvers[i]);
             assertEq(
                 address(ethRegistry.getSubregistry(md.label)),
                 address(md.subregistry),

@@ -7,7 +7,7 @@ import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";
 import {IRegistry} from "~src/registry/interfaces/IRegistry.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
-// NOTE: most of these tests are covered by LibRegistry.t.sol
+// NOTE: most of these tests are covered by LibResolution.t.sol
 contract UniversalHelperTest is V2Fixture {
     function setUp() external {
         deployV2Fixture();

@@ -6,7 +6,7 @@ import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol"
 
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
 import {EACBaseRolesLib} from "~src/access-control/libraries/EACBaseRolesLib.sol";
-import {LibRegistry} from "~src/universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "~src/universalResolver/libraries/LibResolution.sol";
 import {V1Fixture} from "~test/fixtures/V1Fixture.sol";
 import {V2Fixture} from "~test/fixtures/V2Fixture.sol";
 
@@ -47,7 +47,7 @@ contract FindResolverTest is V1Fixture, V2Fixture {
                 (address resolver1, bytes32 node1, uint256 offset1) =
                     RegistryUtils.findResolver(registryV1, childName, 0);
                 (, address resolver2, bytes32 node2, uint256 offset2) =
-                    LibRegistry.findResolver(rootRegistry, childName, 0);
+                    LibResolution.findUnvalidatedResolver(rootRegistry, childName, 0);
                 assertEq(resolver1, address(i), "resolver[i]");
                 assertEq(resolver1, resolver2, "resolver");
                 assertEq(node1, node2, "node");

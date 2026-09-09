@@ -48,7 +48,6 @@ import {
 } from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 import type { AccountDefinition, AccountType, UserConfig } from "rocketh/types";
-import { Artifact_BaseRegistrarImplementation } from "generated/artifacts/BaseRegistrarImplementation.js";
 import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
@@ -239,6 +238,9 @@ const REGISTRY_BATCH_ABI = parseAbi([
   "function getResource(uint256 anyId) view returns (uint256)",
   "function getResolver(string label) view returns (address)",
   "function roles(uint256 anyId, address account) view returns (uint256)",
+]);
+const V1_REGISTRAR_BATCH_ABI = parseAbi([
+  "function nameExpires(uint256 id) view returns (uint256)",
 ]);
 const PREMIGRATION_VERIFY_BATCH_SIZE = 250;
 
@@ -741,19 +743,22 @@ async function verifyPreMigration(opts: {
       allowFailure: true,
       contracts: validBatch.map((label) => ({
         address: baseRegistrar,
-        abi: Artifact_BaseRegistrarImplementation.abi,
+        abi: V1_REGISTRAR_BATCH_ABI,
         functionName: "nameExpires",
         args: [labelId(label)],
       })),
     });
     const stateResults = await client.multicall({
       allowFailure: true,
-      contracts: validBatch.map((label) => ({
-        address: registry.address,
-        abi: REGISTRY_BATCH_ABI,
-        functionName: "getState",
-        args: [labelId(label)],
-      })),
+      contracts: validBatch.map(
+        (label) =>
+          ({
+            address: registry.address,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [labelId(label)],
+          }) as const,
+      ),
     });
     const resolverChecks: string[] = [];
 
@@ -761,7 +766,6 @@ async function verifyPreMigration(opts: {
       const label = validBatch[index];
       const expiryResult = expiryResults[index];
       const stateResult = stateResults[index];
-
       if (expiryResult.status === "failure") {
         errors.push(
           `${label}.eth v1 expiry lookup failed: ${expiryResult.error}`,
@@ -774,8 +778,9 @@ async function verifyPreMigration(opts: {
         );
         continue;
       }
+      const state = stateResult.result;
+      const expiry = expiryResult.result;
 
-      const expiry = expiryResult.result as bigint;
       const v1IsClaimable =
         expiry > 0n && expiry + V1_GRACE_PERIOD_SECONDS > v1Now;
       if (!v1IsClaimable) {
@@ -786,12 +791,7 @@ async function verifyPreMigration(opts: {
       eligible++;
       // Same cap pre-migration applies; see bonusAdjustedExpiry.
       const expectedExpiry = bonusAdjustedExpiry(expiry, bonusPeriodSeconds);
-      const state = stateResult.result as unknown as {
-        status: number;
-        expiry: bigint | number;
-        latestOwner: Address;
-      };
-      if (BigInt(state.expiry) !== expectedExpiry) {
+      if (state.expiry !== expectedExpiry) {
         errors.push(
           `${label}.eth expiry mismatch: v2=${state.expiry} expected=${expectedExpiry} v1=${expiry}`,
         );
@@ -803,22 +803,22 @@ async function verifyPreMigration(opts: {
         continue;
       }
 
-      const status = Number(state.status);
       const statusOk =
         expectedStatus === "reserved"
-          ? status === STATUS.RESERVED
+          ? state.status === STATUS.RESERVED
           : expectedStatus === "registered"
-            ? status === STATUS.REGISTERED
-            : status === STATUS.RESERVED || status === STATUS.REGISTERED;
+            ? state.status === STATUS.REGISTERED
+            : state.status === STATUS.RESERVED ||
+              state.status === STATUS.REGISTERED;
       if (!statusOk) {
-        errors.push(`${label}.eth has status ${status}`);
+        errors.push(`${label}.eth has status ${state.status}`);
         continue;
       }
       // The premigration fallback resolver is only asserted for names that remain
       // RESERVED. A REGISTERED name has already been migrated and carries the
       // resolver from its migration data (custom or zero), not the fallback, so
       // asserting the fallback here would fail legitimate migrated names.
-      if (expectedResolver && status === STATUS.RESERVED) {
+      if (expectedResolver && state.status === STATUS.RESERVED) {
         resolverChecks.push(label);
       } else {
         verifiedActive++;
@@ -843,7 +843,7 @@ async function verifyPreMigration(opts: {
           errors.push(`${label}.eth resolver lookup failed: ${result.error}`);
           continue;
         }
-        const actualResolver = result.result as Address;
+        const actualResolver = result.result;
         if (!sameAddress(actualResolver, resolverToCheck)) {
           errors.push(`${label}.eth resolver mismatch: ${actualResolver}`);
           continue;
@@ -1107,12 +1107,15 @@ export async function reconcilePreMigration(opts: {
     );
     const states = await client.multicall({
       allowFailure: true,
-      contracts: batch.map((entry) => ({
-        address: registryAddress,
-        abi: REGISTRY_BATCH_ABI,
-        functionName: "getState",
-        args: [BigInt(entry.id)],
-      })),
+      contracts: batch.map(
+        (entry) =>
+          ({
+            address: registryAddress,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [BigInt(entry.id)],
+          }) as const,
+      ),
     });
 
     for (let index = 0; index < batch.length; index++) {
@@ -1122,12 +1125,7 @@ export async function reconcilePreMigration(opts: {
         result.missing.push(`${entry.id} state lookup failed: ${state.error}`);
         continue;
       }
-      const value = state.result as unknown as {
-        status: number;
-        expiry: bigint | number;
-      };
-      const status = Number(value.status);
-      const actualExpiry = BigInt(value.expiry);
+      const { status, expiry: actualExpiry } = state.result;
 
       // Nothing on v2 at all: the name was never seeded.
       if (status === STATUS.AVAILABLE && actualExpiry === 0n) {
@@ -1410,20 +1408,20 @@ async function readV2StatesInBatches(
     );
     const states = await client.multicall({
       allowFailure: true,
-      contracts: batch.map((labelhash) => ({
-        address: registryAddress,
-        abi: REGISTRY_BATCH_ABI,
-        functionName: "getState",
-        args: [BigInt(labelhash)],
-      })),
+      contracts: batch.map(
+        (labelhash) =>
+          ({
+            address: registryAddress,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "getState",
+            args: [BigInt(labelhash)],
+          }) as const,
+      ),
     });
     for (const [index, labelhash] of batch.entries()) {
       const state = states[index];
       if (state.status === "failure") continue;
-      expiries.set(
-        labelhash,
-        BigInt((state.result as unknown as { expiry: bigint | number }).expiry),
-      );
+      expiries.set(labelhash, state.result.expiry);
     }
   }
   return expiries;
@@ -3330,20 +3328,22 @@ export async function verifyV2Roles(opts: {
       const resources = [...new Set(scoped.map((grant) => grant.resource))];
       const current = await client.multicall({
         allowFailure: true,
-        contracts: resources.map((resource) => ({
-          address: registry.address,
-          abi: REGISTRY_BATCH_ABI,
-          functionName: "getResource",
-          args: [resource],
-        })),
+        contracts: resources.map(
+          (resource) =>
+            ({
+              address: registry.address,
+              abi: REGISTRY_BATCH_ABI,
+              functionName: "getResource",
+              args: [resource],
+            }) as const,
+        ),
       });
       const live = new Set<string>();
       let orphaned = 0;
       for (const [index, resource] of resources.entries()) {
         const result = current[index];
         if (result.status === "failure") continue;
-        if ((result.result as bigint) === resource)
-          live.add(resource.toString());
+        if (result.result === resource) live.add(resource.toString());
         else orphaned++;
       }
       for (const grant of scoped) {
@@ -3363,12 +3363,15 @@ export async function verifyV2Roles(opts: {
     const pairs = [...wanted.values()];
     const results = await client.multicall({
       allowFailure: true,
-      contracts: pairs.map((pair) => ({
-        address: registry.address,
-        abi: REGISTRY_BATCH_ABI,
-        functionName: "roles",
-        args: [pair.resource, pair.account],
-      })),
+      contracts: pairs.map(
+        (pair) =>
+          ({
+            address: registry.address,
+            abi: REGISTRY_BATCH_ABI,
+            functionName: "roles",
+            args: [pair.resource, pair.account],
+          }) as const,
+      ),
     });
 
     for (const [index, pair] of pairs.entries()) {
@@ -3379,7 +3382,7 @@ export async function verifyV2Roles(opts: {
           `${registryName}: roles(${scope}, ${pair.account}) failed: ${result.error}`,
         );
       }
-      const roles = result.result as bigint;
+      const roles = result.result;
       if (roles === 0n) continue;
       holders.push({
         contract: registryName,
