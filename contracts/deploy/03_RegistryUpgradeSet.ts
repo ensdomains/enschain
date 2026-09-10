@@ -6,7 +6,7 @@ export default execute(
     await deploy("RegistryUpgradeSet", {
       account: deployer,
       artifact: Artifact_PermissionedAddressSet,
-      args: [owner],
+      args: [owner, false],
     });
   },
   {

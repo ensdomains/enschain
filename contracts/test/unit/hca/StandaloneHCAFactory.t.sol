@@ -257,7 +257,10 @@ contract StandaloneHCAFactoryTest is Test {
     }
 
     function _deployPermissionedAddressSet(address rootAccount) internal returns (IAddressSet) {
-        return IAddressSet(deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount)));
+        return
+            IAddressSet(
+                deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount, false))
+            ); // PermissionedAddressSet.constructor()
     }
 
     function _expectedAddress(address owner_, address implementation_, uint256 userSalt)

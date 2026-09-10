@@ -12,17 +12,26 @@ import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {
     PermissionedAddressSet,
     ROLE_APPROVE,
-    ROLE_CAN_NAME
+    ROLE_CAN_NAME,
+    ROLE_CALLABLE
 } from "~src/utils/PermissionedAddressSet.sol";
 
 contract PermissionedAddressSetTest is Test {
     PermissionedAddressSet set;
+    MockCalled called;
 
     address testAddr = makeAddr("something");
     address friend = makeAddr("anotherAdmin");
 
     function setUp() external {
-        set = new PermissionedAddressSet(address(this));
+        set = new PermissionedAddressSet(address(this), false);
+        called = new MockCalled();
+    }
+
+    function initWithCallable() external {
+        vm.expectEmit();
+        emit IPermissionedAddressSet.CallableChanged(true, address(this));
+        new PermissionedAddressSet(address(this), true);
     }
 
     function test_supportsInterface() external view {
@@ -96,6 +105,65 @@ contract PermissionedAddressSetTest is Test {
         set.approve(testAddr, true);
     }
 
+    function test_setCallable() external {
+        assertFalse(set.isCallable());
+
+        vm.expectEmit();
+        emit IPermissionedAddressSet.CallableChanged(true, address(this));
+        set.setCallable(true);
+
+        assertTrue(set.isCallable());
+    }
+
+    function test_setCallable_notAuthorized() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEnhancedAccessControl.EACUnauthorizedAccountRoles.selector,
+                set.ROOT_RESOURCE(),
+                ROLE_CALLABLE,
+                friend
+            )
+        );
+        vm.prank(friend);
+        set.setCallable(true);
+    }
+
+    function test_call() external {
+        set.approve(friend, true);
+        set.setCallable(true);
+
+        vm.prank(friend);
+        (bool ok, bytes memory v) =
+            set.call(address(called), abi.encodeCall(MockCalled.add, (123)));
+        assertTrue(ok);
+        assertEq(v, abi.encode(124));
+    }
+
+    function test_call_revert() external {
+        set.approve(friend, true);
+        set.setCallable(true);
+
+        vm.prank(friend);
+        (bool ok, bytes memory v) =
+            set.call(address(called), abi.encodeCall(MockCalled.add, (123)));
+        assertTrue(ok);
+        assertEq(v, abi.encode(124));
+    }
+
+    function test_call_notCallable() external {
+        vm.expectRevert(abi.encodeWithSelector(IPermissionedAddressSet.NotCallable.selector));
+        vm.prank(friend);
+        set.call(address(this), "");
+    }
+
+    function test_call_notApproved() external {
+        set.setCallable(true);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionedAddressSet.NotApproved.selector, address(this))
+        );
+        set.call(address(called), "");
+    }
+
     function test_isContractNamer() external {
         assertTrue(set.isContractNamer(address(this)));
 
@@ -106,5 +174,12 @@ contract PermissionedAddressSetTest is Test {
 
         set.revokeRootRoles(ROLE_CAN_NAME, friend);
         assertFalse(set.isContractNamer(friend), "revoked");
+    }
+}
+
+
+contract MockCalled {
+    function add(uint256 x) external pure returns (uint256) {
+        return x + 1;
     }
 }

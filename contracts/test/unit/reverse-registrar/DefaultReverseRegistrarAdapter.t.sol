@@ -182,7 +182,7 @@ contract DefaultReverseRegistrarAdapterTest is HCAFixture {
     }
 
     function test_poc_untrustedProxyTemporarilySpoofsTrustedImplementation() external {
-        PermissionedAddressSet trustedHCASet = new PermissionedAddressSet(address(this));
+        PermissionedAddressSet trustedHCASet = new PermissionedAddressSet(address(this), false);
         trustedHCASet.approve(address(trustedHCAImpl), true);
         TransientImplementationSpoofHCA maliciousImplementation =
             new TransientImplementationSpoofHCA();

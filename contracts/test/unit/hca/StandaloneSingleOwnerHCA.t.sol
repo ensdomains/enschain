@@ -56,6 +56,7 @@ import {
     IPermissionedResolverInitializable
 } from "~src/resolver/interfaces/IPermissionedResolverInitializable.sol";
 import {IAddressSetter} from "~src/resolver/interfaces/setters/IAddressSetter.sol";
+import {IPermissionedAddressSet} from "~src/utils/interfaces/IPermissionedAddressSet.sol";
 import {ITextSetter} from "~src/resolver/interfaces/setters/ITextSetter.sol";
 import {INameSetter} from "~src/resolver/interfaces/setters/INameSetter.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
@@ -132,7 +133,7 @@ contract StandaloneSingleOwnerHCATest is Test {
     HCAOwnerAndSessionValidatorHarness validatorHarness;
     IPermissionedRegistry ethRegistry;
     MockStandaloneHCA hca;
-    IAddressSetApproval upgradeSet;
+    IPermissionedAddressSet upgradeSet;
 
     function setUp() public {
         upgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
@@ -234,7 +235,8 @@ contract StandaloneSingleOwnerHCATest is Test {
     function test_standaloneSingleOwnerHCA_upgradesThroughVerifiableFactoryProxy() public {
         VerifiableFactory factory = new VerifiableFactory();
         StandaloneSingleOwnerHCA implementation = _newAccount();
-        IAddressSetApproval predecessorUpgradeSet = _deployPermissionedAddressSet(upgradeSetAdmin);
+        IPermissionedAddressSet predecessorUpgradeSet =
+            _deployPermissionedAddressSet(upgradeSetAdmin);
         StandaloneSingleOwnerHCA nextImplementation = _newAccount(predecessorUpgradeSet);
 
         address proxy =
@@ -1710,7 +1712,7 @@ contract StandaloneSingleOwnerHCATest is Test {
         LegacyDelegatecallHCA implementation =
             new LegacyDelegatecallHCA(address(userOpEntryPoint), address(validator));
         VerifiableFactory factory = new VerifiableFactory();
-        IAddressSetApproval trustedHCASet = _deployPermissionedAddressSet(address(this));
+        IPermissionedAddressSet trustedHCASet = _deployPermissionedAddressSet(address(this));
         trustedHCASet.approve(address(implementation), true);
         StandaloneHCAFactory deployer = new StandaloneHCAFactory(factory, address(this));
         deployer.setImplementationApproval(address(implementation), true);
@@ -1846,11 +1848,11 @@ contract StandaloneSingleOwnerHCATest is Test {
 
     function _deployPermissionedAddressSet(address rootAccount)
         internal
-        returns (IAddressSetApproval)
+        returns (IPermissionedAddressSet)
     {
         return
-            IAddressSetApproval(
-                deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount))
+            IPermissionedAddressSet(
+                deployCode(PERMISSIONED_ADDRESS_SET_ARTIFACT, abi.encode(rootAccount, true)) // PermissionedAddressSet.constructor()
             );
     }
 
@@ -2516,16 +2518,6 @@ contract ImplementationTrustOnlyDefaultAdapter {
         require(IStandaloneHCAOwner(msg.sender).owner() == account);
         REGISTRAR.setNameForAddr(account, name);
     }
-}
-
-
-/// @title Address Set Approval Interface
-/// @notice Exposes the mutation used with production address-set deployments in these tests.
-interface IAddressSetApproval is IAddressSet {
-    /// @notice Adds or removes an address from the set.
-    /// @param addr The address whose membership changes.
-    /// @param approved Whether the address is included.
-    function approve(address addr, bool approved) external;
 }
 
 

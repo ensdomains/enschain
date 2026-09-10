@@ -67,8 +67,8 @@ contract MigrationControllerFixture is V1Fixture, V2Fixture {
 
         graveyard = new Graveyard(nameWrapper, contractNamer);
 
-        registryUpgradeSet = new PermissionedAddressSet(address(this));
-        publicResolverSet = new PermissionedAddressSet(address(this));
+        registryUpgradeSet = new PermissionedAddressSet(address(this), false);
+        publicResolverSet = new PermissionedAddressSet(address(this), false);
 
         baseRegistrar.setResolver(address(ensV2Resolver));
         baseRegistrar.addController(address(graveyard));

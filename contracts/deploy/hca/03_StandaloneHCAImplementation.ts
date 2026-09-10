@@ -48,7 +48,7 @@ export default execute(
     const upgradeSet = await deploy("HCAUpgradeSet", {
       account: deployer,
       artifact: Artifact_PermissionedAddressSet,
-      args: [owner],
+      args: [owner, false],
     });
 
     await deploy("StandaloneHCAImplementation", {

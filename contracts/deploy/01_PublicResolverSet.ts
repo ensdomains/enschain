@@ -15,7 +15,7 @@ export default execute(
     const publicResolverSet = await deploy("PublicResolverSet", {
       account: deployer,
       artifact: Artifact_PermissionedAddressSet,
-      args: [owner],
+      args: [owner, false],
     });
 
     // The wrapper-aware v1 public resolvers whose locked names should be
