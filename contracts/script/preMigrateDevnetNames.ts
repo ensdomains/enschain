@@ -3,10 +3,7 @@ import { join } from "node:path";
 import {
   getAddress,
   isAddress,
-  keccak256,
-  namehash,
   parseEther,
-  stringToBytes,
   zeroAddress,
   type Address,
 } from "viem";
@@ -24,6 +21,7 @@ import {
   verifyV2State,
 } from "./preMigrationUtils.js";
 import type { DevnetEnvironment } from "./setup.js";
+import { idFromLabel, namehash } from "../test/utils/utils.js";
 
 // Curated real-mainnet .eth 2LDs sourced from morticia's e2e scenario config
 // (test/e2e/test-e2e-mainnet-fork-config.json). Chosen to span every migration
@@ -70,9 +68,6 @@ export interface PreMigrateDevnetOptions {
 
 // The BaseRegistrar ERC-721 id is the labelhash; the NameWrapper ERC-1155 id
 // is the namehash of the full 2LD.
-function baseRegistrarId(label: string): bigint {
-  return BigInt(keccak256(stringToBytes(label)));
-}
 function nameWrapperId(label: string): bigint {
   return BigInt(namehash(`${label}.eth`));
 }
@@ -126,7 +121,7 @@ async function reassignOwner(
     return "wrapped";
   }
 
-  const labelId = baseRegistrarId(label);
+  const labelId = idFromLabel(label);
   const registrant = await env.v1.BaseRegistrar.read.ownerOf([labelId]);
   if (registrant === zeroAddress) {
     console.log(`  ⊘ ${label}.eth: no v1 owner — left reserve-only`);
