@@ -33,6 +33,7 @@ import {HCASmartSessionLib} from "./libraries/HCASmartSessionLib.sol";
 /// @dev Owner signatures use Rhinestone's existing HCA format. Session operations carry a
 ///      reusable owner authorization and are consumed through the IntentExecutor's ERC-1271 path.
 ///      The permission checks remain hardcoded here rather than in dynamic policy modules.
+///      Session registrations require a zero subregistry; this policy does not restrict owner calls.
 contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     ////////////////////////////////////////////////////////////////////////
     // Types
@@ -669,8 +670,9 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
                 if (!_isAuthorizedRegistrar(execution.target, state)) {
                     revert ActionNotAllowed(execution.target, selector);
                 }
-                (address registrant, address resolver) = _registerFields(execution.callData);
-                if (registrant != owner || resolver != allowedResolver) {
+                (address registrant, address subregistry, address resolver) =
+                    _registerFields(execution.callData);
+                if (registrant != owner || subregistry != address(0) || resolver != allowedResolver) {
                     revert PolicyRuleFailed();
                 }
                 state.usesResolver = true;
@@ -1003,11 +1005,12 @@ contract HCAOwnerAndSessionValidator is HCAValidatorBase {
     /// @dev Reads only the needed ABI head words instead of decoding the full register tuple.
     /// @param callData ABI-encoded register call data.
     /// @return registrant The owner argument of the register call.
+    /// @return subregistry The initial subregistry argument of the register call.
     /// @return resolver The resolver argument of the register call.
     function _registerFields(bytes memory callData)
         internal
         pure
-        returns (address registrant, address resolver)
+        returns (address registrant, address subregistry, address resolver)
     {
         return HCARegistrarPolicyLib.registrationFields(callData);
     }

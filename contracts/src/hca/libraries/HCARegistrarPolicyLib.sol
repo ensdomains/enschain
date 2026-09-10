@@ -84,17 +84,19 @@ library HCARegistrarPolicyLib {
         return !seenRegistration || isPaymentToken(registrar, token);
     }
 
-    /// @notice Reads the registrant and resolver from an encoded registration call.
+    /// @notice Reads the registrant, subregistry, and resolver from an encoded registration call.
     /// @dev Reads fixed ABI head words without decoding the dynamic label argument.
     /// @param callData ABI-encoded registrar call data.
     /// @return registrant The owner argument of the registration.
+    /// @return subregistry The initial subregistry argument of the registration.
     /// @return resolver The resolver argument of the registration.
     function registrationFields(bytes memory callData)
         internal
         pure
-        returns (address registrant, address resolver)
+        returns (address registrant, address subregistry, address resolver)
     {
         registrant = HCAExecutionLib.readAddress(callData, 4 + 32);
+        subregistry = HCAExecutionLib.readAddress(callData, 4 + 96);
         resolver = HCAExecutionLib.readAddress(callData, 4 + 128);
     }
 }
