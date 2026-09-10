@@ -39,34 +39,6 @@ contract DNSTLDResolverTest is Test, ERC1155Holder {
         dns = new MockDNS(rootRegistry);
     }
 
-    function test_readTXT() external view {
-        assertEq(dns.readTXT(""), "");
-        assertEq(dns.readTXT("\x01a"), "a");
-        assertEq(dns.readTXT("\x00\x01a"), "a");
-        assertEq(dns.readTXT("\x01a\x01b"), "ab");
-        assertEq(dns.readTXT("\x01a\x00\x02bc"), "abc");
-    }
-
-    function test_readTXT_invalid() external {
-        vm.expectRevert();
-        dns.readTXT("\x01");
-        vm.expectRevert();
-        dns.readTXT("\x01a\x01");
-        vm.expectRevert();
-        dns.readTXT("\x00a");
-    }
-
-    function testFuzz_readTXT(uint16 pad) external {
-        bytes memory v = new bytes(pad);
-        bytes memory u;
-        for (uint256 i = vm.randomUint(5); i > 0; i--) {
-            bytes memory rng = vm.randomBytes(vm.randomUint(0, 255));
-            v = abi.encodePacked(v, uint8(rng.length), rng);
-            u = abi.encodePacked(u, rng);
-        }
-        assertEq(dns.readTXT(v, pad, v.length), u);
-    }
-
     function test_parseResolver_address() external view {
         assertEq(
             dns.parseResolver("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"),
@@ -131,12 +103,6 @@ contract MockDNS is DNSTLDResolver {
             IContractNamer(address(0))
         )
     {}
-    function readTXT(bytes memory v) external pure returns (bytes memory) {
-        return _readTXT(v, 0, v.length);
-    }
-    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
-        return _readTXT(v, pos, end);
-    }
     function parseResolver(bytes memory v) external view returns (address) {
         return _parseResolver(v);
     }
