@@ -503,9 +503,14 @@ export async function setupDevnet({
         address: rocketh.get("PublicResolverSet").address,
         client,
       }),
-      RegistryUpgradeSet: getContract({
+      TrustedRegistrySet: getContract({
         abi: Abi_PermissionedAddressSet,
-        address: rocketh.get("RegistryUpgradeSet").address,
+        address: rocketh.get("TrustedRegistrySet").address,
+        client,
+      }),
+      WrapperRegistryUpgradeSet: getContract({
+        abi: Abi_PermissionedAddressSet,
+        address: rocketh.get("WrapperRegistryUpgradeSet").address,
         client,
       }),
       // universal
@@ -1018,7 +1023,10 @@ export async function setupDevnet({
       await setName("locked.migration", v2.LockedMigrationController.address);
       await setName("graveyard", v2.Graveyard.address);
       await setName("helper.migration", v2.MigrationHelper.address);
-      await setName("upgradeset.registry", v2.RegistryUpgradeSet.address);
+      await setName(
+        "upgradeset.registry",
+        v2.WrapperRegistryUpgradeSet.address,
+      );
       await setName("prset.migration", v2.PublicResolverSet.address);
 
       await setName("batch.gateways", shared.BatchGatewayProvider.address);

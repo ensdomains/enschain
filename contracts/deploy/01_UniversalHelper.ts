@@ -16,6 +16,6 @@ export default execute(
   },
   {
     tags: ["UniversalHelper", "v2", "migration:phase1:deploy-v2"],
-    dependencies: ["RootRegistry", "ContractNamer"],
+    dependencies: ["RootRegistry", "ETHRegistry", "ContractNamer"],
   },
 );

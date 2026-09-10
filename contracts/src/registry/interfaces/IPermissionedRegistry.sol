@@ -8,7 +8,7 @@ import {IUnsafeTransferable} from "../../utils/interfaces/IUnsafeTransferable.so
 import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0xc18bd555`
+/// @dev Interface selector: `0x54d9b3a0`
 interface IPermissionedRegistry is
     IStandardRegistry,
     IEnhancedAccessControl,
@@ -109,7 +109,4 @@ interface IPermissionedRegistry is
     /// @param anyId The labelhash, token ID, or resource.
     /// @return owner The token owner.
     function getOwner(uint256 anyId) external view returns (address owner);
-
-    /// @notice Return `true` if the tokens cannot be controlled by root.
-    function isEmancipated() external view returns (bool);
 }

@@ -3,10 +3,12 @@ pragma solidity >=0.8.24;
 
 import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
+import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFactory.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 import {IOwnedRegistry} from "../../registry/interfaces/IOwnedRegistry.sol";
 import {IRegistry} from "../../registry/interfaces/IRegistry.sol";
+import {IAddressSet} from "../../utils/interfaces/IAddressSet.sol";
 
 /// @dev Recursive traversal helpers for the namechain registry tree — resolver lookup, registry
 ///      discovery, canonical name construction, and ancestry enumeration.
@@ -232,6 +234,133 @@ library LibResolution {
         _findRegistries(name, offset, registries, 0);
     }
 
+    /// @dev Determine if a registry is trusted.
+    /// @param verifiableFactory The VerifiableFactory.
+    /// @param trustedRegistrySet Set of trusted registry contracts and implementations.
+    /// @param registry The registry to check
+    /// @return `true` if registry is trusted.
+    function isTrustedRegistry(
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedRegistrySet,
+        IRegistry registry
+    )
+        internal
+        view
+        returns (bool)
+    {
+        if (address(registry) == address(0)) {
+            return false;
+        }
+        if (trustedRegistrySet.includes(address(registry))) {
+            return true;
+        }
+        try verifiableFactory.verifyContract(address(registry)) returns (address impl) {
+            return trustedRegistrySet.includes(impl);
+        } catch {
+            return false;
+        }
+    }
+
+    /// @dev Find the parent registry if and only if every ancestor is trusted.
+    /// @param verifiableFactory The VerifiableFactory.
+    /// @param trustedRegistrySet Set of trusted registry contracts and implementations.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return parent The parent registry or null if any ancestor was not trusted.
+    function findTrustedRegistry(
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedRegistrySet,
+        IRegistry rootRegistry,
+        bytes memory name,
+        uint256 offset
+    )
+        internal
+        view
+        returns (IRegistry parent)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        if (bytes(label).length == 0) {
+            parent = rootRegistry;
+        } else {
+            parent = findTrustedRegistry(
+                verifiableFactory,
+                trustedRegistrySet,
+                rootRegistry,
+                name,
+                next
+            );
+            if (address(parent) != address(0)) {
+                parent = parent.getSubregistry(label);
+            }
+        }
+        return
+            isTrustedRegistry(verifiableFactory, trustedRegistrySet, parent)
+                ? parent
+                : IRegistry(address(0));
+    }
+
+    /// @dev Determine if a registry is emancipated.
+    function isEmancipatedRegistry(
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedRegistrySet,
+        IRegistry registry
+    )
+        internal
+        view
+        returns (bool)
+    {
+        return
+            isTrustedRegistry(verifiableFactory, trustedRegistrySet, registry) &&
+            IOwnedRegistry(address(registry)).isEmancipated();
+    }
+
+    /// @dev Find the parent registry if and only if every ancestor is emancipated.
+    /// @param verifiableFactory The VerifiableFactory.
+    /// @param trustedRegistrySet Set of trusted registry contracts and implementations.
+    /// @param rootRegistry The root ENS registry.
+    /// @param name The DNS-encoded name.
+    /// @param offset The offset into `name` to begin the search.
+    /// @return parent The parent registry or null if any ancestor was not emancipated.
+    function findEmancipatedRegistry(
+        IVerifiableFactory verifiableFactory,
+        IAddressSet trustedRegistrySet,
+        IRegistry rootRegistry,
+        bytes memory name,
+        uint256 offset
+    )
+        internal
+        view
+        returns (IOwnedRegistry parent)
+    {
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
+        IRegistry registry;
+        if (bytes(label).length == 0) {
+            registry = rootRegistry;
+        } else {
+            registry = findEmancipatedRegistry(
+                verifiableFactory,
+                trustedRegistrySet,
+                rootRegistry,
+                name,
+                next
+            );
+            if (address(registry) != address(0)) {
+                registry = registry.getSubregistry(label);
+            }
+        }
+        return
+            IOwnedRegistry(
+                isEmancipatedRegistry(verifiableFactory, trustedRegistrySet, registry)
+                    ? address(parent)
+                    : address(0)
+            );
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    // Private Functions
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Recursive function for finding the nearest owner.
     function _findNearestOwner(IRegistry rootRegistry, bytes memory name, uint256 offset)
         private
@@ -267,11 +396,11 @@ library LibResolution {
         view
         returns (IRegistry registry)
     {
-        (string memory label, uint256 nextOffset) = NameCoder.extractLabel(name, offset);
+        (string memory label, uint256 next) = NameCoder.extractLabel(name, offset);
         if (bytes(label).length == 0) {
             return registries[registries.length - 1];
         }
-        registry = _findRegistries(name, nextOffset, registries, index + 1);
+        registry = _findRegistries(name, next, registries, index + 1);
         if (address(registry) != address(0)) {
             registry = registry.getSubregistry(label);
             registries[index] = registry;
