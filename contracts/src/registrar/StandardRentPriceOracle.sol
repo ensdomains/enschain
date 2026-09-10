@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {StringUtils} from "@ens/contracts/utils/StringUtils.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -289,9 +289,7 @@ contract StandardRentPriceOracle is EnhancedAccessControl, IRentPriceOracle, ICo
         return (ratio.numer, ratio.denom);
     }
 
-    /// @notice Check if `paymentToken` is supported for payment.
-    /// @param paymentToken The payment token.
-    /// @return `true` if `paymentToken` is supported.
+    /// @inheritdoc IRentPriceOracle
     function isPaymentToken(IERC20 paymentToken) external view returns (bool) {
         return _paymentRatios[paymentToken].denom > 0;
     }

@@ -3,11 +3,18 @@ pragma solidity >=0.8.13;
 
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "../../reverse-registrar/interfaces/IContractNamer.sol";
+import {IUnsafeTransferable} from "../../utils/interfaces/IUnsafeTransferable.sol";
 
+import {IRegistryURIRenderer} from "./IRegistryURIRenderer.sol";
 import {IStandardRegistry} from "./IStandardRegistry.sol";
 
-/// @dev Interface selector: `0x6be50c69`
-interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IContractNamer {
+/// @dev Interface selector: `0xc18bd555`
+interface IPermissionedRegistry is
+    IStandardRegistry,
+    IEnhancedAccessControl,
+    IUnsafeTransferable,
+    IContractNamer
+{
     ////////////////////////////////////////////////////////////////////////
     // Types
     ////////////////////////////////////////////////////////////////////////
@@ -45,9 +52,32 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     /// @dev Error selector: `0xf60759e0`
     error LabelAlreadyReserved(string label);
 
+    /// @notice Transfer is not allowed due to missing `CAN_TRANSFER_ADMIN` role.
+    /// @dev Error selector: `0xe58f6d5a`
+    error TransferDisallowed(uint256 tokenId, address from);
+
+    /// @notice Safe transfer is not allowed because the registry is not emancipated.
+    /// @dev Error selector: `0x54838f98`
+    error TransferUnsafeUntilRegistryIsEmancipated();
+
+    /// @notice Safe transfer is not allowed because the token has non-owner roles.
+    /// @dev Error selector: `0x677f1c18`
+    error TransferUnsafeWithMultipleAssignees(uint256 tokenId, address from);
+
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
+
+    /// @notice Change metadata parameters.
+    /// @dev Should emit `URIUpdated`.
+    /// @param uri The new URI.
+    /// @param renderer The new renderer address.
+    function setURI(string calldata uri, IRegistryURIRenderer renderer) external;
+
+    /// @notice Get metadata parameters.
+    /// @return uri The metadata URI.
+    /// @return renderer The metadata renderer address.
+    function getURI() external view returns (string memory uri, IRegistryURIRenderer renderer);
 
     /// @notice Get the latest owner of a token.
     ///         If the token was burned, returns null.
@@ -79,4 +109,7 @@ interface IPermissionedRegistry is IStandardRegistry, IEnhancedAccessControl, IC
     /// @param anyId The labelhash, token ID, or resource.
     /// @return owner The token owner.
     function getOwner(uint256 anyId) external view returns (address owner);
+
+    /// @notice Return `true` if the tokens cannot be controlled by root.
+    function isEmancipated() external view returns (bool);
 }

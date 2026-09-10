@@ -20,7 +20,7 @@ async function checkDevnetRunning(): Promise<boolean> {
     const l1Client = createPublicClient({
       transport: http("http://localhost:8545"),
     });
-    
+
     const l2Client = createPublicClient({
       transport: http("http://localhost:8546"),
     });
@@ -31,9 +31,15 @@ async function checkDevnetRunning(): Promise<boolean> {
       getChainId(l2Client),
     ]);
 
-    log(`✓ L1 devnet running on localhost:8545 (Chain ID: ${l1ChainId})`, "green");
-    log(`✓ L2 devnet running on localhost:8546 (Chain ID: ${l2ChainId})`, "green");
-    
+    log(
+      `✓ L1 devnet running on localhost:8545 (Chain ID: ${l1ChainId})`,
+      "green",
+    );
+    log(
+      `✓ L2 devnet running on localhost:8546 (Chain ID: ${l2ChainId})`,
+      "green",
+    );
+
     return true;
   } catch (error) {
     return false;
@@ -74,7 +80,7 @@ async function checkService(url: string, name: string): Promise<boolean> {
 
 async function verifyServices(): Promise<void> {
   log("\nVerifying AA Kit services...", "blue");
-  
+
   const services = [
     { name: "Alto L1 (bundler)", url: "http://localhost:4337/health" },
     { name: "Alto L2 (bundler)", url: "http://localhost:4338/health" },
@@ -83,10 +89,10 @@ async function verifyServices(): Promise<void> {
   ];
 
   const results = await Promise.all(
-    services.map(service => checkService(service.url, service.name))
+    services.map((service) => checkService(service.url, service.name)),
   );
 
-  const allRunning = results.every(result => result);
+  const allRunning = results.every((result) => result);
 
   if (allRunning) {
     log("\n✓ All services are running successfully!", "green");
@@ -104,17 +110,26 @@ async function verifyServices(): Promise<void> {
 
 async function runDockerCompose(): Promise<void> {
   const projectRoot = path.resolve(__dirname, "../..");
-  
+
   log("\nStarting AA Kit services with local profile...", "blue");
-  
+
   // Start services in detached mode with timeout
   const dockerCompose = spawn(
     "docker",
-    ["compose", "--profile", "local", "up", "-d", "--remove-orphans", "--timeout", "120"],
+    [
+      "compose",
+      "--profile",
+      "local",
+      "up",
+      "-d",
+      "--remove-orphans",
+      "--timeout",
+      "120",
+    ],
     {
       cwd: projectRoot,
       stdio: "inherit",
-    }
+    },
   );
 
   await new Promise<void>((resolve, reject) => {
@@ -134,42 +149,61 @@ async function runDockerCompose(): Promise<void> {
 
   // Wait for services to be ready (with timeout check)
   log("\nWaiting for services to be ready...", "yellow");
-  
+
   // Check if deployers are done (max 3 minutes)
   let attempts = 0;
   const maxAttempts = 36; // 3 minutes with 5-second intervals
-  
+
   while (attempts < maxAttempts) {
-    const { stdout } = await new Promise<{stdout: string}>((resolve) => {
-      const process = spawn("docker", ["ps", "--filter", "name=contract-deployer", "--filter", "status=running", "--format", "{{.Names}}"], {
-        cwd: projectRoot,
-      });
-      
+    const { stdout } = await new Promise<{ stdout: string }>((resolve) => {
+      const process = spawn(
+        "docker",
+        [
+          "ps",
+          "--filter",
+          "name=contract-deployer",
+          "--filter",
+          "status=running",
+          "--format",
+          "{{.Names}}",
+        ],
+        {
+          cwd: projectRoot,
+        },
+      );
+
       let stdout = "";
-      process.stdout.on("data", (data) => stdout += data.toString());
+      process.stdout.on("data", (data) => (stdout += data.toString()));
       process.on("close", () => resolve({ stdout }));
     });
-    
+
     if (!stdout.trim()) {
       log("Contract deployers completed", "green");
       break;
     }
-    
+
     attempts++;
-    if (attempts % 6 === 0) { // Every 30 seconds
-      log(`Still waiting for contract deployers... (${attempts * 5}s)`, "yellow");
+    if (attempts % 6 === 0) {
+      // Every 30 seconds
+      log(
+        `Still waiting for contract deployers... (${attempts * 5}s)`,
+        "yellow",
+      );
     }
-    
-    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
-  
+
   if (attempts >= maxAttempts) {
-    log("⚠️  Contract deployers are taking longer than expected, but continuing to check services...", "yellow");
+    log(
+      "⚠️  Contract deployers are taking longer than expected, but continuing to check services...",
+      "yellow",
+    );
   }
 
   // Wait a bit for services to fully start
   log("\nGiving services time to fully initialize...", "yellow");
-  await new Promise(resolve => setTimeout(resolve, 10000)); // 10 seconds
+  await new Promise((resolve) => setTimeout(resolve, 10000)); // 10 seconds
 
   // Verify services are running
   await verifyServices();
@@ -182,10 +216,13 @@ async function main() {
   // Check if Docker is running
   log("Checking Docker daemon...", "yellow");
   const dockerRunning = await checkDockerRunning();
-  
+
   if (!dockerRunning) {
     log("✗ Docker is not running!", "red");
-    log("Please start Docker Desktop or the Docker daemon and try again.", "red");
+    log(
+      "Please start Docker Desktop or the Docker daemon and try again.",
+      "red",
+    );
     process.exit(1);
   }
   log("✓ Docker is running", "green");
@@ -193,7 +230,7 @@ async function main() {
   // Check if devnet is running
   log("\nChecking local devnet...", "yellow");
   const devnetRunning = await checkDevnetRunning();
-  
+
   if (!devnetRunning) {
     log("✗ Local devnet is not running!", "red");
     log("\nPlease start the devnet first by running:", "yellow");
@@ -205,20 +242,20 @@ async function main() {
   // Run docker compose
   try {
     await runDockerCompose();
-    
+
     // Handle shutdown
     process.on("SIGINT", async () => {
       log("\n\nStopping AA Kit services...", "yellow");
-      
+
       const stopProcess = spawn(
         "docker",
         ["compose", "--profile", "local", "down"],
         {
           cwd: path.resolve(__dirname, "../.."),
           stdio: "inherit",
-        }
+        },
       );
-      
+
       stopProcess.on("close", () => {
         log("AA Kit services stopped", "yellow");
         process.exit(0);

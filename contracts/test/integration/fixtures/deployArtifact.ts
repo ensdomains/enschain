@@ -74,7 +74,10 @@ export async function deployArtifact(
     bytecode,
     args: options.args,
   });
-  await waitForSuccessfulTransactionReceipt(walletClient, { hash, ensureDeployment: true });
+  await waitForSuccessfulTransactionReceipt(walletClient, {
+    hash,
+    ensureDeployment: true,
+  });
   return getContractAddress({
     from: walletClient.account.address,
     nonce,

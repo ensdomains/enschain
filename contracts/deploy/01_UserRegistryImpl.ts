@@ -1,12 +1,14 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import { Artifact_UserRegistry } from "generated/artifacts/UserRegistry.js";
 
 export default execute(
   async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
 
     await deploy("UserRegistryImpl", {
       account: deployer,
-      artifact: artifacts.UserRegistry,
+      artifact: Artifact_UserRegistry,
       args: [labelStore.address, owner],
     });
   },

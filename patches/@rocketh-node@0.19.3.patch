@@ -10,3 +10,92 @@ index 00db18f8f807c3f47828e4c46aa963c525ddc2f2..6c389ef9247c35d0d006b5dc3fdd2552
  import fs from 'node:fs';
  import path from 'node:path';
  import prompts from 'prompts';
+diff --git a/dist/environment/deployment-store.js b/dist/environment/deployment-store.js
+index 2e5448f..9e311d6 100644
+--- a/dist/environment/deployment-store.js
++++ b/dist/environment/deployment-store.js
+@@ -9,0 +10,33 @@ export function createFSDeploymentStore() {
++    function prepareDeploymentFile(deploymentsFolder, environmentName, name, content) {
++        if (name.startsWith('.') || !name.endsWith('.json'))
++            return content;
++        let deployment;
++        try {
++            deployment = JSON.parse(content);
++        }
++        catch {
++            return content;
++        }
++        if (Object.hasOwn(deployment, 'evm')) {
++            const evm = deployment.evm;
++            if (evm && typeof evm === 'object' && Object.hasOwn(evm, 'gasEstimates')) {
++                deployment.evm = { gasEstimates: evm.gasEstimates };
++            }
++            else {
++                delete deployment.evm;
++            }
++            content = JSON.stringify(deployment, null, 2);
++        }
++        if (typeof deployment.buildInfoId === 'string') {
++            const buildInfoDir = path.join(getFolder(deploymentsFolder, environmentName), 'build-info');
++            fs.mkdirSync(buildInfoDir, { recursive: true });
++            try {
++                fs.copyFileSync(path.resolve('artifacts', 'build-info', `${deployment.buildInfoId}.json`), path.join(buildInfoDir, `${deployment.buildInfoId}.json`), fs.constants.COPYFILE_EXCL);
++            }
++            catch (error) {
++                if (error.code !== 'EEXIST')
++                    throw error;
++            }
++        }
++        return content;
++    }
+@@ -15,0 +49 @@ export function createFSDeploymentStore() {
++        content = prepareDeploymentFile(deploymentsFolder, environmentName, name, content);
+diff --git a/src/environment/deployment-store.ts b/src/environment/deployment-store.ts
+index 7e92e2b..99d92f7 100644
+--- a/src/environment/deployment-store.ts
++++ b/src/environment/deployment-store.ts
+@@ -12,0 +13,42 @@ export function createFSDeploymentStore(): DeploymentStore {
++	function prepareDeploymentFile(
++		deploymentsFolder: string,
++		environmentName: string,
++		name: string,
++		content: string,
++	): string {
++		if (name.startsWith('.') || !name.endsWith('.json')) return content;
++
++		let deployment: Record<string, any>;
++		try {
++			deployment = JSON.parse(content);
++		} catch {
++			return content;
++		}
++
++		if (Object.hasOwn(deployment, 'evm')) {
++			const evm = deployment.evm;
++			if (evm && typeof evm === 'object' && Object.hasOwn(evm, 'gasEstimates')) {
++				deployment.evm = {gasEstimates: evm.gasEstimates};
++			} else {
++				delete deployment.evm;
++			}
++			content = JSON.stringify(deployment, null, 2);
++		}
++
++		if (typeof deployment.buildInfoId === 'string') {
++			const buildInfoDir = path.join(getFolder(deploymentsFolder, environmentName), 'build-info');
++			fs.mkdirSync(buildInfoDir, {recursive: true});
++			try {
++				fs.copyFileSync(
++					path.resolve('artifacts', 'build-info', `${deployment.buildInfoId}.json`),
++					path.join(buildInfoDir, `${deployment.buildInfoId}.json`),
++					fs.constants.COPYFILE_EXCL,
++				);
++			} catch (error) {
++				if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
++			}
++		}
++
++		return content;
++	}
++
+@@ -30,0 +73 @@ export function createFSDeploymentStore(): DeploymentStore {
++		content = prepareDeploymentFile(deploymentsFolder, environmentName, name, content);

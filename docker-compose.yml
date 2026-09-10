@@ -7,15 +7,38 @@ services:
     profiles: ["default"]
     ports:
       - "8545:8545"
+      - "8000:8000"
     expose:
       - 8545
+      - 8000
     environment:
       ANVIL_IP_ADDR: "0.0.0.0"
     healthcheck:
-      test: ["CMD-SHELL", "cast rpc web3_clientVersion | grep -c anvil > /dev/null "]
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/health"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
+
+  # Frontend transport mock. This does not replace the SDK's HCA adapter or
+  # validate HCA policy; contract tests own those concerns.
+  mockestrator:
+    image: ghcr.io/ensdomains/mockestrator@sha256:d30d9328d774e15a77f107e02733379078b1806d72598d4ffa151d8b507550ba
+    profiles: ["default"]
+    ports:
+      - "3007:3000"
+    depends_on:
+      devnet:
+        condition: service_healthy
+    volumes:
+      - ./mockestrator/rpcs.json:/app/rpcs.json:ro
+      - ./mockestrator/chains.json:/app/chains.json:ro
+    healthcheck:
+      # Match the apps-monorepo E2E check: any HTTP response proves the mock
+      # server is accepting requests; `/` is not an application route.
+      test: ["CMD-SHELL", "printf 'GET / HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' | nc -w 2 localhost 3000 | grep -q 'HTTP'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   contract-deployer:
     image: ghcr.io/mdtanrikulu/mock-contract-deployer:main

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity 0.8.25;
 
 import {EIP3668, OffchainLookup} from "@ens/contracts/ccipRead/EIP3668.sol";
 import {BytesUtils} from "@ens/contracts/utils/BytesUtils.sol";

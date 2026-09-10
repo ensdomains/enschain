@@ -7,6 +7,7 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 import {IEnhancedAccessControl} from "~src/access-control/interfaces/IEnhancedAccessControl.sol";
 import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.sol";
+import {IPermissionedAddressSet} from "~src/utils/interfaces/IPermissionedAddressSet.sol";
 import {IAddressSet} from "~src/utils/interfaces/IAddressSet.sol";
 import {
     PermissionedAddressSet,
@@ -25,6 +26,10 @@ contract PermissionedAddressSetTest is Test {
     }
 
     function test_supportsInterface() external view {
+        assertTrue(
+            ERC165Checker.supportsInterface(address(set), type(IPermissionedAddressSet).interfaceId),
+            "IPermissionedAddressSet"
+        );
         assertTrue(
             ERC165Checker.supportsInterface(address(set), type(IAddressSet).interfaceId),
             "IAddressSet"
@@ -57,13 +62,13 @@ contract PermissionedAddressSetTest is Test {
         assertFalse(set.includes(testAddr));
 
         vm.expectEmit();
-        emit PermissionedAddressSet.ApprovalChanged(testAddr, true, address(this));
+        emit IPermissionedAddressSet.ApprovalChanged(testAddr, true, address(this));
         set.approve(testAddr, true);
 
         assertTrue(set.includes(testAddr));
 
         vm.expectEmit();
-        emit PermissionedAddressSet.ApprovalChanged(testAddr, false, address(this));
+        emit IPermissionedAddressSet.ApprovalChanged(testAddr, false, address(this));
         set.approve(testAddr, false);
 
         assertFalse(set.includes(testAddr));

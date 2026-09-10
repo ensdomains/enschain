@@ -24,8 +24,12 @@ console.table(found);
 
 // generate individual reports
 for (const name of found) {
+  const removePatterns = [`"lib/*"`, `"*test*"`, `"*mock*"`];
+  if (name !== "forge.lcov") {
+    removePatterns.push(`"src/hca/*"`);
+  }
   execSync(
-    `lcov --ignore-errors unused,unused --remove ${DIR}${name} "lib/*" "*test*" "*mock*" --output-file ${DIR}${PREFIX}${name}`,
+    `lcov --ignore-errors unused,unused --remove ${DIR}${name} ${removePatterns.join(" ")} --output-file ${DIR}${PREFIX}${name}`,
     { cwd: rootDir },
   );
 }

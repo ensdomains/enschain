@@ -1,0 +1,28 @@
+{
+  "address": "0x6fc0fde0960003acb24810ffd5db6224b3d88974",
+  "contractName": "HCAFundingSessionValidator",
+  "sourceName": "src/hca/HCAFundingSessionValidator.sol",
+  "inputSourceName": "project/src/hca/HCAFundingSessionValidator.sol",
+  "transaction": {
+    "hash": "0xcdd4b4db404d8b7aebc39af6c5f641df39fa04595106184e278326fb883548c6",
+    "nonce": "0x25",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0x70b70db06fa1ffefcf246665878f27169fea84bce87eafa1a678714081857ac2",
+    "blockNumber": "0x2a7487c",
+    "transactionIndex": "0xf"
+  },
+  "argsData": "0x00000000000000000000000000000000005ad9ce1f5035fd62ca96cef16adaaf000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba3000000000000000000000000000000000004598d17aad017bf0734a364c5588b",
+  "provenance": {
+    "compiler": "0.8.27+commit.40a35a09",
+    "evmVersion": "prague",
+    "optimizerRuns": 1000,
+    "artifactBuildInfoId": "solc-0_8_27-ce2186ea2f3263b162899237a5d39e024fef48ef",
+    "bytecodeHash": "0x81075193cc09685b5bffa76663c0d284ca8a087dd10d9c4485370069ecf1f59c",
+    "creationInputHash": "0x49b3164c49704d1b4c512e6e37ee1ae1e61e0be17497642f7de6c49a9ef509a5",
+    "creationInputBytes": 12770,
+    "runtimeCodeHash": "0x3f1145558be0a00432d9c867a4af53a18066fdc50be209040cccf96187c121f6",
+    "runtimeCodeBytes": 12354
+  }
+}

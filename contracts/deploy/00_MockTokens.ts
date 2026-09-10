@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer }, tags }) => {
@@ -6,17 +7,15 @@ export default execute(
     // oracle wires real tokens there instead.
     if (tags.hasDao) return;
 
-    const MockERC20 = artifacts["test/mocks/MockERC20.sol/MockERC20"];
-
     await deploy("MockUSDC", {
       account: deployer,
-      artifact: MockERC20,
+      artifact: Artifact_MockERC20,
       args: ["USDC", 6],
     });
 
     await deploy("MockDAI", {
       account: deployer,
-      artifact: MockERC20,
+      artifact: Artifact_MockERC20,
       args: ["DAI", 18],
     });
   },

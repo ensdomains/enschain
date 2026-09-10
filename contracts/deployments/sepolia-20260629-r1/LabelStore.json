@@ -1,0 +1,299 @@
+{
+  "address": "0xb03524289c16424f71802a1794c29c7bd1b9f577",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IContractNamer",
+          "name": "contractNamer",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "LabelIsEmpty",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "label",
+          "type": "string"
+        }
+      ],
+      "name": "LabelIsTooLong",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "labelHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "label",
+          "type": "string"
+        }
+      ],
+      "name": "Label",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "CONTRACT_NAMER",
+      "outputs": [
+        {
+          "internalType": "contract IContractNamer",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getLabel",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "isContractNamer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "label",
+          "type": "string"
+        }
+      ],
+      "name": "setLabel",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "LabelStore",
+  "sourceName": "src/utils/LabelStore.sol",
+  "bytecode": "0x60a0604052348015600e575f80fd5b5060405161080e38038061080e833981016040819052602b91603b565b6001600160a01b03166080526066565b5f60208284031215604a575f80fd5b81516001600160a01b0381168114605f575f80fd5b9392505050565b60805161078a6100845f395f818160950152610195015261078a5ff3fe608060405234801561000f575f80fd5b5060043610610064575f3560e01c80636f3ff7261161004d5780636f3ff726146100dc578063b21bf7fa146100ef578063bf5309691461010f575f80fd5b806301ffc9a71461006857806348ee1bcc14610090575b5f80fd5b61007b61007636600461049c565b610124565b60405190151581526020015b60405180910390f35b6100b77f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff9091168152602001610087565b61007b6100ea3660046104ca565b610167565b6101026100fd3660046104fd565b610200565b6040516100879190610514565b61012261011d366004610549565b6102a8565b005b5f6001600160e01b031982167f0d48fe930000000000000000000000000000000000000000000000000000000014806101615750610161826103b2565b92915050565b60405163379ffb9360e11b815273ffffffffffffffffffffffffffffffffffffffff82811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa1580156101dc573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061016191906105b5565b60605f8061020d846103ff565b81526020019081526020015f208054610225906105d4565b80601f0160208091040260200160405190810160405280929190818152602001828054610251906105d4565b801561029c5780601f106102735761010080835404028352916020019161029c565b820191905f5260205f20905b81548152906001019060200180831161027f57829003601f168201915b50505050509050919050565b6102e682828080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061040e92505050565b505f61032683838080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061049192505050565b90505f610332826103ff565b5f81815260208190526040902080549192509061034e906105d4565b90505f036103ac575f81815260208190526040902061036e84868361066c565b50815f1b7f4acabfe38b19342d926f219b03cae7c02831d64c4449ccd3d6726b8ef1f9963085856040516103a3929190610726565b60405180910390a25b50505050565b5f6001600160e01b0319821663379ffb9360e11b148061016157507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b0319831614610161565b5f63ffffffff82168218610161565b80515f9080820361044b576040517fbf9a274000000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b60ff81111561016157826040517fdab6c73c0000000000000000000000000000000000000000000000000000000081526004016104889190610514565b60405180910390fd5b805160209091012090565b5f602082840312156104ac575f80fd5b81356001600160e01b0319811681146104c3575f80fd5b9392505050565b5f602082840312156104da575f80fd5b813573ffffffffffffffffffffffffffffffffffffffff811681146104c3575f80fd5b5f6020828403121561050d575f80fd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f806020838503121561055a575f80fd5b823567ffffffffffffffff80821115610571575f80fd5b818501915085601f830112610584575f80fd5b813581811115610592575f80fd5b8660208285010111156105a3575f80fd5b60209290920196919550909350505050565b5f602082840312156105c5575f80fd5b815180151581146104c3575f80fd5b600181811c908216806105e857607f821691505b60208210810361060657634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f82111561066757805f5260205f20601f840160051c810160208510156106455750805b601f840160051c820191505b81811015610664575f8155600101610651565b50505b505050565b67ffffffffffffffff8311156106845761068461060c565b6106988361069283546105d4565b83610620565b5f601f8411600181146106c9575f85156106b25750838201355b5f19600387901b1c1916600186901b178355610664565b5f83815260208120601f198716915b828110156106f857868501358255602094850194600190920191016106d8565b5086821015610714575f1960f88860031b161c19848701351681555b505060018560011b0183555050505050565b60208152816020820152818360408301375f818301604090810191909152601f909201601f1916010191905056fea26469706673582212204049cef197fa705a58931c9389c7c0a63c089cf53eb98190f2b783e47efaeb7664736f6c63430008190033",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b5060043610610064575f3560e01c80636f3ff7261161004d5780636f3ff726146100dc578063b21bf7fa146100ef578063bf5309691461010f575f80fd5b806301ffc9a71461006857806348ee1bcc14610090575b5f80fd5b61007b61007636600461049c565b610124565b60405190151581526020015b60405180910390f35b6100b77f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff9091168152602001610087565b61007b6100ea3660046104ca565b610167565b6101026100fd3660046104fd565b610200565b6040516100879190610514565b61012261011d366004610549565b6102a8565b005b5f6001600160e01b031982167f0d48fe930000000000000000000000000000000000000000000000000000000014806101615750610161826103b2565b92915050565b60405163379ffb9360e11b815273ffffffffffffffffffffffffffffffffffffffff82811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa1580156101dc573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061016191906105b5565b60605f8061020d846103ff565b81526020019081526020015f208054610225906105d4565b80601f0160208091040260200160405190810160405280929190818152602001828054610251906105d4565b801561029c5780601f106102735761010080835404028352916020019161029c565b820191905f5260205f20905b81548152906001019060200180831161027f57829003601f168201915b50505050509050919050565b6102e682828080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061040e92505050565b505f61032683838080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061049192505050565b90505f610332826103ff565b5f81815260208190526040902080549192509061034e906105d4565b90505f036103ac575f81815260208190526040902061036e84868361066c565b50815f1b7f4acabfe38b19342d926f219b03cae7c02831d64c4449ccd3d6726b8ef1f9963085856040516103a3929190610726565b60405180910390a25b50505050565b5f6001600160e01b0319821663379ffb9360e11b148061016157507f01ffc9a7000000000000000000000000000000000000000000000000000000006001600160e01b0319831614610161565b5f63ffffffff82168218610161565b80515f9080820361044b576040517fbf9a274000000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b60ff81111561016157826040517fdab6c73c0000000000000000000000000000000000000000000000000000000081526004016104889190610514565b60405180910390fd5b805160209091012090565b5f602082840312156104ac575f80fd5b81356001600160e01b0319811681146104c3575f80fd5b9392505050565b5f602082840312156104da575f80fd5b813573ffffffffffffffffffffffffffffffffffffffff811681146104c3575f80fd5b5f6020828403121561050d575f80fd5b5035919050565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b5f806020838503121561055a575f80fd5b823567ffffffffffffffff80821115610571575f80fd5b818501915085601f830112610584575f80fd5b813581811115610592575f80fd5b8660208285010111156105a3575f80fd5b60209290920196919550909350505050565b5f602082840312156105c5575f80fd5b815180151581146104c3575f80fd5b600181811c908216806105e857607f821691505b60208210810361060657634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f82111561066757805f5260205f20601f840160051c810160208510156106455750805b601f840160051c820191505b81811015610664575f8155600101610651565b50505b505050565b67ffffffffffffffff8311156106845761068461060c565b6106988361069283546105d4565b83610620565b5f601f8411600181146106c9575f85156106b25750838201355b5f19600387901b1c1916600186901b178355610664565b5f83815260208120601f198716915b828110156106f857868501358255602094850194600190920191016106d8565b5086821015610714575f1960f88860031b161c19848701351681555b505060018560011b0183555050505050565b60208152816020820152818360408301375f818301604090810191909152601f909201601f1916010191905056fea26469706673582212204049cef197fa705a58931c9389c7c0a63c089cf53eb98190f2b783e47efaeb7664736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "75299": [
+      {
+        "length": 32,
+        "start": 149
+      },
+      {
+        "length": 32,
+        "start": 405
+      }
+    ]
+  },
+  "inputSourceName": "project/src/utils/LabelStore.sol",
+  "devdoc": {
+    "errors": {
+      "LabelIsEmpty()": [
+        {
+          "details": "The label was empty.      Error selector: `0xbf9a2740`"
+        }
+      ],
+      "LabelIsTooLong(string)": [
+        {
+          "details": "The label was more than 255 bytes.      Error selector: `0xdab6c73c`"
+        }
+      ]
+    },
+    "events": {
+      "Label(bytes32,string)": {
+        "params": {
+          "label": "The recorded label.",
+          "labelHash": "The hash of `label`."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "contractNamer": "Delegated contract namer."
+        }
+      },
+      "getLabel(uint256)": {
+        "params": {
+          "anyId": "The truncated labelhash."
+        },
+        "returns": {
+          "_0": "The label or null if unknown."
+        }
+      },
+      "isContractNamer(address)": {
+        "params": {
+          "namer": "The address to check."
+        },
+        "returns": {
+          "_0": "`true` if authorized."
+        }
+      },
+      "setLabel(string)": {
+        "params": {
+          "label": "The label."
+        }
+      },
+      "supportsInterface(bytes4)": {
+        "details": "See {IERC165-supportsInterface}."
+      }
+    },
+    "stateVariables": {
+      "_labels": {
+        "details": "The truncated labelhash to label mapping."
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "386000",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "CONTRACT_NAMER()": "infinite",
+        "getLabel(uint256)": "infinite",
+        "isContractNamer(address)": "infinite",
+        "setLabel(string)": "infinite",
+        "supportsInterface(bytes4)": "infinite"
+      },
+      "internal": {
+        "_storageId(uint256)": "48"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"contract IContractNamer\",\"name\":\"contractNamer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"LabelIsEmpty\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"label\",\"type\":\"string\"}],\"name\":\"LabelIsTooLong\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"labelHash\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"string\",\"name\":\"label\",\"type\":\"string\"}],\"name\":\"Label\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"CONTRACT_NAMER\",\"outputs\":[{\"internalType\":\"contract IContractNamer\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"anyId\",\"type\":\"uint256\"}],\"name\":\"getLabel\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"isContractNamer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"string\",\"name\":\"label\",\"type\":\"string\"}],\"name\":\"setLabel\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"LabelIsEmpty()\":[{\"details\":\"The label was empty.      Error selector: `0xbf9a2740`\"}],\"LabelIsTooLong(string)\":[{\"details\":\"The label was more than 255 bytes.      Error selector: `0xdab6c73c`\"}]},\"events\":{\"Label(bytes32,string)\":{\"params\":{\"label\":\"The recorded label.\",\"labelHash\":\"The hash of `label`.\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"contractNamer\":\"Delegated contract namer.\"}},\"getLabel(uint256)\":{\"params\":{\"anyId\":\"The truncated labelhash.\"},\"returns\":{\"_0\":\"The label or null if unknown.\"}},\"isContractNamer(address)\":{\"params\":{\"namer\":\"The address to check.\"},\"returns\":{\"_0\":\"`true` if authorized.\"}},\"setLabel(string)\":{\"params\":{\"label\":\"The label.\"}},\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"}},\"stateVariables\":{\"_labels\":{\"details\":\"The truncated labelhash to label mapping.\"}},\"version\":1},\"userdoc\":{\"events\":{\"Label(bytes32,string)\":{\"notice\":\"A label was recorded.\"}},\"kind\":\"user\",\"methods\":{\"CONTRACT_NAMER()\":{\"notice\":\"Delegated contract namer.\"},\"getLabel(uint256)\":{\"notice\":\"Invert `anyId` to the corresponding label.\"},\"isContractNamer(address)\":{\"notice\":\"Determine if an account is authorized to name this contract.         Called by reverse registrars.\"},\"setLabel(string)\":{\"notice\":\"Ensure `label` can be inverted from `anyId`.\"}},\"notice\":\"Shared label database.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/utils/LabelStore.sol\":\"LabelStore\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/ens-contracts/contracts/utils/BytesUtils.sol\":{\"content\":\"//SPDX-License-Identifier: MIT\\npragma solidity ^0.8.4;\\n\\nimport {LibMem} from \\\"./LibMem/LibMem.sol\\\";\\n\\nlibrary BytesUtils {\\n    /// @dev `offset` was beyond `length`.\\n    ///       Error selector: `0x8a3c1cfb`\\n    error OffsetOutOfBoundsError(uint256 offset, uint256 length);\\n\\n    /// @dev Assert `end` is not beyond the length of `v`.\\n    function _checkBound(bytes memory v, uint256 end) internal pure {\\n        if (end > v.length) {\\n            revert OffsetOutOfBoundsError(end, v.length);\\n        }\\n    }\\n\\n    /// @dev Compute `keccak256(v[off:off+len])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes to hash.\\n    /// @return ret The corresponding hash.\\n    function keccak(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes32 ret) {\\n        _checkBound(v, off + len);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := keccak256(add(add(v, 32), off), len)\\n        }\\n    }\\n\\n    /// @dev Lexicographically compare two byte strings.\\n    /// @param vA The first bytes to compare.\\n    /// @param vB The second bytes to compare.\\n    /// @return Positive number if `A > B`, negative number if `A < B`, or zero if `A == B`.\\n    function compare(\\n        bytes memory vA,\\n        bytes memory vB\\n    ) internal pure returns (int256) {\\n        return compare(vA, 0, vA.length, vB, 0, vB.length);\\n    }\\n\\n    /// @dev Lexicographically compare two byte ranges: `A = vA[offA:offA+lenA]` and `B = vB[offB:offB+lenB]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset of the first bytes.\\n    /// @param lenA The length of the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset of the second bytes.\\n    /// @param lenB The length of the second bytes.\\n    /// @return Positive number if `A > B`, negative number if `A < B`, or zero if `A == B`.\\n    function compare(\\n        bytes memory vA,\\n        uint256 offA,\\n        uint256 lenA,\\n        bytes memory vB,\\n        uint256 offB,\\n        uint256 lenB\\n    ) internal pure returns (int256) {\\n        _checkBound(vA, offA + lenA);\\n        _checkBound(vB, offB + lenB);\\n        unchecked {\\n            uint256 ptrA = LibMem.ptr(vA) + offA;\\n            uint256 ptrB = LibMem.ptr(vB) + offB;\\n            uint256 shortest = lenA < lenB ? lenA : lenB;\\n            for (uint256 i; i < shortest; i += 32) {\\n                uint256 a = LibMem.load(ptrA + i);\\n                uint256 b = LibMem.load(ptrB + i);\\n                if (a != b) {\\n                    uint256 rest = shortest - i;\\n                    if (rest < 32) {\\n                        rest = (32 - rest) << 3; // bits to drop\\n                        a >>= rest; // shift out the\\n                        b >>= rest; // irrelevant bits\\n                    }\\n                    if (a < b) {\\n                        return -1;\\n                    } else if (a > b) {\\n                        return 1;\\n                    }\\n                }\\n            }\\n        }\\n        return int256(lenA) - int256(lenB);\\n    }\\n\\n    /// @dev Determine if `a[offA:offA+len] == b[offB:offB+len]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset into the second bytes.\\n    /// @param len The number of bytes to compare.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB,\\n        uint256 offB,\\n        uint256 len\\n    ) internal pure returns (bool) {\\n        return keccak(vA, offA, len) == keccak(vB, offB, len);\\n    }\\n\\n    /// @dev Determine if `a[offA:] == b[offB:]`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @param offB The offset into the second bytes.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB,\\n        uint256 offB\\n    ) internal pure returns (bool) {\\n        _checkBound(vA, offA);\\n        _checkBound(vB, offB);\\n        unchecked {\\n            return\\n                keccak(vA, offA, vA.length - offA) ==\\n                keccak(vB, offB, vB.length - offB);\\n        }\\n    }\\n\\n    /// @dev Determine if `a[offA:] == b`.\\n    /// @param vA The first bytes.\\n    /// @param offA The offset into the first bytes.\\n    /// @param vB The second bytes.\\n    /// @return True if the byte ranges are equal.\\n    function equals(\\n        bytes memory vA,\\n        uint256 offA,\\n        bytes memory vB\\n    ) internal pure returns (bool) {\\n        return\\n            vA.length == offA + vB.length &&\\n            keccak(vA, offA, vB.length) == keccak256(vB);\\n    }\\n\\n    /// @dev Determine if `a == b`.\\n    /// @param vA The first bytes.\\n    /// @param vB The second bytes.\\n    /// @return True if the bytes are equal.\\n    function equals(\\n        bytes memory vA,\\n        bytes memory vB\\n    ) internal pure returns (bool) {\\n        return vA.length == vB.length && keccak256(vA) == keccak256(vB);\\n    }\\n\\n    /// @dev Returns `uint8(v[off])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return The corresponding `uint8`.\\n    function readUint8(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint8) {\\n        _checkBound(v, off + 1);\\n        unchecked {\\n            return uint8(v[off]);\\n        }\\n    }\\n\\n    /// @dev Returns `uint16(bytes2(v[off:off+2]))`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `uint16`.\\n    function readUint16(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint16 ret) {\\n        _checkBound(v, off + 2);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shr(240, mload(add(add(v, 32), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `uint32(bytes4(v[off:off+4]))`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `uint32`.\\n    function readUint32(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (uint32 ret) {\\n        _checkBound(v, off + 4);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shr(224, mload(add(add(v, 32), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes20(v[off:off+20])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `bytes20`.\\n    function readBytes20(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (bytes20 ret) {\\n        _checkBound(v, off + 20);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := shl(96, mload(add(add(v, 20), off)))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes32(v[off:off+32])`.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @return ret The corresponding `bytes32`.\\n    function readBytes32(\\n        bytes memory v,\\n        uint256 off\\n    ) internal pure returns (bytes32 ret) {\\n        _checkBound(v, off + 32);\\n        assembly (\\\"memory-safe\\\") {\\n            ret := mload(add(add(v, 32), off))\\n        }\\n    }\\n\\n    /// @dev Returns `bytes32(bytesN(v[off:off+len]))`.\\n    ///      Accepts 0-32 bytes or reverts.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes.\\n    /// @return ret The corresponding N-bytes left-aligned in a `bytes32`.\\n    function readBytesN(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes32 ret) {\\n        assert(len <= 32);\\n        _checkBound(v, off + len);\\n        assembly (\\\"memory-safe\\\") {\\n            let mask := sub(shl(shl(3, sub(32, len)), 1), 1) // <(32-N)x00><NxFF>\\n            ret := and(mload(add(add(v, 32), off)), not(mask))\\n        }\\n    }\\n\\n    /// @dev Copy `vSrc[offSrc:offSrc+len]` to `vDst[offDst:offDst:len]`.\\n    /// @param vSrc The source bytes.\\n    /// @param offSrc The offset into the source to begin the copy.\\n    /// @param vDst The destination bytes.\\n    /// @param offDst The offset into the destination to place the copy.\\n    /// @param len The number of bytes to copy.\\n    function copyBytes(\\n        bytes memory vSrc,\\n        uint256 offSrc,\\n        bytes memory vDst,\\n        uint256 offDst,\\n        uint256 len\\n    ) internal pure {\\n        _checkBound(vSrc, offSrc + len);\\n        _checkBound(vDst, offDst + len);\\n        unchecked {\\n            LibMem.copy(\\n                LibMem.ptr(vDst) + offDst,\\n                LibMem.ptr(vSrc) + offSrc,\\n                len\\n            );\\n        }\\n    }\\n\\n    /// @dev Copies a substring into a new byte string.\\n    /// @param vSrc The byte string to copy from.\\n    /// @param off The offset to start copying at.\\n    /// @param len The number of bytes to copy.\\n    /// @return vDst The copied substring.\\n    function substring(\\n        bytes memory vSrc,\\n        uint256 off,\\n        uint256 len\\n    ) internal pure returns (bytes memory vDst) {\\n        vDst = new bytes(len);\\n        copyBytes(vSrc, off, vDst, 0, len);\\n    }\\n\\n    /// @dev Find the first occurrence of `needle`.\\n    /// @param v The bytes to search.\\n    /// @param off The offset to start searching.\\n    /// @param len The number of bytes to search.\\n    /// @param needle The byte to search for.\\n    /// @return The offset of `needle`, or `type(uint256).max` if not found.\\n    function find(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len,\\n        bytes1 needle\\n    ) internal pure returns (uint256) {\\n        for (uint256 end = off + len; off < end; off++) {\\n            if (v[off] == needle) {\\n                return off;\\n            }\\n        }\\n        return type(uint256).max;\\n    }\\n\\n    /// @dev Returns `true` if word contains a zero byte.\\n    function hasZeroByte(uint256 word) internal pure returns (bool) {\\n        unchecked {\\n            return\\n                ((~word &\\n                    (word -\\n                        0x0101010101010101010101010101010101010101010101010101010101010101)) &\\n                    0x8080808080808080808080808080808080808080808080808080808080808080) !=\\n                0;\\n        }\\n    }\\n\\n    /// @dev Efficiently check if `v[off:off+len]` contains `needle` byte.\\n    /// @param v The source bytes.\\n    /// @param off The offset into the source.\\n    /// @param len The number of bytes to search.\\n    /// @param needle The byte to search for.\\n    /// @return found `true` if `needle` was found.\\n    function includes(\\n        bytes memory v,\\n        uint256 off,\\n        uint256 len,\\n        bytes1 needle\\n    ) internal pure returns (bool found) {\\n        _checkBound(v, off + len);\\n        unchecked {\\n            uint256 wide = uint8(needle);\\n            wide |= wide << 8;\\n            wide |= wide << 16;\\n            wide |= wide << 32;\\n            wide |= wide << 64;\\n            wide |= wide << 128; // broadcast byte across word\\n            off += LibMem.ptr(v);\\n            len += off;\\n            while (off < len) {\\n                uint256 word = LibMem.load(off) ^ wide; // zero needle byte\\n                off += 32;\\n                if (hasZeroByte(word)) {\\n                    return\\n                        off <= len ||\\n                        hasZeroByte(\\n                            word | ((1 << ((off - len) << 3)) - 1) // recheck overflow by making it nonzero\\n                        );\\n                }\\n            }\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xcda2585a719e1a8974b5b44357e5d21417e1308b1d1f4d26b244d4ff0bb5b02d\",\"license\":\"MIT\"},\"project/lib/ens-contracts/contracts/utils/LibMem/LibMem.sol\":{\"content\":\"//SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nlibrary LibMem {\\n    /// @dev Copy `mem[src:src+len]` to `mem[dst:dst+len]`.\\n    ///      Equivalent to `mcopy()`.\\n    ///\\n    /// @param src The source memory offset.\\n    /// @param dst The destination memory offset.\\n    /// @param len The number of bytes to copy.\\n    function copy(uint256 dst, uint256 src, uint256 len) internal pure {\\n        assembly {\\n            // Copy word-length chunks while possible\\n            // prettier-ignore\\n            for {} gt(len, 31) {} {\\n                mstore(dst, mload(src))\\n                dst := add(dst, 32)\\n                src := add(src, 32)\\n                len := sub(len, 32)\\n            }\\n            // Copy remaining bytes\\n            if len {\\n                let mask := sub(shl(shl(3, sub(32, len)), 1), 1)\\n                let wSrc := and(mload(src), not(mask))\\n                let wDst := and(mload(dst), mask)\\n                mstore(dst, or(wSrc, wDst))\\n            }\\n        }\\n    }\\n\\n    /// @dev Convert bytes to a memory offset.\\n    ///\\n    /// @param v The bytes to convert.\\n    ///\\n    /// @return ret The corresponding memory offset.\\n    function ptr(bytes memory v) internal pure returns (uint256 ret) {\\n        assembly {\\n            ret := add(v, 32)\\n        }\\n    }\\n\\n    /// @dev Read word at memory offset.\\n    ///\\n    /// @param src The memory offset.\\n    ///\\n    /// @return ret The read word.\\n    function load(uint256 src) internal pure returns (uint256 ret) {\\n        assembly {\\n            ret := mload(src)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x066f29ad3a39392786ff3caf9ba120104ffaa55502f71158631411db46d1ec89\",\"license\":\"MIT\"},\"project/lib/ens-contracts/contracts/utils/NameCoder.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {LibMem} from \\\"./LibMem/LibMem.sol\\\";\\nimport {BytesUtils} from \\\"./BytesUtils.sol\\\";\\n\\n/// @dev Library for encoding/decoding names.\\n///\\n/// An ENS name is stop-separated labels, eg. \\\"aaa.bb.c\\\".\\n///\\n/// A DNS-encoded name is composed of byte length-prefixed labels with a terminator byte.\\n/// eg. \\\"\\\\x03aaa\\\\x02bb\\\\x01c\\\\x00\\\".\\n///\\n/// * maximum label length is 255 bytes.\\n/// * length = 0 is reserved for the terminator (root).\\n/// * `dns.length == 2 + ens.length` and the mapping is injective.\\n///\\nlibrary NameCoder {\\n    /// @dev The namehash of \\\"eth\\\".\\n    bytes32 public constant ETH_NODE =\\n        0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;\\n\\n    /// @dev The label was empty.\\n    ///      Error selector: `0xbf9a2740`\\n    error LabelIsEmpty();\\n\\n    /// @dev The label was more than 255 bytes.\\n    ///      Error selector: `0xdab6c73c`\\n    error LabelIsTooLong(string label);\\n\\n    /// @dev The DNS-encoded name is malformed.\\n    ///      Error selector: `0xba4adc23`\\n    error DNSDecodingFailed(bytes dns);\\n\\n    /// @dev A label of the ENS name has an invalid size.\\n    ///      Error selector: `0x9a4c3e3b`\\n    error DNSEncodingFailed(string ens);\\n\\n    /// @dev The `name` did not end with `suffix`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param suffix The DNS-encoded suffix.\\n    error NoSuffixMatch(bytes name, bytes suffix);\\n\\n    /// @dev Read the `size` of the label at `offset`.\\n    ///      If `size = 0`, it must be the end of `name` (no junk at end).\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param offset The offset into `name` to start reading.\\n    ///\\n    /// @return size The size of the label in bytes.\\n    /// @return nextOffset The offset into `name` of the next label.\\n    function nextLabel(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (uint8 size, uint256 nextOffset) {\\n        unchecked {\\n            if (offset >= name.length) {\\n                revert DNSDecodingFailed(name);\\n            }\\n            size = uint8(name[offset]);\\n            nextOffset = offset + 1 + size;\\n            if (\\n                size > 0 ? nextOffset >= name.length : nextOffset != name.length\\n            ) {\\n                revert DNSDecodingFailed(name);\\n            }\\n        }\\n    }\\n\\n    /// @dev Find the offset of the label before `offset` in `name`.\\n    ///      * `prevOffset(name, 0)` reverts\\n    ///      * `prevOffset(name, name.length + 1)` reverts\\n    ///      * `prevOffset(name, name.length) = name.length - 1`\\n    ///      * `prevOffset(name, name.length - 1) = <tld>`\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param offset The offset into `name` to start reading backwards.\\n    ///\\n    /// @return prevOffset The offset into `name` of the previous label.\\n    function prevLabel(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (uint256 prevOffset) {\\n        while (true) {\\n            (, uint256 nextOffset) = nextLabel(name, prevOffset);\\n            if (nextOffset == offset) break;\\n            if (nextOffset > offset) {\\n                revert DNSDecodingFailed(name);\\n            }\\n            prevOffset = nextOffset;\\n        }\\n    }\\n\\n    /// @dev Count number of labels in `name`.\\n    ///      * `countLabels(\\\"\\\\x03eth\\\\x00\\\") = 1`\\n    ///      * `countLabels(\\\"\\\\x00\\\") = 0`\\n    ///      Reverts like `nextLabel()`.\\n    ///\\n    /// @param name The DNS-encoded parent name.\\n    /// @param offset The offset into `name` to start hashing.\\n    ///\\n    /// @return count The number of labels.\\n    function countLabels(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (uint256 count) {\\n        uint8 size;\\n        while (true) {\\n            (size, offset) = nextLabel(name, offset);\\n            if (size == 0) break;\\n            ++count;\\n        }\\n    }\\n\\n    /// @dev Compute the ENS labelhash of the label at `offset` and the offset for the next label.\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param offset The offset into `name` to start reading.\\n    ///\\n    /// @return labelHash The resulting labelhash.\\n    /// @return nextOffset The offset into `name` of the next label.\\n    function readLabel(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (bytes32 labelHash, uint256 nextOffset) {\\n        uint8 size;\\n        (size, nextOffset) = nextLabel(name, offset);\\n        if (size > 0) {\\n            assembly {\\n                labelHash := keccak256(add(add(name, offset), 33), size)\\n            }\\n        }\\n    }\\n\\n    /// @dev Read label at offset from a DNS-encoded name and the offset for the next label.\\n    ///      * `readLabel(\\\"\\\\x03abc\\\\x00\\\", 0) = (\\\"abc\\\", 4)`\\n    ///      * `readLabel(\\\"\\\\x00\\\", 0) = (\\\"\\\", 1)`\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param offset The offset into `name` to start reading.\\n    ///\\n    /// @return label The label corresponding to `offset`.\\n    /// @return nextOffset The offset into `name` of the next label.\\n    function extractLabel(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (string memory label, uint256 nextOffset) {\\n        uint8 size;\\n        (size, nextOffset) = nextLabel(name, offset);\\n        bytes memory v = new bytes(size);\\n        unchecked {\\n            LibMem.copy(LibMem.ptr(v), LibMem.ptr(name) + offset + 1, size);\\n        }\\n        label = string(v);\\n    }\\n\\n    /// @dev Reads first label from a DNS-encoded name.\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///      Reverts `LabelIsEmpty` if the label was empty.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    ///\\n    /// @return The first label.\\n    function firstLabel(\\n        bytes memory name\\n    ) internal pure returns (string memory) {\\n        (string memory label, ) = extractLabel(name, 0);\\n        if (bytes(label).length == 0) {\\n            revert LabelIsEmpty();\\n        }\\n        return label;\\n    }\\n\\n    /// @dev Compute the namehash of `name[:offset]`.\\n    ///      Reverts `DNSDecodingFailed`.\\n    ///\\n    /// @param name The DNS-encoded name.\\n    /// @param offset The offset into `name` to start hashing.\\n    ///\\n    /// @return hash The namehash of `name[:offset]`.\\n    function namehash(\\n        bytes memory name,\\n        uint256 offset\\n    ) internal pure returns (bytes32 hash) {\\n        (hash, offset) = readLabel(name, offset);\\n        if (hash != bytes32(0)) {\\n            hash = namehash(namehash(name, offset), hash);\\n        }\\n    }\\n\\n    /// @dev Compute a child namehash from a parent namehash and child labelhash.\\n    ///\\n    /// @param parentNode The namehash of the parent.\\n    /// @param labelHash The labelhash of the child.\\n    ///\\n    /// @return node The namehash of the child.\\n    function namehash(\\n        bytes32 parentNode,\\n        bytes32 labelHash\\n    ) internal pure returns (bytes32 node) {\\n        // ~100 gas less than: keccak256(abi.encode(parentNode, labelHash))\\n        assembly {\\n            mstore(0, parentNode)\\n            mstore(32, labelHash)\\n            node := keccak256(0, 64)\\n        }\\n    }\\n\\n    /// @dev Convert DNS-encoded name to ENS name.\\n    ///      * `decode(\\\"\\\\x00\\\") = \\\"\\\"`\\n    ///      * `decode(\\\"\\\\x03eth\\\\x00\\\") = \\\"eth\\\"`\\n    ///      * `decode(\\\"\\\\x03aaa\\\\x02bb\\\\x01c\\\\x00\\\") = \\\"aa.bb.c\\\"`\\n    ///      * `decode(\\\"\\\\x03a.b\\\\x00\\\")` reverts\\n    ///      Reverts like `nextLabel()`.\\n    ///\\n    /// @param dns The DNS-encoded name to convert.\\n    ///\\n    /// @return ens The equivalent ENS name.\\n    function decode(\\n        bytes memory dns\\n    ) internal pure returns (string memory ens) {\\n        unchecked {\\n            uint256 n = dns.length;\\n            if (n == 1 && dns[0] == 0) return \\\"\\\"; // only valid answer is root\\n            if (n < 3) revert DNSDecodingFailed(dns);\\n            bytes memory v = new bytes(n - 2); // always 2-shorter\\n            LibMem.copy(LibMem.ptr(v), LibMem.ptr(dns) + 1, n - 2); // shift by -1 byte\\n            uint256 offset;\\n            while (true) {\\n                (uint8 size, uint256 nextOffset) = nextLabel(dns, offset);\\n                if (size == 0) break;\\n                if (BytesUtils.includes(v, offset, size, \\\".\\\")) {\\n                    revert DNSDecodingFailed(dns); // malicious label\\n                }\\n                if (offset > 0) {\\n                    v[offset - 1] = \\\".\\\";\\n                }\\n                offset = nextOffset;\\n            }\\n            return string(v);\\n        }\\n    }\\n\\n    /// @dev Convert ENS name to DNS-encoded name.\\n    ///      * `encode(\\\"aaa.bb.c\\\") = \\\"\\\\x03aaa\\\\x02bb\\\\x01c\\\\x00\\\"`\\n    ///      * `encode(\\\"eth\\\") = \\\"\\\\x03eth\\\\x00\\\"`\\n    ///      * `encode(\\\"\\\") = \\\"\\\\x00\\\"`\\n    ///      Reverts `DNSEncodingFailed`.\\n    ///\\n    /// @param ens The ENS name to convert.\\n    ///\\n    /// @return dns The corresponding DNS-encoded name, eg. `\\\\x03aaa\\\\x02bb\\\\x01c\\\\x00`.\\n    function encode(\\n        string memory ens\\n    ) internal pure returns (bytes memory dns) {\\n        unchecked {\\n            uint256 n = bytes(ens).length;\\n            if (n == 0) return hex\\\"00\\\"; // root\\n            dns = new bytes(n + 2); // always 2-longer\\n            LibMem.copy(LibMem.ptr(dns) + 1, LibMem.ptr(bytes(ens)), n); // shift by +1 byte\\n            uint256 start; // remember position to write length\\n            uint256 size;\\n            for (uint256 i; i < n; ++i) {\\n                if (bytes(ens)[i] == \\\".\\\") {\\n                    size = i - start;\\n                    if (size == 0 || size > 255) {\\n                        revert DNSEncodingFailed(ens);\\n                    }\\n                    dns[start] = bytes1(uint8(size));\\n                    start = i + 1;\\n                }\\n            }\\n            size = n - start;\\n            if (size == 0 || size > 255) {\\n                revert DNSEncodingFailed(ens);\\n            }\\n            dns[start] = bytes1(uint8(size));\\n        }\\n    }\\n\\n    /// @dev Find the offset into `name` that namehashes to `nodeSuffix`.\\n    ///\\n    /// @param name The DNS-encoded name to search.\\n    /// @param nodeSuffix The namehash to match.\\n    ///\\n    /// @return matched True if `name` ends with `nodeSuffix`.\\n    /// @return node The namehash of `name[offset:]`.\\n    /// @return prevOffset The offset into `name` of the label before `nodeSuffix`, or `matchOffset` if no match or no prior label.\\n    /// @return matchOffset The offset into `name` that namehashes to the `nodeSuffix`, or 0 if no match.\\n    function matchSuffix(\\n        bytes memory name,\\n        uint256 offset,\\n        bytes32 nodeSuffix\\n    )\\n        internal\\n        pure\\n        returns (\\n            bool matched,\\n            bytes32 node,\\n            uint256 prevOffset,\\n            uint256 matchOffset\\n        )\\n    {\\n        (bytes32 labelHash, uint256 next) = readLabel(name, offset);\\n        if (labelHash != bytes32(0)) {\\n            (matched, node, prevOffset, matchOffset) = matchSuffix(\\n                name,\\n                next,\\n                nodeSuffix\\n            );\\n            if (node == nodeSuffix) {\\n                matched = true;\\n                prevOffset = offset;\\n                matchOffset = next;\\n            }\\n            node = namehash(node, labelHash);\\n        }\\n        if (node == nodeSuffix) {\\n            matched = true;\\n            prevOffset = matchOffset = offset;\\n        }\\n    }\\n\\n    /// @dev Assert `label` is an encodable size.\\n    ///\\n    /// @param label The label to check.\\n    ///\\n    /// @return The size of the label.\\n    function assertLabelSize(\\n        string memory label\\n    ) internal pure returns (uint8) {\\n        uint256 n = bytes(label).length;\\n        if (n == 0) revert LabelIsEmpty();\\n        if (n > 255) revert LabelIsTooLong(label);\\n        return uint8(n);\\n    }\\n\\n    /// @dev Prepend `label` to DNS-encoded `name`.\\n    ///      * `addLabel(\\\"\\\\x03eth\\\\x00\\\", \\\"test\\\") = \\\"\\\\x04test\\\\x03eth\\\\x00\\\"`\\n    ///      * `addLabel(\\\"\\\\x00\\\", \\\"eth\\\") = \\\"\\\\x03eth\\\\x00\\\"`\\n    ///      * `addLabel(\\\"\\\", \\\"abc\\\") = \\\"\\\\x03abc\\\"` invalid\\n    ///      * `addLabel(\\\"\\\", \\\"\\\")` reverts\\n    ///      Assumes `name` is properly encoded.\\n    ///      Reverts like `assertLabelSize()`.\\n    ///\\n    /// @param name The DNS-encoded parent name.\\n    /// @param label The child label to prepend.\\n    ///\\n    /// @return The DNS-encoded child name.\\n    function addLabel(\\n        bytes memory name,\\n        string memory label\\n    ) internal pure returns (bytes memory) {\\n        return abi.encodePacked(assertLabelSize(label), label, name);\\n    }\\n\\n    /// @dev Transform `label` to DNS-encoded `{label}.eth`.\\n    ///      * `ethName(\\\"eth\\\") = \\\"\\\\x04test\\\\x03eth\\\\x00\\\"`\\n    ///      Behaves like `addLabel()`.\\n    ///\\n    /// @param label The label to encode.\\n    ///\\n    /// @return The DNS-encoded name.\\n    function ethName(string memory label) internal pure returns (bytes memory) {\\n        return addLabel(\\\"\\\\x03eth\\\\x00\\\", label);\\n    }\\n}\\n\",\"keccak256\":\"0xe2152baacde56f8725de800767c8155f916b6e18c1348cdec82e16d2d3bee35a\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/src/reverse-registrar/interfaces/IContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @dev Interface selector: `0x6f3ff726`\\ninterface IContractNamer {\\n    /// @notice Determine if an account is authorized to name this contract.\\n    ///         Called by reverse registrars.\\n    /// @param namer The address to check.\\n    /// @return `true` if authorized.\\n    function isContractNamer(address namer) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x1f8b1ba58195ba6e1b84767523ee59a40547db34f3a74a640edba0d335a0ede3\",\"license\":\"MIT\"},\"project/src/utils/DelegatedContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\n\\nimport {IContractNamer} from \\\"../reverse-registrar/interfaces/IContractNamer.sol\\\";\\n\\n/// @dev Mixin for delegated contract naming. \\nabstract contract DelegatedContractNamer is ERC165, IContractNamer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Delegated contract namer.\\n    IContractNamer public immutable CONTRACT_NAMER;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param contractNamer Delegated contract namer.\\n    constructor(IContractNamer contractNamer) {\\n        CONTRACT_NAMER = contractNamer;\\n    }\\n\\n    /// @inheritdoc ERC165\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IContractNamer\\n    function isContractNamer(address namer) external view returns (bool) {\\n        return CONTRACT_NAMER.isContractNamer(namer);\\n    }\\n}\\n\",\"keccak256\":\"0xee94197bc054092f1d867d85b738a041b3f2d56ba0d30efe1533220f24309988\",\"license\":\"MIT\"},\"project/src/utils/LabelStore.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {NameCoder} from \\\"@ens/contracts/utils/NameCoder.sol\\\";\\n\\nimport {IContractNamer} from \\\"../reverse-registrar/interfaces/IContractNamer.sol\\\";\\n\\nimport {DelegatedContractNamer} from \\\"./DelegatedContractNamer.sol\\\";\\nimport {ILabelStore} from \\\"./interfaces/ILabelStore.sol\\\";\\nimport {LibLabel} from \\\"./LibLabel.sol\\\";\\n\\n/// @notice Shared label database.\\ncontract LabelStore is DelegatedContractNamer, ILabelStore {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev The truncated labelhash to label mapping.\\n    mapping(uint256 storageId => string label) internal _labels;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param contractNamer Delegated contract namer.\\n    constructor(IContractNamer contractNamer) DelegatedContractNamer(contractNamer) {}\\n\\n    /// @inheritdoc DelegatedContractNamer\\n    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {\\n        return interfaceId == type(ILabelStore).interfaceId || super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc ILabelStore\\n    function setLabel(string calldata label) external {\\n        NameCoder.assertLabelSize(label);\\n        uint256 labelId = LibLabel.id(label);\\n        uint256 storageId = _storageId(labelId);\\n        if (bytes(_labels[storageId]).length == 0) {\\n            _labels[storageId] = label;\\n            emit Label(bytes32(labelId), label);\\n        }\\n    }\\n\\n    /// @inheritdoc ILabelStore\\n    function getLabel(uint256 anyId) public view returns (string memory) {\\n        return _labels[_storageId(anyId)];\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Convert `anyId` to `storageId`.\\n    function _storageId(uint256 anyId) internal pure returns (uint256) {\\n        return LibLabel.withVersion(anyId, 0);\\n    }\\n}\\n\",\"keccak256\":\"0x2f9cb8449c35bde2bcadc6735e271e9d1cd6998f62681cffe5344fb8e5c76178\",\"license\":\"MIT\"},\"project/src/utils/LibLabel.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\n/// @dev Utilities for computing labelhash-based token IDs and applying version suffixes.\\nlibrary LibLabel {\\n    /// @dev Compute `labelhash(label)`.\\n    function id(string memory label) internal pure returns (uint256) {\\n        return uint256(keccak256(bytes(label)));\\n    }\\n\\n    /// @dev Replace the lower 32-bits of `anyId` with `versionId`.\\n    /// @param anyId The labelhash, token ID, or resource.\\n    /// @param versionId The version ID.\\n    /// @return The versioned ID.\\n    function withVersion(uint256 anyId, uint32 versionId) internal pure returns (uint256) {\\n        return anyId ^ uint32(anyId) ^ versionId;\\n    }\\n}\\n\",\"keccak256\":\"0x75e19c9c12d2124ba00ef78294f4d67fcb40b46798184766f342143d4e8a0d97\",\"license\":\"MIT\"},\"project/src/utils/interfaces/ILabelStore.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @notice Interface for a shared label database.\\n/// @dev Interface selector: `0x0d48fe93`\\ninterface ILabelStore {\\n    /// @notice A label was recorded.\\n    /// @param labelHash The hash of `label`.\\n    /// @param label The recorded label.\\n    event Label(bytes32 indexed labelHash, string label);\\n\\n    /// @notice Ensure `label` can be inverted from `anyId`.\\n    /// @param label The label.\\n    function setLabel(string calldata label) external;\\n\\n    /// @notice Invert `anyId` to the corresponding label.\\n    /// @param anyId The truncated labelhash.\\n    /// @return The label or null if unknown.\\n    function getLabel(uint256 anyId) external view returns (string memory);\\n}\\n\",\"keccak256\":\"0x271aab59b3c64e7649277ff027da10a3e413772bac9e0a2b98051a02e22d1e97\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 75370,
+        "contract": "project/src/utils/LabelStore.sol:LabelStore",
+        "label": "_labels",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_mapping(t_uint256,t_string_storage)"
+      }
+    ],
+    "types": {
+      "t_mapping(t_uint256,t_string_storage)": {
+        "encoding": "mapping",
+        "key": "t_uint256",
+        "label": "mapping(uint256 => string)",
+        "numberOfBytes": "32",
+        "value": "t_string_storage"
+      },
+      "t_string_storage": {
+        "encoding": "bytes",
+        "label": "string",
+        "numberOfBytes": "32"
+      },
+      "t_uint256": {
+        "encoding": "inplace",
+        "label": "uint256",
+        "numberOfBytes": "32"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "Label(bytes32,string)": {
+        "notice": "A label was recorded."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "CONTRACT_NAMER()": {
+        "notice": "Delegated contract namer."
+      },
+      "getLabel(uint256)": {
+        "notice": "Invert `anyId` to the corresponding label."
+      },
+      "isContractNamer(address)": {
+        "notice": "Determine if an account is authorized to name this contract.         Called by reverse registrars."
+      },
+      "setLabel(string)": {
+        "notice": "Ensure `label` can be inverted from `anyId`."
+      }
+    },
+    "notice": "Shared label database.",
+    "version": 1
+  },
+  "argsData": "0x00000000000000000000000068658a771044873906fc9b6e9f278ac5a0501342",
+  "transaction": {
+    "hash": "0xd187c67a1dbd0d32004653a4a8bf03ef5807f56081041ec331452a0573920b85",
+    "nonce": "0xd",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0x642b988dbc27cee5d0c54971e2a6f3fa95e2b44b445c11cdd10d72cc313cb6fa",
+    "blockNumber": "0xaa56b6",
+    "transactionIndex": "0xe1"
+  }
+}

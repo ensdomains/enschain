@@ -1,61 +1,56 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedResolver.sol";
-
 import {IEnhancedAccessControl} from "../../access-control/interfaces/IEnhancedAccessControl.sol";
 
-/// @dev Interface selector: `0x91413117`
-interface IPermissionedResolver is IExtendedResolver, IEnhancedAccessControl {
+import {IRecordResolver} from "./IRecordResolver.sol";
+
+/// @dev Interface selector: `0x8c2427cc`
+interface IPermissionedResolver is IRecordResolver, IEnhancedAccessControl {
     ////////////////////////////////////////////////////////////////////////
     // Events
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice An alias was changed.
-    /// @param indexedFromName The source DNS-encoded name. (indexed bytes, hashed)
-    /// @param indexedToName The destination DNS-encoded name. (indexed bytes, hashed)
-    /// @param fromName The source DNS-encoded name.
-    /// @param toName The destination DNS-encoded name.
-    event AliasChanged(
-        bytes indexed indexedFromName,
-        bytes indexed indexedToName,
-        bytes fromName,
-        bytes toName
-    );
-
-    ////////////////////////////////////////////////////////////////////////
-    // Errors
-    ////////////////////////////////////////////////////////////////////////
-
-    /// @notice The resolver profile cannot be answered.
-    /// @dev Error selector: `0x7b1c461b`
-    error UnsupportedResolverProfile(bytes4 selector);
-
-    /// @notice The address could not be converted to `address`.
-    /// @dev Error selector: `0x8d666f60`
-    error InvalidEVMAddress(bytes addressBytes);
-
-    /// @notice The coin type is not a power of 2.
-    /// @dev Error selector: `0x5742bb26`
-    error InvalidContentType(uint256 contentType);
+    /// @notice Associate EAC resource with setter argument.
+    /// @param resource The resource to associate.
+    /// @param arg The setter argument.
+    event ResourceArgument(uint256 indexed resource, bytes arg);
 
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @notice Initialize the contract.
-    /// @param admin The resolver owner.
-    /// @param roleBitmap The roles granted to `admin`.
-    /// @param setters The setter calldata that avoids permission checks.
-    function initialize(address admin, uint256 roleBitmap, bytes[] calldata setters) external;
+    /// @notice Authorize fine-grained permission to `account`.
+    /// @param setter The ABI-encoded setter calldata to authorize.
+    /// @param account The account to be authorize for role.
+    /// @return `true` if an authorization was changed.
+    function grantSetterRoles(bytes calldata setter, address account) external returns (bool);
 
-    /// @notice Create an alias from `fromName` to `toName`.
-    /// @param fromName The source DNS-encoded name.
-    /// @param toName The destination DNS-encoded name.
-    function setAlias(bytes calldata fromName, bytes calldata toName) external;
+    /// @notice Associate `name` with `targetNode`.
+    /// @param sourceName The DNS-encoded name to link.
+    /// @param targetNode The target namehash.
+    function linkToNode(bytes calldata sourceName, bytes32 targetNode) external;
 
-    /// @notice Determine which name is queried when `fromName` is resolved.
-    /// @param fromName The source DNS-encoded name.
-    /// @return toName The destination DNS-encoded name or empty if not aliased.
-    function getAlias(bytes memory fromName) external view returns (bytes memory toName);
+    /// @notice Associate `name` with `recordId`.
+    /// @param sourceName The DNS-encoded name to link.
+    /// @param recordId The record ID or 0 to unlink.
+    function linkToRecord(bytes calldata sourceName, uint256 recordId) external;
+
+    /// @notice Get the number of created records.
+    function getRecordCount() external view returns (uint256);
+
+    /// @notice Get the record linked to `node`.
+    /// @param node The namehash to find.
+    /// @return The record ID or 0 if not linked.
+    function getRecordId(bytes32 node) external view returns (uint256);
+
+    /// @notice Decode setter calldata into parts and corresponding role.
+    /// @param setter The ABI-encoded setter calldata.
+    /// @return arg The setter argument.
+    /// @return resource The EAC resource.
+    /// @return roleBitmap The corresponding role bit.
+    function decodeSetter(bytes calldata setter)
+        external
+        pure
+        returns (bytes memory arg, uint256 resource, uint256 roleBitmap);
 }

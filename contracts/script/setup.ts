@@ -1,4 +1,51 @@
-import artifacts from "./artifacts.js";
+import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
+import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
+import { Artifact_DNSTXTResolver } from "generated/artifacts/DNSTXTResolver.js";
+import { Artifact_ENSV1Resolver } from "generated/artifacts/ENSV1Resolver.js";
+import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
+// shared
+import { Abi_GatewayProvider } from "generated/abis/GatewayProvider.js";
+import { Abi_DefaultReverseRegistrar } from "generated/abis/DefaultReverseRegistrar.js";
+import { Abi_DefaultReverseResolver } from "generated/abis/DefaultReverseResolver.js";
+import { Abi_ReverseRegistrar } from "generated/abis/ReverseRegistrar.js";
+import { Abi_ReverseRegistrarAdapter } from "generated/abis/ReverseRegistrarAdapter.js";
+import { Abi_DefaultReverseRegistrarAdapter } from "generated/abis/DefaultReverseRegistrarAdapter.js";
+import { Abi_NameCoder } from "generated/abis/NameCoder.js";
+// v1
+import { Abi_Root } from "generated/abis/Root.js";
+import { Abi_ENSRegistry } from "generated/abis/ENSRegistry.js";
+import { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
+import { Abi_NameWrapper } from "generated/abis/NameWrapper.js";
+import { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
+import { Abi_PublicResolver } from "generated/abis/PublicResolver.js";
+import { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+// v2
+import { Abi_ContractNamer } from "generated/abis/ContractNamer.js";
+import { Abi_LabelStore } from "generated/abis/LabelStore.js";
+import { Abi_VerifiableFactory } from "generated/abis/VerifiableFactory.js";
+import { Abi_PermissionedRegistry } from "generated/abis/PermissionedRegistry.js";
+import { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
+import { Abi_ETHRegistrar } from "generated/abis/ETHRegistrar.js";
+import { Abi_ETHRenewerV1 } from "generated/abis/ETHRenewerV1.js";
+import { Abi_PermissionedResolver } from "generated/abis/PermissionedResolver.js";
+import { Abi_UserRegistry } from "generated/abis/UserRegistry.js";
+import { Abi_WrapperRegistry } from "generated/abis/WrapperRegistry.js";
+import { Abi_UnlockedMigrationController } from "generated/abis/UnlockedMigrationController.js";
+import { Abi_LockedMigrationController } from "generated/abis/LockedMigrationController.js";
+import { Abi_Graveyard } from "generated/abis/Graveyard.js";
+import { Abi_PermissionedAddressSet } from "generated/abis/PermissionedAddressSet.js";
+import { Abi_UniversalHelper } from "generated/abis/UniversalHelper.js";
+import { Abi_UniversalResolverV2 } from "generated/abis/UniversalResolverV2.js";
+import { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
+import { Abi_MigrationHelper } from "generated/abis/src/migration/MigrationHelper.sol/MigrationHelper.js";
+// erc20
+import { Abi_MockERC20 } from "generated/abis/test/mocks/MockERC20.sol/MockERC20.js";
+// hca
+import { Abi_MockRegistrationIntentExecutor } from "generated/abis/MockRegistrationIntentExecutor.js";
+import { Abi_HCAOwnerAndSessionValidator } from "generated/abis/HCAOwnerAndSessionValidator.js";
+import { Abi_StandaloneSingleOwnerHCA } from "generated/abis/StandaloneSingleOwnerHCA.js";
+import { Abi_StandaloneHCAFactory } from "generated/abis/StandaloneHCAFactory.js";
+//
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { anvil as createAnvil } from "prool/instances";
@@ -30,21 +77,13 @@ import {
   defineChain,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
-
-import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
-import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
-import { Artifact_DNSTXTResolver } from "generated/artifacts/DNSTXTResolver.js";
-import { Artifact_ENSV1Resolver } from "generated/artifacts/ENSV1Resolver.js";
-import { Artifact_ENSV2Resolver } from "generated/artifacts/ENSV2Resolver.js";
-import { Artifact_MockERC20 } from "generated/artifacts/test/mocks/MockERC20.sol/MockERC20.js";
-import { Artifact_UniversalResolverV2 } from "generated/artifacts/UniversalResolverV2.js";
-
 import { loadAndExecuteDeploymentsFromFilesWithConfig } from "../rocketh/environment.js";
 import {
   computeVerifiableProxyAddress as computeVerifiableProxyAddress_,
   deployVerifiableProxy,
 } from "../test/integration/fixtures/deployVerifiableProxy.js";
 import {
+  COIN_TYPE_ETH,
   dnsEncodeName,
   getReverseName,
   splitName,
@@ -304,37 +343,37 @@ export async function setupDevnet({
     // note: TypeScript is too slow when the following is generalized
     const shared = {
       BatchGatewayProvider: getContract({
-        abi: artifacts.GatewayProvider.abi,
+        abi: Abi_GatewayProvider,
         address: rocketh.get("BatchGatewayProvider").address,
         client,
       }),
       DNSSECGatewayProvider: getContract({
-        abi: artifacts.GatewayProvider.abi,
+        abi: Abi_GatewayProvider,
         address: rocketh.get("DNSSECGatewayProvider").address,
         client,
       }),
       DefaultReverseRegistrar: getContract({
-        abi: artifacts.DefaultReverseRegistrar.abi,
+        abi: Abi_DefaultReverseRegistrar,
         address: rocketh.get("DefaultReverseRegistrar").address,
         client,
       }),
       DefaultReverseResolver: getContract({
-        abi: artifacts.DefaultReverseResolver.abi,
+        abi: Abi_DefaultReverseResolver,
         address: rocketh.get("DefaultReverseResolver").address,
         client,
       }),
-      ETHReverseRegistrar: getContract({
-        abi: artifacts.ReverseRegistrar.abi,
+      ReverseRegistrar: getContract({
+        abi: Abi_ReverseRegistrar,
         address: rocketh.get("ReverseRegistrar").address,
         client,
       }),
       ReverseRegistrarAdapter: getContract({
-        abi: artifacts.ReverseRegistrarAdapter.abi,
+        abi: Abi_ReverseRegistrarAdapter,
         address: rocketh.get("ReverseRegistrarAdapter").address,
         client,
       }),
       DefaultReverseRegistrarAdapter: getContract({
-        abi: artifacts.DefaultReverseRegistrarAdapter.abi,
+        abi: Abi_DefaultReverseRegistrarAdapter,
         address: rocketh.get("DefaultReverseRegistrarAdapter").address,
         client,
       }),
@@ -342,173 +381,172 @@ export async function setupDevnet({
 
     const v1 = {
       Root: getContract({
-        abi: artifacts.Root.abi,
+        abi: Abi_Root,
         address: rocketh.get("Root").address,
         client,
       }),
       ENSRegistry: getContract({
-        abi: artifacts.ENSRegistry.abi,
+        abi: Abi_ENSRegistry,
         address: rocketh.get("ENSRegistry").address,
         client,
       }),
       BaseRegistrar: getContract({
-        abi: artifacts.BaseRegistrarImplementation.abi,
+        abi: Abi_BaseRegistrarImplementation,
         address: rocketh.get("BaseRegistrarImplementation").address,
         client,
       }),
-      ReverseRegistrar: getContract({
-        abi: artifacts.ReverseRegistrar.abi,
-        address: rocketh.get("ReverseRegistrar").address,
-        client,
-      }),
       NameWrapper: getContract({
-        abi: artifacts.NameWrapper.abi,
+        abi: Abi_NameWrapper,
         address: rocketh.get("NameWrapper").address,
         client,
       }),
-      // WrappedETHRegistrarController: getContract({
-      //   abi: artifacts.IWrappedETHRegistrarController.abi,
-      //   address: rocketh.get("WrappedETHRegistrarController").address,
-      //   client,
-      // }),
       RegistrarSecurityController: getContract({
-        abi: artifacts.RegistrarSecurityController.abi,
+        abi: Abi_RegistrarSecurityController,
         address: rocketh.get("RegistrarSecurityController").address,
         client,
       }),
       // resolvers
       PublicResolver: getContract({
-        abi: artifacts.PublicResolver.abi,
+        abi: Abi_PublicResolver,
         address: rocketh.get("PublicResolver").address,
         client,
       }),
       UniversalResolver: getContract({
-        abi: artifacts.UniversalResolver.abi,
+        abi: Abi_UniversalResolver,
         address: rocketh.get("UniversalResolver").address,
         client,
       }),
     };
 
-    const NameCoderErrors = artifacts.NameCoder.abi.filter(
-      (x) => x.type === "error",
-    );
+    const Abi_NameCoderErrors = Abi_NameCoder.filter((x) => x.type === "error");
     const v2 = {
       ContractNamer: getContract({
-        abi: artifacts.ContractNamer.abi,
+        abi: Abi_ContractNamer,
         address: rocketh.get("ContractNamer").address,
         client,
       }),
       LabelStore: getContract({
-        abi: artifacts.LabelStore.abi,
+        abi: Abi_LabelStore,
         address: rocketh.get("LabelStore").address,
         client,
       }),
       VerifiableFactory: getContract({
-        abi: artifacts.VerifiableFactory.abi,
+        abi: Abi_VerifiableFactory,
         address: rocketh.get("VerifiableFactory").address,
         client,
       }),
       RootRegistry: getContract({
-        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
+        abi: [...Abi_PermissionedRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("RootRegistry").address,
         client,
       }),
       ETHRegistry: getContract({
-        abi: [...artifacts.PermissionedRegistry.abi, ...NameCoderErrors],
+        abi: [...Abi_PermissionedRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("ETHRegistry").address,
         client,
       }),
       // eth registrar
       StandardRentPriceOracle: getContract({
-        abi: artifacts.StandardRentPriceOracle.abi,
+        abi: Abi_StandardRentPriceOracle,
         address: rocketh.get("StandardRentPriceOracle").address,
         client,
       }),
       ETHRegistrar: getContract({
-        abi: artifacts.ETHRegistrar.abi,
+        abi: Abi_ETHRegistrar,
         address: rocketh.get("ETHRegistrar").address,
         client,
       }),
       ETHRenewerV1: getContract({
-        abi: artifacts.ETHRenewerV1.abi,
+        abi: Abi_ETHRenewerV1,
         address: rocketh.get("ETHRenewerV1").address,
         client,
       }),
       // VerifiableFactory implementations
       PermissionedResolverImpl: getContract({
-        abi: artifacts.PermissionedResolver.abi,
+        abi: Abi_PermissionedResolver,
         address: rocketh.get("PermissionedResolverImpl").address,
         client,
       }),
       UserRegistryImpl: getContract({
-        abi: [...artifacts.UserRegistry.abi, ...NameCoderErrors],
+        abi: [...Abi_UserRegistry, ...Abi_NameCoderErrors],
         address: rocketh.get("UserRegistryImpl").address,
         client,
       }),
       WrapperRegistryImpl: getContract({
-        abi: artifacts.WrapperRegistry.abi,
+        abi: Abi_WrapperRegistry,
         address: rocketh.get("WrapperRegistryImpl").address,
         client,
       }),
       // migration
       UnlockedMigrationController: getContract({
-        abi: [...artifacts.UnlockedMigrationController.abi, ...NameCoderErrors],
+        abi: [...Abi_UnlockedMigrationController, ...Abi_NameCoderErrors],
         address: rocketh.get("UnlockedMigrationController").address,
         client,
       }),
       LockedMigrationController: getContract({
-        abi: [...artifacts.LockedMigrationController.abi, ...NameCoderErrors],
+        abi: [...Abi_LockedMigrationController, ...Abi_NameCoderErrors],
         address: rocketh.get("LockedMigrationController").address,
         client,
       }),
+      MigrationHelper: getContract({
+        abi: Abi_MigrationHelper,
+        address: rocketh.get("MigrationHelper").address,
+        client,
+      }),
       Graveyard: getContract({
-        abi: artifacts.Graveyard.abi,
+        abi: Abi_Graveyard,
         address: rocketh.get("Graveyard").address,
         client,
       }),
       PublicResolverSet: getContract({
-        abi: artifacts.PermissionedAddressSet.abi,
+        abi: Abi_PermissionedAddressSet,
         address: rocketh.get("PublicResolverSet").address,
         client,
       }),
-      ApprovedUpgradeGate: getContract({
-        abi: artifacts.ApprovedUpgradeGate.abi,
-        address: rocketh.get("ApprovedUpgradeGate").address,
+      RegistryUpgradeSet: getContract({
+        abi: Abi_PermissionedAddressSet,
+        address: rocketh.get("RegistryUpgradeSet").address,
+        client,
+      }),
+      // universal
+      UniversalResolver: getContract({
+        abi: Abi_UniversalResolverV2,
+        address: rocketh.get("UniversalResolverV2").address,
+        client,
+      }),
+      UniversalHelper: getContract({
+        abi: Abi_UniversalHelper,
+        address: rocketh.get("UniversalHelper").address,
         client,
       }),
       // resolvers
-      UniversalResolver: getContract({
-        abi: Artifact_UniversalResolverV2.abi,
-        address: rocketh.deployments["UniversalResolverV2"].address,
-        client,
-      }),
       DNSTLDResolver: getContract({
         abi: Artifact_DNSTLDResolver.abi,
-        address: rocketh.deployments["DNSTLDResolver"].address,
+        address: rocketh.get("DNSTLDResolver").address,
         client,
       }),
       DNSTXTResolver: getContract({
         abi: Artifact_DNSTXTResolver.abi,
-        address: rocketh.deployments["DNSTXTResolver"].address,
+        address: rocketh.get("DNSTXTResolver").address,
         client,
       }),
       DNSAliasResolver: getContract({
         abi: Artifact_DNSAliasResolver.abi,
-        address: rocketh.deployments["DNSAliasResolver"].address,
+        address: rocketh.get("DNSAliasResolver").address,
         client,
       }),
       ENSV1Resolver: getContract({
         abi: Artifact_ENSV1Resolver.abi,
-        address: rocketh.deployments["ENSV1Resolver"].address,
+        address: rocketh.get("ENSV1Resolver").address,
         client,
       }),
       ENSV2Resolver: getContract({
         abi: Artifact_ENSV2Resolver.abi,
-        address: rocketh.deployments["ENSV2Resolver"].address,
+        address: rocketh.get("ENSV2Resolver").address,
         client,
       }),
       PublicResolver: getContract({
-        abi: artifacts.PublicResolverV2.abi,
+        abi: Abi_PublicResolverV2,
         address: rocketh.get("PublicResolverV2").address,
         client,
       }),
@@ -516,20 +554,48 @@ export async function setupDevnet({
 
     const erc20 = {
       MockUSDC: getContract({
-        abi: Artifact_MockERC20.abi,
-        address: rocketh.deployments["MockUSDC"].address,
+        abi: Abi_MockERC20,
+        address: rocketh.get("MockUSDC").address,
         client,
       }),
       MockDAI: getContract({
-        abi: Artifact_MockERC20.abi,
-        address: rocketh.deployments["MockDAI"].address,
+        abi: Abi_MockERC20,
+        address: rocketh.get("MockDAI").address,
+        client,
+      }),
+    };
+
+    const hca = {
+      MockRegistrationIntentExecutor: getContract({
+        abi: Abi_MockRegistrationIntentExecutor,
+        address: rocketh.get("MockRegistrationIntentExecutor").address,
+        client,
+      }),
+      HCAOwnerAndSessionValidator: getContract({
+        abi: Abi_HCAOwnerAndSessionValidator,
+        address: rocketh.get("HCAOwnerAndSessionValidator").address,
+        client,
+      }),
+      StandaloneHCAImplementation: getContract({
+        abi: Abi_StandaloneSingleOwnerHCA,
+        address: rocketh.get("StandaloneHCAImplementation").address,
+        client,
+      }),
+      StandaloneHCAFactory: getContract({
+        abi: Abi_StandaloneHCAFactory,
+        address: rocketh.get("StandaloneHCAFactory").address,
+        client,
+      }),
+      HCAUpgradeSet: getContract({
+        abi: Abi_PermissionedAddressSet,
+        address: rocketh.get("HCAUpgradeSet").address,
         client,
       }),
     };
 
     const verifiableProxyLogic = await v2.VerifiableFactory.read.proxyLogic();
 
-    [shared, v1, v2, erc20]
+    [shared, v1, v2, erc20, hca]
       .flatMap((x) => Object.values(x))
       .forEach(patchContractWrite);
     console.log("Linked contracts");
@@ -570,6 +636,7 @@ export async function setupDevnet({
       v1,
       v2,
       erc20,
+      hca,
       sync,
       waitFor,
       saveState,
@@ -703,13 +770,13 @@ export async function setupDevnet({
       account, // deployer
       admin = account.address,
       roles = ROLES.ALL,
-      setters = [],
+      calls = [],
       salt,
     }: {
       account: Account;
       admin?: Address;
       roles?: bigint;
-      setters?: Hex[];
+      calls?: Hex[];
       salt?: bigint | { ownedVersion: bigint };
     }) {
       if (typeof salt === "object") {
@@ -722,7 +789,7 @@ export async function setupDevnet({
           implAddress: v2.PermissionedResolverImpl.address,
           abi: v2.PermissionedResolverImpl.abi,
           functionName: "initialize",
-          args: [admin, roles, setters],
+          args: [[[admin, roles]], calls],
           salt,
         }),
       );
@@ -750,7 +817,7 @@ export async function setupDevnet({
           implAddress,
           abi: v2.UserRegistryImpl.abi,
           functionName: "initialize",
-          args: [admin, roles],
+          args: [[[admin, roles]]],
           salt,
         }),
       );
@@ -785,7 +852,7 @@ export async function setupDevnet({
     // note: casts to UserRegistry even if PermissionRegistry
     // note: TypeScript is too slow when the following is generalized to any resolver type
     async function findPermissionedRegistry(name: string, account?: Account) {
-      const address = await v2.UniversalResolver.read.findExactRegistry([
+      const address = await v2.UniversalHelper.read.findExactRegistry([
         dnsEncodeName(name),
       ]);
       if (address === zeroAddress) {
@@ -924,8 +991,9 @@ export async function setupDevnet({
       await setName("2to1.resolver", v2.ENSV1Resolver.address);
       await setName("1to2.resolver", v2.ENSV2Resolver.address);
       await setName("impl.resolver", v2.PermissionedResolverImpl.address);
-      // await setName("universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
-      await setName("impl.universal", v2.UniversalResolver.address);
+      await setName("universal", v2.UniversalResolver.address);
+      await setName("impl.universal", v2.UniversalResolver.address); // devnet doesn't deploy a proxy
+      await setName("helper", v2.UniversalHelper.address);
       await setName("public.resolver", v2.PublicResolver.address);
       await setName("dns.resolver", v2.DNSTLDResolver.address);
 
@@ -949,8 +1017,8 @@ export async function setupDevnet({
       );
       await setName("locked.migration", v2.LockedMigrationController.address);
       await setName("graveyard", v2.Graveyard.address);
-      // MigrationHelper
-      await setName("gate.wrapper-registry", v2.ApprovedUpgradeGate.address);
+      await setName("helper.migration", v2.MigrationHelper.address);
+      await setName("upgradeset.registry", v2.RegistryUpgradeSet.address);
       await setName("prset.migration", v2.PublicResolverSet.address);
 
       await setName("batch.gateways", shared.BatchGatewayProvider.address);
@@ -970,13 +1038,17 @@ export async function setupDevnet({
             { account: namer },
           );
           await resolver.write.setName([
-            namehash(getReverseName(address)),
+            dnsEncodeName(getReverseName(address)),
             name,
           ]);
         } catch (err) {
           console.log(`Cannot name: ${name}`);
         }
-        await resolver.write.setAddr([namehash(name), 60n, address]);
+        await resolver.write.setAddress([
+          dnsEncodeName(name),
+          COIN_TYPE_ETH,
+          address,
+        ]);
       }
     }
 

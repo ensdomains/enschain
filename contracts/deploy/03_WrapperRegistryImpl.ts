@@ -1,39 +1,33 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
+import type { Abi_Graveyard } from "generated/abis/Graveyard.js";
+import type { Abi_IVerifiableFactory } from "generated/abis/IVerifiableFactory.js";
+import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.js";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import type { Abi_IAddressSet } from "generated/abis/IAddressSet.js";
+import type { Abi_PublicResolverV2 } from "generated/abis/PublicResolverV2.js";
+import { Artifact_WrapperRegistry } from "generated/artifacts/WrapperRegistry.js";
 
 export default execute(
   async ({ deploy, get, getV1, namedAccounts: { deployer, owner } }) => {
-    const nameWrapper =
-      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
-
-    const graveyard = get<(typeof artifacts.Graveyard)["abi"]>("Graveyard");
-
-    const verifiableFactory =
-      get<(typeof artifacts.VerifiableFactory)["abi"]>("VerifiableFactory");
-
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
-
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
-
-    const approvedUpgradeGate = get<
-      (typeof artifacts.ApprovedUpgradeGate)["abi"]
-    >("ApprovedUpgradeGate");
-
-    const publicResolverSet =
-      get<(typeof artifacts.IAddressSet)["abi"]>("PublicResolverSet");
-
-    const publicResolverV2 =
-      get<(typeof artifacts.PublicResolverV2)["abi"]>("PublicResolverV2");
+    const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
+    const graveyard = get<Abi_Graveyard>("Graveyard");
+    const verifiableFactory = get<Abi_IVerifiableFactory>("VerifiableFactory");
+    const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
+    const registryUpgradeSet = get<Abi_IAddressSet>("RegistryUpgradeSet");
+    const publicResolverSet = get<Abi_IAddressSet>("PublicResolverSet");
+    const publicResolverV2 = get<Abi_PublicResolverV2>("PublicResolverV2");
 
     await deploy("WrapperRegistryImpl", {
       account: deployer,
-      artifact: artifacts.WrapperRegistry,
+      artifact: Artifact_WrapperRegistry,
       args: [
         nameWrapper.address,
         graveyard.address,
         verifiableFactory.address,
         ensV1Resolver.address,
-        approvedUpgradeGate.address,
+        registryUpgradeSet.address,
         labelStore.address,
         publicResolverSet.address,
         publicResolverV2.address,
@@ -48,7 +42,7 @@ export default execute(
       "Graveyard",
       "VerifiableFactory",
       "ENSV1Resolver",
-      "ApprovedUpgradeGate",
+      "RegistryUpgradeSet",
       "LabelStore",
       "PublicResolverSet",
       "PublicResolverV2",

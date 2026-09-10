@@ -61,3 +61,20 @@ index 018a31ca31616c50679b1b566c1092b67857c47d..b21ab3736f81172de7ab5402e97f1390
 +    }
 +}
  //# sourceMappingURL=index.js.map
+diff --git a/dist/environment/index.js b/dist/environment/index.js
+index 8322d74aea4cf8dc59b29690836fd7fa97163255..1ba6ef786a445f3034ca0722372a01380394e737 100644
+--- a/dist/environment/index.js
++++ b/dist/environment/index.js
+@@ -334,6 +334,12 @@ export async function createEnvironment(userConfig, resolvedExecutionParams, dep
+             // for backward compatibility
+             tags: context.tags,
+         },
++        // for backward compatibility with rocketh <0.15 deploy scripts (e.g. the
++        // ens-contracts DNS registrar scripts) that read `config.saveDeployments`;
++        // rocketh 0.19 moved this value onto `context`.
++        config: {
++            saveDeployments: context.saveDeployments,
++        },
+         extra: resolvedExecutionParams.extra || {},
+     };
+     // const signer = {

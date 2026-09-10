@@ -1,14 +1,15 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import { DEPLOYMENT_ROLES } from "../script/deploy-constants.js";
 
 export default execute(
   async ({ deploy, execute: write, get, namedAccounts: { deployer } }) => {
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
 
     const batchRegistrar = await deploy("BatchRegistrar", {
       account: deployer,
-      artifact: artifacts.BatchRegistrar,
+      artifact: Artifact_BatchRegistrar,
       args: [ethRegistry.address, deployer],
     });
 

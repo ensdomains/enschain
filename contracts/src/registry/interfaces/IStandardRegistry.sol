@@ -29,10 +29,6 @@ interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     /// @dev Error selector: `0xf1d446c3`
     error CannotSetPastExpiry(uint64 expiry);
 
-    /// @notice Transfer is not allowed due to missing transfer admin role.
-    /// @dev Error selector: `0xe58f6d5a`
-    error TransferDisallowed(uint256 tokenId, address from);
-
     ////////////////////////////////////////////////////////////////////////
     // Functions
     ////////////////////////////////////////////////////////////////////////
@@ -66,11 +62,13 @@ interface IStandardRegistry is ITemporalRegistry, ITokenizedRegistry {
     function unregister(uint256 anyId) external;
 
     /// @notice Change registry of label.
+    /// @dev Should emit `SubregistryUpdated`.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param registry The new registry.
     function setSubregistry(uint256 anyId, IRegistry registry) external;
 
     /// @notice Change resolver of label.
+    /// @dev Should emit `ResolverUpdated`.
     /// @param anyId The labelhash, token ID, or resource.
     /// @param resolver The new resolver.
     function setResolver(uint256 anyId, address resolver) external;

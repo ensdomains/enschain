@@ -1,12 +1,14 @@
 {
   "name": "contracts",
   "dependencies": {
+    "@ensdomains/address-encoder": "^1.1.3",
     "@ensdomains/hardhat-chai-matchers-viem": "^0.1.16",
     "@nomicfoundation/hardhat-network-helpers": "3.0.0",
     "@nomicfoundation/hardhat-viem": "3.0.0",
     "@nomicfoundation/hardhat-keystore": "3.0.5",
     "@rocketh/deploy": "0.19.1",
     "@rocketh/node": "0.19.3",
+    "@rocketh/proxy": "0.19.3",
     "@rocketh/read-execute": "0.19.0",
     "@rocketh/viem": "0.19.0",
     "commander": "^14.0.1",
@@ -19,22 +21,20 @@
     "yoctocolors": "^2.1.2"
   },
   "devDependencies": {
-    "@ensdomains/address-encoder": "^1.1.3",
     "@nomicfoundation/edr": "0.12.0-next.4",
     "@nomicfoundation/hardhat-foundry": "^1.2.0",
-    "@rocketh/proxy": "0.19.3",
+    "@rhinestone/sdk": "1.8.0",
     "@rocketh/verifier": "0.19.3",
     "@types/bun": "^1.3.2",
     "abitype": "^1.2.3",
     "chai": "^5.1.1",
     "ethers": "^6.15.0",
     "solgrid": "0.0.16",
-    "ts-node": "^10.9.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "3.1.3"
   },
   "peerDependencies": {
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   },
   "engineStrict": true,
   "engines": {
@@ -51,17 +51,21 @@
     "compile": "bun run compile:forge && bun run compile:hardhat",
     "test:forge": "forge test",
     "test:hardhat": "bun run compile:hardhat && vitest run",
+    "test:unit": "bun run compile --quiet && bun test ./test/unit/",
     "test:e2e": "bun run compile --quiet && bun test --max-concurrency=1 ./test/e2e/",
-    "test": "bun run test:forge && bun run test:hardhat",
+    "check:hca-live": "bun ./script/checkLiveHcaRegistration.ts",
+    "test": "bun run test:forge && bun run test:hardhat && bun run test:unit",
     "interfaces": "bun run compile:hardhat --quiet && bun ./lib/ens-contracts/scripts/interfaces.ts",
     "coverage:forge": "mkdir -p coverage/ && forge coverage --report lcov --report-file coverage/forge.lcov",
     "coverage:hardhat": "hardhat compile --coverage && COVERAGE=1 vitest run",
     "coverage:reports": "bun ./script/coverage.ts",
     "coverage:upload": "bun ./script/uploadCoverage.ts",
+    "coverage:notify": "bun ./script/uploadCoverage.ts --notify",
     "coverage": "bun run coverage:forge && bun run coverage:hardhat && bun run coverage:reports",
     "clean": "forge clean && hardhat clean && rm -rf coverage/",
     "devnet": "bun run compile && bun ./script/runDevnet.ts",
     "migration": "bun ./script/migration.ts",
+    "migration:fixture": "bun ./script/migrationFixture.ts",
     "docs:addresses": "bun ./script/generateAddressDocs.ts",
     "aakit": "bun ./script/deployAAkit.ts",
     "verify": "bun ./script/verify.ts",

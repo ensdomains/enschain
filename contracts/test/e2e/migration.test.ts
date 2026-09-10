@@ -5,7 +5,6 @@ import {
   type Address,
   encodeAbiParameters,
   type Hex,
-  namehash,
   zeroAddress,
 } from "viem";
 import {
@@ -24,6 +23,7 @@ import {
   getLabelAt,
   getParentName,
   idFromLabel,
+  namehash,
 } from "../utils/utils.js";
 import {
   bundleCalls,
@@ -45,7 +45,7 @@ const defaultProfile = {
 } as const satisfies Partial<KnownProfile>;
 
 describe("Migration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({
     resetOnEach: true,
@@ -110,7 +110,7 @@ describe("Migration", () => {
       await env.v1.PublicResolver.write.multicall(
         [
           makeResolutions({ name: this.name, ...defaultProfile }).map(
-            (x) => x.write,
+            (x) => x.writeV1,
           ),
         ],
         { account: this.account },
@@ -204,7 +204,10 @@ describe("Migration", () => {
         { account },
       );
       await env.v2.ETHRenewerV1.write.renew(
-        [label, duration, env.erc20.MockUSDC.address, namehash("referrer")],
+        [
+          { label, duration, referrer: namehash("referrer") },
+          env.erc20.MockUSDC.address,
+        ],
         { account },
       );
     }
@@ -333,7 +336,7 @@ describe("Migration", () => {
         target = x.wrapperRegistry().address;
       }
       for (const x of v) {
-        const registry = await env.v2.UniversalResolver.read.findExactRegistry([
+        const registry = await env.v2.UniversalHelper.read.findExactRegistry([
           dnsEncodeName(x.name),
         ]);
         expectVar({ registry }).toEqualAddress(x.wrapperRegistry().address);
@@ -486,7 +489,7 @@ describe("Migration", () => {
       await unwrapped.checkMigrated();
       await resolver.write.multicall([
         makeResolutions({ name: unwrapped.name, ...defaultProfile }).map(
-          (x) => x.write,
+          (x) => x.writeV2,
         ),
       ]);
       await unwrapped.checkResolution();

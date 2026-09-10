@@ -11,7 +11,7 @@ const action: NewTaskActionFunction<RevertTaskArgs> = async (args, hre) => {
   if (args.snapshotId === "" && args.file === "") {
     throw new Error("Provide --snapshot-id or --file");
   }
-  const snapshotId = args.snapshotId || await readSnapshotFile(args.file);
+  const snapshotId = args.snapshotId || (await readSnapshotFile(args.file));
   const connection = await hre.network.connect();
   try {
     const result = await connection.provider.request({
@@ -19,7 +19,9 @@ const action: NewTaskActionFunction<RevertTaskArgs> = async (args, hre) => {
       params: [snapshotId],
     });
     if (result !== true) {
-      throw new Error(`evm_revert failed for snapshot ${snapshotId}: ${String(result)}`);
+      throw new Error(
+        `evm_revert failed for snapshot ${snapshotId}: ${String(result)}`,
+      );
     }
     console.log(`reverted snapshot: ${snapshotId}`);
   } finally {

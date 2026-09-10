@@ -1,26 +1,53 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_DefaultReverseRegistrar } from "generated/abis/DefaultReverseRegistrar.js";
+import type { Abi_StandaloneHCAFactory } from "generated/abis/StandaloneHCAFactory.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_DefaultReverseRegistrarAdapter } from "generated/artifacts/DefaultReverseRegistrarAdapter.js";
+import {
+  controllerAddressHistory,
+  replacedDeploymentAddresses,
+  SUPERSEDED_CONTROLLER_ADDRESSES,
+} from "./hca/_helpers.js";
 
 export default execute(
   async ({
     deploy,
     execute: write,
     get,
+    getOrNull,
     getV1,
     read,
     namedAccounts: { deployer, owner, v1Owner },
   }) => {
-    const defaultReverseRegistrar = await getV1<
-      (typeof artifacts.DefaultReverseRegistrar)["abi"]
-    >("DefaultReverseRegistrar");
+    const defaultReverseRegistrar = await getV1<Abi_DefaultReverseRegistrar>(
+      "DefaultReverseRegistrar",
+    );
+    const standaloneHCAFactory = get<Abi_StandaloneHCAFactory>(
+      "StandaloneHCAFactory",
+    );
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
-
-    const adapter = await deploy("DefaultReverseRegistrarAdapter", {
-      account: deployer,
-      artifact: artifacts.DefaultReverseRegistrarAdapter,
-      args: [defaultReverseRegistrar.address, contractNamer.address],
-    });
+    const previousAdapter = getOrNull("DefaultReverseRegistrarAdapter");
+    const legacyHCAAdapter = getOrNull("DefaultReverseRegistrarHCAAdapter");
+    const priorControllers = [previousAdapter, legacyHCAAdapter];
+    const adapter = await deploy(
+      "DefaultReverseRegistrarAdapter",
+      {
+        account: deployer,
+        artifact: Artifact_DefaultReverseRegistrarAdapter,
+        args: [
+          defaultReverseRegistrar.address,
+          standaloneHCAFactory.address,
+          contractNamer.address,
+        ],
+      },
+      {
+        linkedData: {
+          [SUPERSEDED_CONTROLLER_ADDRESSES]:
+            controllerAddressHistory(priorControllers),
+        },
+      },
+    );
 
     const adapterIsDefaultController = await read(defaultReverseRegistrar, {
       functionName: "controllers",
@@ -37,9 +64,31 @@ export default execute(
         args: [adapter.address, true],
       });
     }
+
+    for (const previousAddress of replacedDeploymentAddresses(
+      adapter,
+      priorControllers,
+    )) {
+      const previousIsController = await read(defaultReverseRegistrar, {
+        functionName: "controllers",
+        args: [previousAddress],
+      });
+      if (previousIsController) {
+        await write(defaultReverseRegistrar, {
+          account: v1Owner ?? owner,
+          functionName: "setController",
+          args: [previousAddress, false],
+        });
+      }
+    }
   },
   {
-    tags: ["DefaultReverseRegistrarAdapter", "migration:phase1:deploy-v2", "v2"],
-    dependencies: ["ContractNamer"],
+    tags: [
+      "DefaultReverseRegistrarAdapter",
+      "migration:phase1:deploy-v2",
+      "v2",
+      "hca",
+    ],
+    dependencies: ["ContractNamer", "StandaloneHCAFactory"],
   },
 );

@@ -4,7 +4,7 @@ pragma solidity >=0.8.13;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Interface for pricing registration and renewals.
-/// @dev Interface selector: `0xdb06fc00`
+/// @dev Interface selector: `0x480851dc`
 interface IRentPriceOracle {
     ////////////////////////////////////////////////////////////////////////
     // Errors
@@ -54,4 +54,9 @@ interface IRentPriceOracle {
         external
         view
         returns (uint256);
+
+    /// @notice Check if `paymentToken` is supported for payment.
+    /// @param paymentToken The payment token.
+    /// @return Whether the payment token is supported.
+    function isPaymentToken(IERC20 paymentToken) external view returns (bool);
 }

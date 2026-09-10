@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IBaseRegistrar} from "@ens/contracts/ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
 
+import {IStandaloneHCAFactory} from "../hca/interfaces/IStandaloneHCAFactory.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
-import {LibRegistry} from "../universalResolver/libraries/LibRegistry.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
 
 import {AbstractWrapperReceiver} from "./AbstractWrapperReceiver.sol";
@@ -42,6 +43,9 @@ contract MigrationHelper is DelegatedContractNamer {
     /// @dev The ENSv1 `BaseRegistrar` contract.
     IBaseRegistrar internal immutable _BASE_REGISTRAR;
 
+    /// @dev The factory that certifies HCA owner bindings.
+    IStandaloneHCAFactory internal immutable _STANDALONE_HCA_FACTORY;
+
     ////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////
@@ -65,11 +69,13 @@ contract MigrationHelper is DelegatedContractNamer {
     /// @param rootRegistry The root registry.
     /// @param unlockedController The ENSv2 `UnlockedMigrationController`.
     /// @param lockedController The ENSv2 `LockedMigrationController`.
+    /// @param standaloneHCAFactory Factory certifying immutable HCA owner bindings.
     /// @param contractNamer Delegated contract namer.
     constructor(
         IRegistry rootRegistry,
         AbstractWrapperReceiver unlockedController,
         AbstractWrapperReceiver lockedController,
+        IStandaloneHCAFactory standaloneHCAFactory,
         IContractNamer contractNamer
     )
         DelegatedContractNamer(contractNamer)
@@ -77,6 +83,7 @@ contract MigrationHelper is DelegatedContractNamer {
         ROOT_REGISTRY = rootRegistry;
         UNLOCKED_CONTROLLER = unlockedController;
         LOCKED_CONTROLLER = lockedController;
+        _STANDALONE_HCA_FACTORY = standaloneHCAFactory;
 
         NAME_WRAPPER = unlockedController.NAME_WRAPPER();
         _BASE_REGISTRAR = NAME_WRAPPER.registrar();
@@ -99,7 +106,10 @@ contract MigrationHelper is DelegatedContractNamer {
     )
         external
     {
-        address sender = msg.sender;
+        address sender = _STANDALONE_HCA_FACTORY.authorizedOwnerOf(msg.sender);
+        if (sender == address(0)) {
+            sender = msg.sender;
+        }
         for (uint256 i; i < unwrapped.length; ++i) {
             LibMigration.Data calldata md = unwrapped[i];
             uint256 tokenId = uint256(keccak256(bytes(md.label)));
@@ -121,7 +131,7 @@ contract MigrationHelper is DelegatedContractNamer {
         _transferWrappedGroups(sender, NameCoder.ETH_NODE, address(LOCKED_CONTROLLER), lockedGroups);
         for (uint256 j; j < lockedChildrenGroups.length; ++j) {
             LockedChildren calldata lc = lockedChildrenGroups[j];
-            IRegistry registry = LibRegistry.findExactRegistry(ROOT_REGISTRY, lc.parentName, 0);
+            IRegistry registry = LibResolution.findExactRegistry(ROOT_REGISTRY, lc.parentName, 0);
             if (address(registry) == address(0)) {
                 revert ParentNotMigrated(lc.parentName);
             }

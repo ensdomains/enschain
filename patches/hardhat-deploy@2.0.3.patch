@@ -1,0 +1,14 @@
+diff --git a/dist/generate-types.js b/dist/generate-types.js
+index 7aa3dd8632c3da7815a528ed920e37b339e779b4..2268b181bb4500d67faaeac0df73e49eb98c7624 100644
+--- a/dist/generate-types.js
++++ b/dist/generate-types.js
+@@ -222 +222 @@ export async function generateTypes(paths, config) {
+-            const { buildInfoId, _format, ...artifactObject } = hardhatArtifactObject;
++            const { _format, ...artifactObject } = hardhatArtifactObject;
+diff --git a/src/generate-types.ts b/src/generate-types.ts
+index 9f84f9d6b1731db6b10d64b7786b7f6966a0008a..fa4959f10730c90b076f1a324391a26538c7eeb0 100644
+--- a/src/generate-types.ts
++++ b/src/generate-types.ts
+@@ -256 +256 @@ export async function generateTypes(paths: {artifacts: string[]}, config: Artifa
+-			const {buildInfoId, _format, ...artifactObject} = hardhatArtifactObject;
++			const {_format, ...artifactObject} = hardhatArtifactObject;

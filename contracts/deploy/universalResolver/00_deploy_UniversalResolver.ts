@@ -1,5 +1,6 @@
-import { artifacts, execute } from "@rocketh";
-
+import { execute } from "@rocketh";
+import type { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import {
   isDeployedTopProxy,
   knownProxyNetworkName,
@@ -22,12 +23,10 @@ export default execute(
     // own v1), so it deploys its own top URP it can administer.
     if (tags["clean-testnet"]) {
       const v1UniversalResolver =
-        await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
-          "UniversalResolver",
-        );
+        await getV1<Abi_UniversalResolver>("UniversalResolver");
       await deploy("UpgradableUniversalResolverProxy", {
         account: deployer,
-        artifact: artifacts.UpgradableUniversalResolverProxy,
+        artifact: Artifact_UpgradableUniversalResolverProxy,
         args: [owner, v1UniversalResolver.address],
       });
       return true;
@@ -37,7 +36,7 @@ export default execute(
     // canonical address for the network. Deploying a fresh top URP is no longer
     // supported here — the migration reuses the existing one.
     const currentDeployment = getOrNull<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
+      (typeof Artifact_UpgradableUniversalResolverProxy)["abi"]
     >("UpgradableUniversalResolverProxy");
     const currentTopProxyDeployment =
       currentDeployment && isDeployedTopProxy(currentDeployment)

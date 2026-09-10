@@ -8,9 +8,8 @@ import {
 } from "../../script/setup.js";
 
 declare global {
-  // Add DevnetEnvironment type to NodeJS.ProcessEnv for type safety
   namespace NodeJS {
-    interface ProcessEnv {
+    interface Process {
       TEST_GLOBALS?: {
         env: DevnetEnvironment;
         resetInitialState: StateSnapshot;
@@ -51,7 +50,7 @@ console.log(new Date(), `Ready! <${Date.now() - t0}ms>`);
 let resetEachState: StateSnapshot | undefined = resetInitialState; // default to full reset
 
 // the environment is shared between all tests
-process.env.TEST_GLOBALS = {
+process.TEST_GLOBALS = {
   env,
   resetInitialState,
   setupEnv({ resetOnEach, initialize }) {

@@ -8,6 +8,7 @@
     "moduleResolution": "NodeNext",
     "outDir": "build",
     "skipLibCheck": true,
+    "types": ["bun"],
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "paths": {
@@ -25,11 +26,6 @@
     "./deploy/**/*.ts",
     "./script/**/*.ts"
   ],
-  "ts-node": {
-    "experimentalResolver": true,
-    "experimentalSpecifierResolution": "node",
-    "files": true
-  },
   "files": ["hardhat.config.ts", "vitest.config.ts"],
   "exclude": ["lib"]
 }

@@ -1,0 +1,596 @@
+{
+  "address": "0x5e2d105f1e6be8444c4ed96c06806093b829644e",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IDefaultReverseRegistrar",
+          "name": "defaultReverseRegistrar",
+          "type": "address"
+        },
+        {
+          "internalType": "contract IContractNamer",
+          "name": "contractNamer",
+          "type": "address"
+        },
+        {
+          "internalType": "contract IVerifiableFactory",
+          "name": "verifiableFactory",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        },
+        {
+          "internalType": "address[]",
+          "name": "initialTrustedHCAImplementations",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "HCAImplementationCannotBeZero",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "HCAImplementationNotTrusted",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "hcaOwner",
+          "type": "address"
+        }
+      ],
+      "name": "HCAOwnerMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hca",
+          "type": "address"
+        }
+      ],
+      "name": "HCAOwnerUnavailable",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "UnauthorizedNamer",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "VerifiableFactoryCannotBeZero",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "trusted",
+          "type": "bool"
+        }
+      ],
+      "name": "TrustedHCAImplementationUpdated",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "CONTRACT_NAMER",
+      "outputs": [
+        {
+          "internalType": "contract IContractNamer",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "DEFAULT_REVERSE_REGISTRAR",
+      "outputs": [
+        {
+          "internalType": "contract IDefaultReverseRegistrar",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VERIFIABLE_FACTORY",
+      "outputs": [
+        {
+          "internalType": "contract IVerifiableFactory",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "isContractNamer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "name": "setName",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "name": "setNameWithHCA",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "trusted",
+          "type": "bool"
+        }
+      ],
+      "name": "setTrustedHCAImplementation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "hcaImplementation",
+          "type": "address"
+        }
+      ],
+      "name": "trustedHCAImplementations",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "trusted",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "DefaultReverseRegistrarAdapter",
+  "sourceName": "src/reverse-registrar/DefaultReverseRegistrarAdapter.sol",
+  "bytecode": "0x60e060405234801561000f575f5ffd5b50604051610ebb380380610ebb83398101604081905261002e9161020f565b6001600160a01b038085166080528390839083908290811661006957604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b61007281610100565b506001600160a01b03831661009a576040516305e07fb560e51b815260040160405180910390fd5b6001600160a01b03831660a0525f5b81518110156100e4576100dc8282815181106100c7576100c7610328565b6020026020010151600161014f60201b60201c565b6001016100a9565b5050506001600160a01b0390951660c0525061033c9350505050565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b6001600160a01b038216610176576040516330eb1e6560e01b815260040160405180910390fd5b6001600160a01b0382165f81815260016020908152604091829020805460ff191685151590811790915591519182527fa67df1e9a8a3b4bd9e04966a4a435e843ad8358d8bfeee7f5b018636c22f0fdd910160405180910390a25050565b6001600160a01b03811681146101e8575f5ffd5b50565b80516101f6816101d4565b919050565b634e487b7160e01b5f52604160045260245ffd5b5f5f5f5f5f60a08688031215610223575f5ffd5b855161022e816101d4565b602087015190955061023f816101d4565b6040870151909450610250816101d4565b6060870151909350610261816101d4565b60808701519092506001600160401b0381111561027c575f5ffd5b8601601f8101881361028c575f5ffd5b80516001600160401b038111156102a5576102a56101fb565b604051600582901b90603f8201601f191681016001600160401b03811182821017156102d3576102d36101fb565b60405291825260208184018101929081018b8411156102f0575f5ffd5b6020850194505b8385101561031657610308856101eb565b8152602094850194016102f7565b50809450505050509295509295909350565b634e487b7160e01b5f52603260045260245ffd5b60805160a05160c051610b396103825f395f8181610196015281816102c301526103ee01525f818161010001526107eb01525f8181610154015261034f0152610b395ff3fe608060405234801561000f575f5ffd5b50600436106100cf575f3560e01c80638633886d1161007d578063ab86344511610058578063ab863445146101ea578063ef9f3edc146101fd578063f2fde38b14610210575f5ffd5b80638633886d146101915780638da5cb5b146101b85780639589c2d2146101c8575f5ffd5b806348ee1bcc116100ad57806348ee1bcc1461014f5780636f3ff72614610176578063715018a614610189575f5ffd5b806301ffc9a7146100d357806318ad9b71146100fb5780633121db1c1461013a575b5f5ffd5b6100e66100e136600461095d565b610223565b60405190151581526020015b60405180910390f35b6101227f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100f2565b61014d6101483660046109b0565b6102a2565b005b6101227f000000000000000000000000000000000000000000000000000000000000000081565b6100e6610184366004610a30565b61032e565b61014d6103ba565b6101227f000000000000000000000000000000000000000000000000000000000000000081565b5f546001600160a01b0316610122565b6100e66101d6366004610a30565b60016020525f908152604090205460ff1681565b61014d6101f83660046109b0565b6103cd565b61014d61020b366004610a58565b610427565b61014d61021e366004610a30565b61043d565b5f7fffffffff00000000000000000000000000000000000000000000000000000000821663379ffb9360e11b148061029c57507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b6102ac8333610498565b60405163c911994160e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c9119941906102fc90869086908690600401610a8f565b5f604051808303815f87803b158015610313575f5ffd5b505af1158015610325573d5f5f3e3d5ffd5b50505050505050565b60405163379ffb9360e11b81526001600160a01b0382811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa158015610396573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061029c9190610acd565b6103c26104e3565b6103cb5f610528565b565b6103d68361058f565b5060405163c911994160e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c9119941906102fc90869086908690600401610a8f565b61042f6104e3565b61043982826105fd565b5050565b6104456104e3565b6001600160a01b03811661048c576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61049581610528565b50565b6104a2828261069b565b610439576040517f0d1b7e4e0000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610483565b5f546001600160a01b031633146103cb576040517f118cdaa7000000000000000000000000000000000000000000000000000000008152336004820152602401610483565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f6105986107b1565b9050816001600160a01b0316816001600160a01b0316146105f8576040517fa8f2205f0000000000000000000000000000000000000000000000000000000081526001600160a01b03808416600483015282166024820152604401610483565b919050565b6001600160a01b03821661063d576040517f30eb1e6500000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6001600160a01b0382165f81815260016020908152604091829020805460ff191685151590811790915591519182527fa67df1e9a8a3b4bd9e04966a4a435e843ad8358d8bfeee7f5b018636c22f0fdd910160405180910390a25050565b6001600160a01b03828116908216148015816106c057505f836001600160a01b03163b115b1561029c57826001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa92505050801561071f575060408051601f3d908101601f1916820190925261071c91810190610ae8565b60015b1561073d57826001600160a01b0316816001600160a01b0316149150505b8061029c5760405163379ffb9360e11b81526001600160a01b038381166004830152841690636f3ff72690602401602060405180830381865afa9250505080156107a4575060408051601f3d908101601f191682019092526107a191810190610acd565b60015b1561029c575b9392505050565b6040517f3d200b450000000000000000000000000000000000000000000000000000000081523360048201525f9081906001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001690633d200b4590602401602060405180830381865afa158015610830573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906108549190610ae8565b6001600160a01b0381165f9081526001602052604090205490915060ff166108b3576040517f11001e7e0000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610483565b336001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa92505050801561090d575060408051601f3d908101601f1916820190925261090a91810190610ae8565b60015b15610929576001600160a01b038116156109275792915050565b505b6040517f15bd01c5000000000000000000000000000000000000000000000000000000008152336004820152602401610483565b5f6020828403121561096d575f5ffd5b81357fffffffff00000000000000000000000000000000000000000000000000000000811681146107aa575f5ffd5b6001600160a01b0381168114610495575f5ffd5b5f5f5f604084860312156109c2575f5ffd5b83356109cd8161099c565b9250602084013567ffffffffffffffff8111156109e8575f5ffd5b8401601f810186136109f8575f5ffd5b803567ffffffffffffffff811115610a0e575f5ffd5b866020828401011115610a1f575f5ffd5b939660209190910195509293505050565b5f60208284031215610a40575f5ffd5b81356107aa8161099c565b8015158114610495575f5ffd5b5f5f60408385031215610a69575f5ffd5b8235610a748161099c565b91506020830135610a8481610a4b565b809150509250929050565b6001600160a01b038416815260406020820152816040820152818360608301375f818301606090810191909152601f909201601f1916010192915050565b5f60208284031215610add575f5ffd5b81516107aa81610a4b565b5f60208284031215610af8575f5ffd5b81516107aa8161099c56fea264697066735822122046ef429ceb116f2b315185e76e5d3641b5ae63a7333308c4c094be35bd7ed35a64736f6c634300081b0033",
+  "deployedBytecode": "0x608060405234801561000f575f5ffd5b50600436106100cf575f3560e01c80638633886d1161007d578063ab86344511610058578063ab863445146101ea578063ef9f3edc146101fd578063f2fde38b14610210575f5ffd5b80638633886d146101915780638da5cb5b146101b85780639589c2d2146101c8575f5ffd5b806348ee1bcc116100ad57806348ee1bcc1461014f5780636f3ff72614610176578063715018a614610189575f5ffd5b806301ffc9a7146100d357806318ad9b71146100fb5780633121db1c1461013a575b5f5ffd5b6100e66100e136600461095d565b610223565b60405190151581526020015b60405180910390f35b6101227f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100f2565b61014d6101483660046109b0565b6102a2565b005b6101227f000000000000000000000000000000000000000000000000000000000000000081565b6100e6610184366004610a30565b61032e565b61014d6103ba565b6101227f000000000000000000000000000000000000000000000000000000000000000081565b5f546001600160a01b0316610122565b6100e66101d6366004610a30565b60016020525f908152604090205460ff1681565b61014d6101f83660046109b0565b6103cd565b61014d61020b366004610a58565b610427565b61014d61021e366004610a30565b61043d565b5f7fffffffff00000000000000000000000000000000000000000000000000000000821663379ffb9360e11b148061029c57507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b6102ac8333610498565b60405163c911994160e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c9119941906102fc90869086908690600401610a8f565b5f604051808303815f87803b158015610313575f5ffd5b505af1158015610325573d5f5f3e3d5ffd5b50505050505050565b60405163379ffb9360e11b81526001600160a01b0382811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa158015610396573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061029c9190610acd565b6103c26104e3565b6103cb5f610528565b565b6103d68361058f565b5060405163c911994160e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c9119941906102fc90869086908690600401610a8f565b61042f6104e3565b61043982826105fd565b5050565b6104456104e3565b6001600160a01b03811661048c576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b61049581610528565b50565b6104a2828261069b565b610439576040517f0d1b7e4e0000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610483565b5f546001600160a01b031633146103cb576040517f118cdaa7000000000000000000000000000000000000000000000000000000008152336004820152602401610483565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f6105986107b1565b9050816001600160a01b0316816001600160a01b0316146105f8576040517fa8f2205f0000000000000000000000000000000000000000000000000000000081526001600160a01b03808416600483015282166024820152604401610483565b919050565b6001600160a01b03821661063d576040517f30eb1e6500000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6001600160a01b0382165f81815260016020908152604091829020805460ff191685151590811790915591519182527fa67df1e9a8a3b4bd9e04966a4a435e843ad8358d8bfeee7f5b018636c22f0fdd910160405180910390a25050565b6001600160a01b03828116908216148015816106c057505f836001600160a01b03163b115b1561029c57826001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa92505050801561071f575060408051601f3d908101601f1916820190925261071c91810190610ae8565b60015b1561073d57826001600160a01b0316816001600160a01b0316149150505b8061029c5760405163379ffb9360e11b81526001600160a01b038381166004830152841690636f3ff72690602401602060405180830381865afa9250505080156107a4575060408051601f3d908101601f191682019092526107a191810190610acd565b60015b1561029c575b9392505050565b6040517f3d200b450000000000000000000000000000000000000000000000000000000081523360048201525f9081906001600160a01b037f00000000000000000000000000000000000000000000000000000000000000001690633d200b4590602401602060405180830381865afa158015610830573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906108549190610ae8565b6001600160a01b0381165f9081526001602052604090205490915060ff166108b3576040517f11001e7e0000000000000000000000000000000000000000000000000000000081526001600160a01b0382166004820152602401610483565b336001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa92505050801561090d575060408051601f3d908101601f1916820190925261090a91810190610ae8565b60015b15610929576001600160a01b038116156109275792915050565b505b6040517f15bd01c5000000000000000000000000000000000000000000000000000000008152336004820152602401610483565b5f6020828403121561096d575f5ffd5b81357fffffffff00000000000000000000000000000000000000000000000000000000811681146107aa575f5ffd5b6001600160a01b0381168114610495575f5ffd5b5f5f5f604084860312156109c2575f5ffd5b83356109cd8161099c565b9250602084013567ffffffffffffffff8111156109e8575f5ffd5b8401601f810186136109f8575f5ffd5b803567ffffffffffffffff811115610a0e575f5ffd5b866020828401011115610a1f575f5ffd5b939660209190910195509293505050565b5f60208284031215610a40575f5ffd5b81356107aa8161099c565b8015158114610495575f5ffd5b5f5f60408385031215610a69575f5ffd5b8235610a748161099c565b91506020830135610a8481610a4b565b809150509250929050565b6001600160a01b038416815260406020820152816040820152818360608301375f818301606090810191909152601f909201601f1916010192915050565b5f60208284031215610add575f5ffd5b81516107aa81610a4b565b5f60208284031215610af8575f5ffd5b81516107aa8161099c56fea264697066735822122046ef429ceb116f2b315185e76e5d3641b5ae63a7333308c4c094be35bd7ed35a64736f6c634300081b0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "85238": [
+      {
+        "length": 32,
+        "start": 406
+      },
+      {
+        "length": 32,
+        "start": 707
+      },
+      {
+        "length": 32,
+        "start": 1006
+      }
+    ],
+    "88421": [
+      {
+        "length": 32,
+        "start": 340
+      },
+      {
+        "length": 32,
+        "start": 847
+      }
+    ],
+    "88483": [
+      {
+        "length": 32,
+        "start": 256
+      },
+      {
+        "length": 32,
+        "start": 2027
+      }
+    ]
+  },
+  "inputSourceName": "project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol",
+  "devdoc": {
+    "details": "The adapter must be configured as a controller on the default reverse registrar.",
+    "errors": {
+      "HCAImplementationCannotBeZero()": [
+        {
+          "details": "Error selector: `0x30eb1e65`"
+        }
+      ],
+      "HCAImplementationNotTrusted(address)": [
+        {
+          "details": "Error selector: `0x11001e7e`"
+        }
+      ],
+      "HCAOwnerMismatch(address,address)": [
+        {
+          "details": "Error selector: `0xa8f2205f`"
+        }
+      ],
+      "HCAOwnerUnavailable(address)": [
+        {
+          "details": "Error selector: `0x15bd01c5`"
+        }
+      ],
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ],
+      "UnauthorizedNamer(address)": [
+        {
+          "details": "Error selector: `0x0d1b7e4e`"
+        }
+      ],
+      "VerifiableFactoryCannotBeZero()": [
+        {
+          "details": "Error selector: `0xbc0ff6a0`"
+        }
+      ]
+    },
+    "events": {
+      "TrustedHCAImplementationUpdated(address,bool)": {
+        "params": {
+          "hcaImplementation": "The VerifiableFactory HCA implementation.",
+          "trusted": "Whether the HCA implementation is trusted."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "contractNamer": "Delegated contract namer.",
+          "defaultReverseRegistrar": "The v1 default reverse registrar for `default.reverse`.",
+          "initialTrustedHCAImplementations": "HCA implementations trusted at deployment.",
+          "owner_": "The owner allowed to update trusted HCA implementations.",
+          "verifiableFactory": "The VerifiableFactory used to verify HCA callers."
+        }
+      },
+      "isContractNamer(address)": {
+        "params": {
+          "namer": "The address to check."
+        },
+        "returns": {
+          "_0": "`true` if authorized."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "setName(address,string)": {
+        "params": {
+          "account": "The contract address.",
+          "name": "The primary name to store."
+        }
+      },
+      "setNameWithHCA(address,string)": {
+        "params": {
+          "account": "The account to name.",
+          "name": "The primary name to store."
+        }
+      },
+      "setTrustedHCAImplementation(address,bool)": {
+        "params": {
+          "hcaImplementation": "The VerifiableFactory HCA implementation.",
+          "trusted": "Whether the HCA implementation is trusted."
+        }
+      },
+      "supportsInterface(bytes4)": {
+        "details": "See {IERC165-supportsInterface}."
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      }
+    },
+    "title": "Default Reverse Registrar Adapter",
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "574600",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "CONTRACT_NAMER()": "infinite",
+        "DEFAULT_REVERSE_REGISTRAR()": "infinite",
+        "VERIFIABLE_FACTORY()": "infinite",
+        "isContractNamer(address)": "infinite",
+        "owner()": "2374",
+        "renounceOwnership()": "infinite",
+        "setName(address,string)": "infinite",
+        "setNameWithHCA(address,string)": "infinite",
+        "setTrustedHCAImplementation(address,bool)": "infinite",
+        "supportsInterface(bytes4)": "396",
+        "transferOwnership(address)": "infinite",
+        "trustedHCAImplementations(address)": "2578"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.27+commit.40a35a09\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"contract IDefaultReverseRegistrar\",\"name\":\"defaultReverseRegistrar\",\"type\":\"address\"},{\"internalType\":\"contract IContractNamer\",\"name\":\"contractNamer\",\"type\":\"address\"},{\"internalType\":\"contract IVerifiableFactory\",\"name\":\"verifiableFactory\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"},{\"internalType\":\"address[]\",\"name\":\"initialTrustedHCAImplementations\",\"type\":\"address[]\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"HCAImplementationCannotBeZero\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"}],\"name\":\"HCAImplementationNotTrusted\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"hcaOwner\",\"type\":\"address\"}],\"name\":\"HCAOwnerMismatch\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hca\",\"type\":\"address\"}],\"name\":\"HCAOwnerUnavailable\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"UnauthorizedNamer\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"VerifiableFactoryCannotBeZero\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"bool\",\"name\":\"trusted\",\"type\":\"bool\"}],\"name\":\"TrustedHCAImplementationUpdated\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"CONTRACT_NAMER\",\"outputs\":[{\"internalType\":\"contract IContractNamer\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"DEFAULT_REVERSE_REGISTRAR\",\"outputs\":[{\"internalType\":\"contract IDefaultReverseRegistrar\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"VERIFIABLE_FACTORY\",\"outputs\":[{\"internalType\":\"contract IVerifiableFactory\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"isContractNamer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"}],\"name\":\"setName\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"}],\"name\":\"setNameWithHCA\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"trusted\",\"type\":\"bool\"}],\"name\":\"setTrustedHCAImplementation\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"hcaImplementation\",\"type\":\"address\"}],\"name\":\"trustedHCAImplementations\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"trusted\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"The adapter must be configured as a controller on the default reverse registrar.\",\"errors\":{\"HCAImplementationCannotBeZero()\":[{\"details\":\"Error selector: `0x30eb1e65`\"}],\"HCAImplementationNotTrusted(address)\":[{\"details\":\"Error selector: `0x11001e7e`\"}],\"HCAOwnerMismatch(address,address)\":[{\"details\":\"Error selector: `0xa8f2205f`\"}],\"HCAOwnerUnavailable(address)\":[{\"details\":\"Error selector: `0x15bd01c5`\"}],\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}],\"UnauthorizedNamer(address)\":[{\"details\":\"Error selector: `0x0d1b7e4e`\"}],\"VerifiableFactoryCannotBeZero()\":[{\"details\":\"Error selector: `0xbc0ff6a0`\"}]},\"events\":{\"TrustedHCAImplementationUpdated(address,bool)\":{\"params\":{\"hcaImplementation\":\"The VerifiableFactory HCA implementation.\",\"trusted\":\"Whether the HCA implementation is trusted.\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"contractNamer\":\"Delegated contract namer.\",\"defaultReverseRegistrar\":\"The v1 default reverse registrar for `default.reverse`.\",\"initialTrustedHCAImplementations\":\"HCA implementations trusted at deployment.\",\"owner_\":\"The owner allowed to update trusted HCA implementations.\",\"verifiableFactory\":\"The VerifiableFactory used to verify HCA callers.\"}},\"isContractNamer(address)\":{\"params\":{\"namer\":\"The address to check.\"},\"returns\":{\"_0\":\"`true` if authorized.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"setName(address,string)\":{\"params\":{\"account\":\"The contract address.\",\"name\":\"The primary name to store.\"}},\"setNameWithHCA(address,string)\":{\"params\":{\"account\":\"The account to name.\",\"name\":\"The primary name to store.\"}},\"setTrustedHCAImplementation(address,bool)\":{\"params\":{\"hcaImplementation\":\"The VerifiableFactory HCA implementation.\",\"trusted\":\"Whether the HCA implementation is trusted.\"}},\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"}},\"title\":\"Default Reverse Registrar Adapter\",\"version\":1},\"userdoc\":{\"events\":{\"TrustedHCAImplementationUpdated(address,bool)\":{\"notice\":\"Emitted when a trusted HCA implementation is updated.\"}},\"kind\":\"user\",\"methods\":{\"CONTRACT_NAMER()\":{\"notice\":\"Delegated contract namer.\"},\"DEFAULT_REVERSE_REGISTRAR()\":{\"notice\":\"The v1 default reverse registrar for `default.reverse`.\"},\"VERIFIABLE_FACTORY()\":{\"notice\":\"The VerifiableFactory used to verify HCA callers.\"},\"isContractNamer(address)\":{\"notice\":\"Determine if an account is authorized to name this contract.         Called by reverse registrars.\"},\"setName(address,string)\":{\"notice\":\"Set account's `default.reverse` primary name.\"},\"setNameWithHCA(address,string)\":{\"notice\":\"Sets account's `default.reverse` primary name through an HCA caller.\"},\"setTrustedHCAImplementation(address,bool)\":{\"notice\":\"Updates whether an HCA implementation can authorize account updates.\"},\"trustedHCAImplementations(address)\":{\"notice\":\"Trusted HCA implementations that may authorize account updates through this adapter.\"}},\"notice\":\"Forwarder for v1 `default.reverse` registrar updates.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol\":\"DefaultReverseRegistrarAdapter\"},\"evmVersion\":\"prague\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:account-abstraction/=project/lib/account-abstraction/contracts/\",\"project/:composability/=project/lib/composability/contracts/\",\"project/:excessively-safe-call/=project/lib/excessively-safe-call/src/\",\"project/:nexus/=project/lib/nexus/contracts/\",\"project/:sentinellist/=project/lib/sentinellist/src/\",\"project/:solady/=project/lib/solady/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/ens-contracts/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.4;\\n\\n/// @notice Interface for the Default Reverse Registrar.\\ninterface IDefaultReverseRegistrar {\\n    /// @notice Sets the `nameForAddr()` record for the calling account.\\n    ///\\n    /// @param name The name to set.\\n    function setName(string memory name) external;\\n\\n    /// @notice Sets the `nameForAddr()` record for the addr provided account using a signature.\\n    ///\\n    /// @param addr The address to set the name for.\\n    /// @param name The name to set.\\n    /// @param signatureExpiry Date when the signature expires.\\n    /// @param signature The signature from the addr.\\n    function setNameForAddrWithSignature(\\n        address addr,\\n        uint256 signatureExpiry,\\n        string memory name,\\n        bytes memory signature\\n    ) external;\\n\\n    function setNameForAddr(address addr, string memory name) external;\\n}\\n\",\"keccak256\":\"0x45187ce3d3f5da57eac0453ae7df24295e820da379eeaf21cfc967a21038fe7e\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/IVerifiableFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\ninterface IVerifiableFactory {\\n    error VerificationFailed(address proxy);\\n\\n    event ProxyDeployed(address indexed sender, address indexed proxyAddress, uint256 salt, address implementation);\\n\\n    function deployProxy(address implementation, uint256 salt, bytes memory data) external returns (address);\\n\\n    function verifyContract(address proxy) external view returns (address implementation);\\n}\\n\",\"keccak256\":\"0xe6c1b487e41bb6e89383f8f63942d6db67bd140539df2755b82d999624c6050a\",\"license\":\"MIT\"},\"project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {\\n    IDefaultReverseRegistrar\\n} from \\\"@ens/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol\\\";\\nimport {IVerifiableFactory} from \\\"@ensdomains/verifiable-factory/IVerifiableFactory.sol\\\";\\n\\nimport {DelegatedContractNamer} from \\\"../utils/DelegatedContractNamer.sol\\\";\\nimport {HCAAuthorizer} from \\\"../utils/HCAAuthorizer.sol\\\";\\n\\nimport {IContractNamer} from \\\"./interfaces/IContractNamer.sol\\\";\\nimport {AccountNamerLib} from \\\"./libraries/AccountNamerLib.sol\\\";\\n\\n/// @title Default Reverse Registrar Adapter\\n/// @notice Forwarder for v1 `default.reverse` registrar updates.\\n/// @dev The adapter must be configured as a controller on the default reverse registrar.\\ncontract DefaultReverseRegistrarAdapter is DelegatedContractNamer, HCAAuthorizer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The v1 default reverse registrar for `default.reverse`.\\n    IDefaultReverseRegistrar public immutable DEFAULT_REVERSE_REGISTRAR;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param defaultReverseRegistrar The v1 default reverse registrar for `default.reverse`.\\n    /// @param contractNamer Delegated contract namer.\\n    /// @param verifiableFactory The VerifiableFactory used to verify HCA callers.\\n    /// @param owner_ The owner allowed to update trusted HCA implementations.\\n    /// @param initialTrustedHCAImplementations HCA implementations trusted at deployment.\\n    constructor(\\n        IDefaultReverseRegistrar defaultReverseRegistrar,\\n        IContractNamer contractNamer,\\n        IVerifiableFactory verifiableFactory,\\n        address owner_,\\n        address[] memory initialTrustedHCAImplementations\\n    )\\n        DelegatedContractNamer(contractNamer)\\n        HCAAuthorizer(verifiableFactory, owner_, initialTrustedHCAImplementations)\\n    {\\n        DEFAULT_REVERSE_REGISTRAR = defaultReverseRegistrar;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Set account's `default.reverse` primary name.\\n    /// @param account The contract address.\\n    /// @param name The primary name to store.\\n    function setName(address account, string calldata name) external {\\n        AccountNamerLib.requireNamer(account, msg.sender);\\n        DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);\\n    }\\n\\n    /// @notice Sets account's `default.reverse` primary name through an HCA caller.\\n    /// @param account The account to name.\\n    /// @param name The primary name to store.\\n    function setNameWithHCA(address account, string calldata name) external {\\n        _requireHCAForAccount(account);\\n        DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);\\n    }\\n}\\n\",\"keccak256\":\"0x1b82f217156f23f294ac71635dd974d7297b11d46632f5ed688a25aa0bf961c6\",\"license\":\"MIT\"},\"project/src/reverse-registrar/interfaces/IContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @dev Interface selector: `0x6f3ff726`\\ninterface IContractNamer {\\n    /// @notice Determine if an account is authorized to name this contract.\\n    ///         Called by reverse registrars.\\n    /// @param namer The address to check.\\n    /// @return `true` if authorized.\\n    function isContractNamer(address namer) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x1f8b1ba58195ba6e1b84767523ee59a40547db34f3a74a640edba0d335a0ede3\",\"license\":\"MIT\"},\"project/src/reverse-registrar/libraries/AccountNamerLib.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\n\\nimport {IContractNamer} from \\\"../interfaces/IContractNamer.sol\\\";\\n\\n/// @dev Determine if an address is nameable.\\nlibrary AccountNamerLib {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Error selector: `0x0d1b7e4e`\\n    error UnauthorizedNamer(address namer);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Check if an address can be named.\\n    /// @param account The address to name.\\n    /// @param namer The address of the namer.\\n    /// @return canName `true` if `namer` can name `addr`.\\n    function isNamer(address account, address namer) internal view returns (bool canName) {\\n        canName = account == namer;\\n        if (!canName && account.code.length > 0) {\\n            try Ownable(account).owner() returns (address owner) {\\n                canName = owner == namer;\\n            } catch {}\\n            if (!canName) {\\n                try IContractNamer(account).isContractNamer(namer) returns (bool can) {\\n                    canName = can;\\n                } catch {}\\n            }\\n        }\\n    }\\n\\n    /// @dev Ensure `namer` can name `account`.\\n    /// @param account The address to name.\\n    /// @param namer The address of the namer.\\n    function requireNamer(address account, address namer) internal view {\\n        if (!isNamer(account, namer)) {\\n            revert UnauthorizedNamer(namer);\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xa43b123e5b5267683c1dc55d656e58c6b18538e21f0889c06e99212027c34a43\",\"license\":\"MIT\"},\"project/src/utils/DelegatedContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\n\\nimport {IContractNamer} from \\\"../reverse-registrar/interfaces/IContractNamer.sol\\\";\\n\\n/// @dev Mixin for delegated contract naming. \\nabstract contract DelegatedContractNamer is ERC165, IContractNamer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Delegated contract namer.\\n    IContractNamer public immutable CONTRACT_NAMER;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param contractNamer Delegated contract namer.\\n    constructor(IContractNamer contractNamer) {\\n        CONTRACT_NAMER = contractNamer;\\n    }\\n\\n    /// @inheritdoc ERC165\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IContractNamer\\n    function isContractNamer(address namer) external view returns (bool) {\\n        return CONTRACT_NAMER.isContractNamer(namer);\\n    }\\n}\\n\",\"keccak256\":\"0xee94197bc054092f1d867d85b738a041b3f2d56ba0d30efe1533220f24309988\",\"license\":\"MIT\"},\"project/src/utils/HCAAuthorizer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {IVerifiableFactory} from \\\"@ensdomains/verifiable-factory/IVerifiableFactory.sol\\\";\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\n\\n/// @dev Authorizes an account through a VerifiableFactory-verified HCA caller.\\nabstract contract HCAAuthorizer is Ownable {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The VerifiableFactory used to verify HCA callers.\\n    IVerifiableFactory public immutable VERIFIABLE_FACTORY;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Trusted HCA implementations that may authorize account updates through this adapter.\\n    mapping(address hcaImplementation => bool trusted) public trustedHCAImplementations;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Emitted when a trusted HCA implementation is updated.\\n    /// @param hcaImplementation The VerifiableFactory HCA implementation.\\n    /// @param trusted Whether the HCA implementation is trusted.\\n    event TrustedHCAImplementationUpdated(address indexed hcaImplementation, bool trusted);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Errors\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Error selector: `0xbc0ff6a0`\\n    error VerifiableFactoryCannotBeZero();\\n\\n    /// @dev Error selector: `0x30eb1e65`\\n    error HCAImplementationCannotBeZero();\\n\\n    /// @dev Error selector: `0x11001e7e`\\n    error HCAImplementationNotTrusted(address hcaImplementation);\\n\\n    /// @dev Error selector: `0x15bd01c5`\\n    error HCAOwnerUnavailable(address hca);\\n\\n    /// @dev Error selector: `0xa8f2205f`\\n    error HCAOwnerMismatch(address account, address hcaOwner);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param verifiableFactory The VerifiableFactory used to verify HCA callers.\\n    /// @param owner_ The owner allowed to update trusted HCA implementations.\\n    /// @param initialTrustedHCAImplementations HCA implementations trusted at deployment.\\n    constructor(\\n        IVerifiableFactory verifiableFactory,\\n        address owner_,\\n        address[] memory initialTrustedHCAImplementations\\n    )\\n        Ownable(owner_)\\n    {\\n        if (address(verifiableFactory) == address(0)) {\\n            revert VerifiableFactoryCannotBeZero();\\n        }\\n        VERIFIABLE_FACTORY = verifiableFactory;\\n\\n        for (uint256 i; i < initialTrustedHCAImplementations.length; ++i) {\\n            _setTrustedHCAImplementation(initialTrustedHCAImplementations[i], true);\\n        }\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Updates whether an HCA implementation can authorize account updates.\\n    /// @param hcaImplementation The VerifiableFactory HCA implementation.\\n    /// @param trusted Whether the HCA implementation is trusted.\\n    function setTrustedHCAImplementation(address hcaImplementation, bool trusted)\\n        external\\n        onlyOwner\\n    {\\n        _setTrustedHCAImplementation(hcaImplementation, trusted);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Internal Functions\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @dev Updates the trusted HCA implementation mapping.\\n    function _setTrustedHCAImplementation(address hcaImplementation, bool trusted) internal {\\n        if (hcaImplementation == address(0)) {\\n            revert HCAImplementationCannotBeZero();\\n        }\\n        trustedHCAImplementations[hcaImplementation] = trusted;\\n        emit TrustedHCAImplementationUpdated(hcaImplementation, trusted);\\n    }\\n\\n    /// @dev Resolves a verified HCA caller to its owner, then ensures that owner is `account`.\\n    function _requireHCAForAccount(address account) internal view returns (address hcaOwner) {\\n        hcaOwner = _hcaOwner();\\n        if (hcaOwner != account) {\\n            revert HCAOwnerMismatch(account, hcaOwner);\\n        }\\n    }\\n\\n    /// @dev Returns the owner of a verified HCA caller with a trusted implementation.\\n    function _hcaOwner() internal view returns (address) {\\n        address hcaImplementation = VERIFIABLE_FACTORY.verifyContract(msg.sender);\\n        if (!trustedHCAImplementations[hcaImplementation]) {\\n            revert HCAImplementationNotTrusted(hcaImplementation);\\n        }\\n        try Ownable(msg.sender).owner() returns (address hcaOwner) {\\n            if (hcaOwner != address(0)) {\\n                return hcaOwner;\\n            }\\n        } catch {}\\n        revert HCAOwnerUnavailable(msg.sender);\\n    }\\n}\\n\",\"keccak256\":\"0x83d99903d52a843219722b3c73229bf020f365a0104ef8c87aaa7e2c03fe67d8\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 42626,
+        "contract": "project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol:DefaultReverseRegistrarAdapter",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 88488,
+        "contract": "project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol:DefaultReverseRegistrarAdapter",
+        "label": "trustedHCAImplementations",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_mapping(t_address,t_bool)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_mapping(t_address,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "TrustedHCAImplementationUpdated(address,bool)": {
+        "notice": "Emitted when a trusted HCA implementation is updated."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "CONTRACT_NAMER()": {
+        "notice": "Delegated contract namer."
+      },
+      "DEFAULT_REVERSE_REGISTRAR()": {
+        "notice": "The v1 default reverse registrar for `default.reverse`."
+      },
+      "VERIFIABLE_FACTORY()": {
+        "notice": "The VerifiableFactory used to verify HCA callers."
+      },
+      "isContractNamer(address)": {
+        "notice": "Determine if an account is authorized to name this contract.         Called by reverse registrars."
+      },
+      "setName(address,string)": {
+        "notice": "Set account's `default.reverse` primary name."
+      },
+      "setNameWithHCA(address,string)": {
+        "notice": "Sets account's `default.reverse` primary name through an HCA caller."
+      },
+      "setTrustedHCAImplementation(address,bool)": {
+        "notice": "Updates whether an HCA implementation can authorize account updates."
+      },
+      "trustedHCAImplementations(address)": {
+        "notice": "Trusted HCA implementations that may authorize account updates through this adapter."
+      }
+    },
+    "notice": "Forwarder for v1 `default.reverse` registrar updates.",
+    "version": 1
+  },
+  "argsData": "0x0000000000000000000000004f382928805ba0e23b30cfb75fc9e848e82dfd4700000000000000000000000068658a771044873906fc9b6e9f278ac5a0501342000000000000000000000000118bc31a50d559f7015a8da26d54b3b030cdb70f000000000000000000000000ffffffffff52d316b7bd028358089bc8066b8f8000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000",
+  "transaction": {
+    "hash": "0xf492383b670312669af38f266576e94ae7e7049e691e43109d673f0ae369f81d",
+    "nonce": "0x2181",
+    "origin": "0xffffffffff52d316b7bd028358089bc8066b8f80"
+  },
+  "receipt": {
+    "blockHash": "0x3577e503538581a65df3643363c670f426f34b3cdfed442df6e9104b4d5ac04c",
+    "blockNumber": "0xac2c20",
+    "transactionIndex": "0x87"
+  }
+}

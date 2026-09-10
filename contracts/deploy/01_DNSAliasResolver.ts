@@ -1,22 +1,20 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_DNSAliasResolver } from "generated/artifacts/DNSAliasResolver.js";
 
 export default execute(
   async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const batchGatewayProvider = await getV1<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >(
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
       "BatchGatewayProvider",
     );
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
-
-    const dnsAliasResolver = await deploy("DNSAliasResolver", {
+    await deploy("DNSAliasResolver", {
       account: deployer,
-      artifact: artifacts.DNSAliasResolver,
+      artifact: Artifact_DNSAliasResolver,
       args: [
         rootRegistry.address,
         batchGatewayProvider.address,
@@ -25,7 +23,7 @@ export default execute(
     });
   },
   {
-    tags: ["DNSAliasResolver", "v2"],
+    tags: ["DNSAliasResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: ["RootRegistry", "BatchGatewayProvider", "ContractNamer"],
   },
 );

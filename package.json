@@ -8,10 +8,16 @@
   "workspaces": [
     "contracts"
   ],
+  "scripts": {
+    "format:biome": "biome format .",
+    "format:biome:fix": "biome format --write .",
+    "fixtures:extract": "bun ./contracts/script/extractMigrationFixture.ts",
+    "postinstall": "bun run fixtures:extract"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",
     "husky": "^9.1.7",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   },
   "resolutions": {
     "esbuild": "0.25.11"
@@ -19,6 +25,8 @@
   "engineStrict": true,
   "patchedDependencies": {
     "@rocketh/node@0.19.3": "patches/@rocketh-node@0.19.3.patch",
-    "rocketh@0.19.3": "patches/rocketh@0.19.3.patch"
+    "rocketh@0.19.3": "patches/rocketh@0.19.3.patch",
+    "@rhinestone/sdk@1.8.0": "patches/@rhinestone%2Fsdk@1.8.0.patch",
+    "hardhat-deploy@2.0.3": "patches/hardhat-deploy@2.0.3.patch"
   }
 }

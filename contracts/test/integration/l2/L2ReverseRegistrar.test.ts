@@ -4,14 +4,13 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   getAddress,
-  namehash,
   serializeErc6492Signature,
   type Address,
 } from "viem";
 import { optimism } from "viem/chains";
 import { describe, expect, it } from "vitest";
-import { dnsEncodeName } from "../../utils/utils.ts";
-import { deployUniversalSigValidator } from "../fixtures/deployUniversalSigValidator.ts";
+import { dnsEncodeName, namehash } from "../../utils/utils.js";
+import { deployUniversalSigValidator } from "../fixtures/deployUniversalSigValidator.js";
 
 const connection = await hre.network.connect();
 

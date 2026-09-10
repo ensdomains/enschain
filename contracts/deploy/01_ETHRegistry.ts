@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { isAddressEqual, labelhash, zeroAddress } from "viem";
 import {
   MAX_EXPIRY,
@@ -15,14 +17,13 @@ export default execute(
     namedAccounts: { deployer, owner },
   }) => {
     const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+      get<(typeof Artifact_PermissionedRegistry)["abi"]>("RootRegistry");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
 
     console.log("Deploying ETHRegistry");
     const ethRegistry = await deploy("ETHRegistry", {
       account: deployer,
-      artifact: artifacts.PermissionedRegistry,
+      artifact: Artifact_PermissionedRegistry,
       args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ETH_REGISTRY_ROOT],
     });
 

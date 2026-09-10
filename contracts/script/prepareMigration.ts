@@ -69,7 +69,10 @@ function parseArgs(argv: string[]): Config {
       "--locked-migration-controller <address>",
       "LockedMigrationController address",
     )
-    .option("--private-key <hex>", "signer private key (required with --execute)")
+    .option(
+      "--private-key <hex>",
+      "signer private key (required with --execute)",
+    )
     .option("--execute", "broadcast transactions (default: dry run)", false)
     .parse(argv);
 
@@ -87,7 +90,10 @@ function parseArgs(argv: string[]): Config {
   return {
     rpcUrl: opts.rpcUrl,
     registryAddress: requireAddress(opts.registry, "--registry"),
-    batchRegistrarAddress: requireAddress(opts.batchRegistrar, "--batch-registrar"),
+    batchRegistrarAddress: requireAddress(
+      opts.batchRegistrar,
+      "--batch-registrar",
+    ),
     ethRegistrarAddress: requireAddress(opts.ethRegistrar, "--eth-registrar"),
     unlockedMigrationControllerAddress: requireAddress(
       opts.unlockedMigrationController,

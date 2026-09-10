@@ -14,7 +14,7 @@ import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 /// @dev Reusable testing fixture for ENSv1.
-contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
+abstract contract V1Fixture is Test, ERC721Holder, ERC1155Holder {
     enum StatusV1 {
         REGISTERED,
         GRACE,

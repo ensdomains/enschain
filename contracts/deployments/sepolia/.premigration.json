@@ -1,0 +1,33 @@
+{
+  "network": "sepolia",
+  "deploymentNetwork": "sepolia",
+  "chainId": 11155111,
+  "updatedAt": "2026-07-31T15:46:26.094Z",
+  "resolved": {
+    "finishedAt": "2026-07-31T15:46:26.094Z",
+    "totalNames": 7040,
+    "namesPreMigrated": 7037,
+    "newReservations": 164,
+    "expiryResyncs": 6873,
+    "skippedNeverRegistered": 3,
+    "skippedExpiredPastGrace": 0,
+    "invalidLabels": 0,
+    "alreadyOnV2": 0,
+    "failed": 0
+  },
+  "runs": [
+    {
+      "label": "run",
+      "finishedAt": "2026-07-31T15:46:26.094Z",
+      "totalExpected": 7040,
+      "totalProcessed": 7040,
+      "reserved": 164,
+      "renewed": 6873,
+      "skippedNeverRegistered": 3,
+      "skippedExpiredPastGrace": 0,
+      "invalidLabels": 0,
+      "alreadyOnV2": 0,
+      "failed": 0
+    }
+  ]
+}

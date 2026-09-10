@@ -14,6 +14,19 @@ export const KNOWN_INTERMEDIATE_URP: Record<string, `0x${string}`> = {
 export const SEPOLIA_USDC =
   "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 
+// Faucet-minted MockUSDC from the active deployment namespace, accepted by the
+// live rent price oracle and whitelisted on the Rhinestone orchestrator.
+// Archived deployment namespaces carry their own MockUSDC instances that the
+// live oracle rejects — never source this address from an archived artifact.
+export const SEPOLIA_MOCK_USDC =
+  "0x768F42455A2D082E23ceeF7d51e5787C82d67a39" as const;
+
+export const RHINESTONE_INTENT_EXECUTOR =
+  "0x00000000005aD9ce1f5035FD62CA96CEf16AdAAF" as const;
+
+export const RHINESTONE_GAS_REFUND_PAYMASTER =
+  "0x1d7df6Ddc7328Ac827EB4D7f171C60AFB7f9A599" as const;
+
 // Real mainnet payment tokens used by the rent price oracle in place of the
 // free-mint test mocks (which must never ship to mainnet). Confirm/adjust the
 // accepted set before a mainnet deploy.
@@ -94,15 +107,15 @@ const FLAGS = {
   },
   // see: PermissionedResolver.sol / PermissionedResolverLib.sol
   RESOLVER: {
-    SET_ADDR: 1n << 0n,
+    SET_ADDRESS: 1n << 0n,
     SET_TEXT: 1n << 4n,
     SET_CONTENTHASH: 1n << 8n,
-    SET_PUBKEY: 1n << 12n,
-    SET_ABI: 1n << 16n,
-    SET_INTERFACE: 1n << 20n,
-    SET_NAME: 1n << 24n,
-    SET_ALIAS: 1n << 28n,
-    CLEAR: 1n << 32n,
+    SET_ABI: 1n << 12n,
+    SET_INTERFACE: 1n << 16n,
+    SET_NAME: 1n << 20n,
+    SET_DATA: 1n << 24n,
+    LINK: 1n << 28n,
+    CAN_NAME: 1n << 120n,
     UPGRADE: 1n << 124n,
   },
   // see: StandardRentPriceOracle.sol
@@ -183,7 +196,7 @@ export const STATUS = {
   AVAILABLE: 0,
   RESERVED: 1,
   REGISTERED: 2,
-};
+} as const;
 
 // see: INameWrapper.sol
 export const FUSES = {

@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ILabelStore } from "generated/abis/ILabelStore.js";
+import { Artifact_PermissionedRegistry } from "generated/artifacts/PermissionedRegistry.js";
 import { DEPLOYMENT_ROLES, ROLES } from "../script/deploy-constants.js";
 
 export default execute(
@@ -8,11 +10,11 @@ export default execute(
     execute: write,
     namedAccounts: { deployer, owner },
   }) => {
-    const labelStore = get<(typeof artifacts.ILabelStore)["abi"]>("LabelStore");
+    const labelStore = get<Abi_ILabelStore>("LabelStore");
 
     const rootRegistry = await deploy("RootRegistry", {
       account: deployer,
-      artifact: artifacts.PermissionedRegistry,
+      artifact: Artifact_PermissionedRegistry,
       args: [labelStore.address, deployer, DEPLOYMENT_ROLES.ROOT_REGISTRY_ROOT],
     });
 

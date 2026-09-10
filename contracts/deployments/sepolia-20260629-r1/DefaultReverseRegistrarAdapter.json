@@ -1,0 +1,232 @@
+{
+  "address": "0x1f7b9461d17d5cf43553253c6b78d252d9575954",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IDefaultReverseRegistrar",
+          "name": "defaultReverseRegistrar",
+          "type": "address"
+        },
+        {
+          "internalType": "contract IContractNamer",
+          "name": "contractNamer",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "UnauthorizedNamer",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "CONTRACT_NAMER",
+      "outputs": [
+        {
+          "internalType": "contract IContractNamer",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "DEFAULT_REVERSE_REGISTRAR",
+      "outputs": [
+        {
+          "internalType": "contract IDefaultReverseRegistrar",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "namer",
+          "type": "address"
+        }
+      ],
+      "name": "isContractNamer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "name": "setName",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
+      ],
+      "name": "supportsInterface",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "DefaultReverseRegistrarAdapter",
+  "sourceName": "src/reverse-registrar/DefaultReverseRegistrarAdapter.sol",
+  "bytecode": "0x60c060405234801561000f575f80fd5b5060405161069538038061069583398101604081905261002e9161005c565b6001600160a01b039081166080521660a052610094565b6001600160a01b0381168114610059575f80fd5b50565b5f806040838503121561006d575f80fd5b825161007881610045565b602084015190925061008981610045565b809150509250929050565b60805160a0516105d46100c15f395f818160fc01526101d701525f818160aa015261026301526105d45ff3fe608060405234801561000f575f80fd5b5060043610610064575f3560e01c806348ee1bcc1161004d57806348ee1bcc146100a55780636f3ff726146100e45780638633886d146100f7575f80fd5b806301ffc9a7146100685780633121db1c14610090575b5f80fd5b61007b610076366004610437565b61011e565b60405190151581526020015b60405180910390f35b6100a361009e36600461048d565b61019d565b005b6100cc7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610087565b61007b6100f236600461050b565b610242565b6100cc7f000000000000000000000000000000000000000000000000000000000000000081565b5f7fffffffff00000000000000000000000000000000000000000000000000000000821663379ffb9360e11b148061019757507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b6101a783336102ce565b6040517fc91199410000000000000000000000000000000000000000000000000000000081526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c91199419061021090869086908690600401610526565b5f604051808303815f87803b158015610227575f80fd5b505af1158015610239573d5f803e3d5ffd5b50505050505050565b60405163379ffb9360e11b81526001600160a01b0382811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa1580156102aa573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101979190610564565b6102d88282610321565b61031d576040517f0d1b7e4e0000000000000000000000000000000000000000000000000000000081526001600160a01b038216600482015260240160405180910390fd5b5050565b6001600160a01b038281169082161480158161034657505f836001600160a01b03163b115b1561019757826001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa9250505080156103a5575060408051601f3d908101601f191682019092526103a291810190610583565b60015b156103c357826001600160a01b0316816001600160a01b0316149150505b806101975760405163379ffb9360e11b81526001600160a01b038381166004830152841690636f3ff72690602401602060405180830381865afa92505050801561042a575060408051601f3d908101601f1916820190925261042791810190610564565b60015b15610197575b9392505050565b5f60208284031215610447575f80fd5b81357fffffffff0000000000000000000000000000000000000000000000000000000081168114610430575f80fd5b6001600160a01b038116811461048a575f80fd5b50565b5f805f6040848603121561049f575f80fd5b83356104aa81610476565b9250602084013567ffffffffffffffff808211156104c6575f80fd5b818601915086601f8301126104d9575f80fd5b8135818111156104e7575f80fd5b8760208285010111156104f8575f80fd5b6020830194508093505050509250925092565b5f6020828403121561051b575f80fd5b813561043081610476565b6001600160a01b038416815260406020820152816040820152818360608301375f818301606090810191909152601f909201601f1916010192915050565b5f60208284031215610574575f80fd5b81518015158114610430575f80fd5b5f60208284031215610593575f80fd5b81516104308161047656fea264697066735822122059856dfccbe7628d0e42ab2fa011c3fcf68fb0efd8681ce887164b01bcaba23564736f6c63430008190033",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b5060043610610064575f3560e01c806348ee1bcc1161004d57806348ee1bcc146100a55780636f3ff726146100e45780638633886d146100f7575f80fd5b806301ffc9a7146100685780633121db1c14610090575b5f80fd5b61007b610076366004610437565b61011e565b60405190151581526020015b60405180910390f35b6100a361009e36600461048d565b61019d565b005b6100cc7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b039091168152602001610087565b61007b6100f236600461050b565b610242565b6100cc7f000000000000000000000000000000000000000000000000000000000000000081565b5f7fffffffff00000000000000000000000000000000000000000000000000000000821663379ffb9360e11b148061019757507f01ffc9a7000000000000000000000000000000000000000000000000000000007fffffffff000000000000000000000000000000000000000000000000000000008316145b92915050565b6101a783336102ce565b6040517fc91199410000000000000000000000000000000000000000000000000000000081526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063c91199419061021090869086908690600401610526565b5f604051808303815f87803b158015610227575f80fd5b505af1158015610239573d5f803e3d5ffd5b50505050505050565b60405163379ffb9360e11b81526001600160a01b0382811660048301525f917f000000000000000000000000000000000000000000000000000000000000000090911690636f3ff72690602401602060405180830381865afa1580156102aa573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101979190610564565b6102d88282610321565b61031d576040517f0d1b7e4e0000000000000000000000000000000000000000000000000000000081526001600160a01b038216600482015260240160405180910390fd5b5050565b6001600160a01b038281169082161480158161034657505f836001600160a01b03163b115b1561019757826001600160a01b0316638da5cb5b6040518163ffffffff1660e01b8152600401602060405180830381865afa9250505080156103a5575060408051601f3d908101601f191682019092526103a291810190610583565b60015b156103c357826001600160a01b0316816001600160a01b0316149150505b806101975760405163379ffb9360e11b81526001600160a01b038381166004830152841690636f3ff72690602401602060405180830381865afa92505050801561042a575060408051601f3d908101601f1916820190925261042791810190610564565b60015b15610197575b9392505050565b5f60208284031215610447575f80fd5b81357fffffffff0000000000000000000000000000000000000000000000000000000081168114610430575f80fd5b6001600160a01b038116811461048a575f80fd5b50565b5f805f6040848603121561049f575f80fd5b83356104aa81610476565b9250602084013567ffffffffffffffff808211156104c6575f80fd5b818601915086601f8301126104d9575f80fd5b8135818111156104e7575f80fd5b8760208285010111156104f8575f80fd5b6020830194508093505050509250925092565b5f6020828403121561051b575f80fd5b813561043081610476565b6001600160a01b038416815260406020820152816040820152818360608301375f818301606090810191909152601f909201601f1916010192915050565b5f60208284031215610574575f80fd5b81518015158114610430575f80fd5b5f60208284031215610593575f80fd5b81516104308161047656fea264697066735822122059856dfccbe7628d0e42ab2fa011c3fcf68fb0efd8681ce887164b01bcaba23564736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "72209": [
+      {
+        "length": 32,
+        "start": 252
+      },
+      {
+        "length": 32,
+        "start": 471
+      }
+    ],
+    "75299": [
+      {
+        "length": 32,
+        "start": 170
+      },
+      {
+        "length": 32,
+        "start": 611
+      }
+    ]
+  },
+  "inputSourceName": "project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol",
+  "devdoc": {
+    "details": "The adapter must be configured as a controller on the default reverse registrar.",
+    "errors": {
+      "UnauthorizedNamer(address)": [
+        {
+          "details": "Error selector: `0x0d1b7e4e`"
+        }
+      ]
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "contractNamer": "Delegated contract namer.",
+          "defaultReverseRegistrar": "The v1 default reverse registrar for `default.reverse`."
+        }
+      },
+      "isContractNamer(address)": {
+        "params": {
+          "namer": "The address to check."
+        },
+        "returns": {
+          "_0": "`true` if authorized."
+        }
+      },
+      "setName(address,string)": {
+        "params": {
+          "account": "The contract address.",
+          "name": "The primary name to store."
+        }
+      },
+      "supportsInterface(bytes4)": {
+        "details": "See {IERC165-supportsInterface}."
+      }
+    },
+    "title": "Default Reverse Registrar Adapter",
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "298400",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "CONTRACT_NAMER()": "infinite",
+        "DEFAULT_REVERSE_REGISTRAR()": "infinite",
+        "isContractNamer(address)": "infinite",
+        "setName(address,string)": "infinite",
+        "supportsInterface(bytes4)": "373"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"contract IDefaultReverseRegistrar\",\"name\":\"defaultReverseRegistrar\",\"type\":\"address\"},{\"internalType\":\"contract IContractNamer\",\"name\":\"contractNamer\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"UnauthorizedNamer\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"CONTRACT_NAMER\",\"outputs\":[{\"internalType\":\"contract IContractNamer\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"DEFAULT_REVERSE_REGISTRAR\",\"outputs\":[{\"internalType\":\"contract IDefaultReverseRegistrar\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"namer\",\"type\":\"address\"}],\"name\":\"isContractNamer\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"string\",\"name\":\"name\",\"type\":\"string\"}],\"name\":\"setName\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"The adapter must be configured as a controller on the default reverse registrar.\",\"errors\":{\"UnauthorizedNamer(address)\":[{\"details\":\"Error selector: `0x0d1b7e4e`\"}]},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"contractNamer\":\"Delegated contract namer.\",\"defaultReverseRegistrar\":\"The v1 default reverse registrar for `default.reverse`.\"}},\"isContractNamer(address)\":{\"params\":{\"namer\":\"The address to check.\"},\"returns\":{\"_0\":\"`true` if authorized.\"}},\"setName(address,string)\":{\"params\":{\"account\":\"The contract address.\",\"name\":\"The primary name to store.\"}},\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"}},\"title\":\"Default Reverse Registrar Adapter\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"CONTRACT_NAMER()\":{\"notice\":\"Delegated contract namer.\"},\"DEFAULT_REVERSE_REGISTRAR()\":{\"notice\":\"The v1 default reverse registrar for `default.reverse`.\"},\"isContractNamer(address)\":{\"notice\":\"Determine if an account is authorized to name this contract.         Called by reverse registrars.\"},\"setName(address,string)\":{\"notice\":\"Set account's `default.reverse` primary name.\"}},\"notice\":\"Forwarder for v1 `default.reverse` registrar updates.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol\":\"DefaultReverseRegistrarAdapter\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/ens-contracts/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.4;\\n\\n/// @notice Interface for the Default Reverse Registrar.\\ninterface IDefaultReverseRegistrar {\\n    /// @notice Sets the `nameForAddr()` record for the calling account.\\n    ///\\n    /// @param name The name to set.\\n    function setName(string memory name) external;\\n\\n    /// @notice Sets the `nameForAddr()` record for the addr provided account using a signature.\\n    ///\\n    /// @param addr The address to set the name for.\\n    /// @param name The name to set.\\n    /// @param signatureExpiry Date when the signature expires.\\n    /// @param signature The signature from the addr.\\n    function setNameForAddrWithSignature(\\n        address addr,\\n        uint256 signatureExpiry,\\n        string memory name,\\n        bytes memory signature\\n    ) external;\\n\\n    function setNameForAddr(address addr, string memory name) external;\\n}\\n\",\"keccak256\":\"0x45187ce3d3f5da57eac0453ae7df24295e820da379eeaf21cfc967a21038fe7e\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/ERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {IERC165} from \\\"./IERC165.sol\\\";\\n\\n/**\\n * @dev Implementation of the {IERC165} interface.\\n *\\n * Contracts that want to implement ERC-165 should inherit from this contract and override {supportsInterface} to check\\n * for the additional interface id that will be supported. For example:\\n *\\n * ```solidity\\n * function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n *     return interfaceId == type(MyInterface).interfaceId || super.supportsInterface(interfaceId);\\n * }\\n * ```\\n */\\nabstract contract ERC165 is IERC165 {\\n    /**\\n     * @dev See {IERC165-supportsInterface}.\\n     */\\n    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {\\n        return interfaceId == type(IERC165).interfaceId;\\n    }\\n}\\n\",\"keccak256\":\"0xddce8e17e3d3f9ed818b4f4c4478a8262aab8b11ed322f1bf5ed705bb4bd97fa\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/introspection/IERC165.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Interface of the ERC-165 standard, as defined in the\\n * https://eips.ethereum.org/EIPS/eip-165[ERC].\\n *\\n * Implementers can declare support of contract interfaces, which can then be\\n * queried by others ({ERC165Checker}).\\n *\\n * For an implementation, see {ERC165}.\\n */\\ninterface IERC165 {\\n    /**\\n     * @dev Returns true if this contract implements the interface defined by\\n     * `interfaceId`. See the corresponding\\n     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[ERC section]\\n     * to learn more about how these ids are created.\\n     *\\n     * This function call must use less than 30 000 gas.\\n     */\\n    function supportsInterface(bytes4 interfaceId) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x79796192ec90263f21b464d5bc90b777a525971d3de8232be80d9c4f9fb353b8\",\"license\":\"MIT\"},\"project/src/reverse-registrar/DefaultReverseRegistrarAdapter.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.25;\\n\\nimport {\\n    IDefaultReverseRegistrar\\n} from \\\"@ens/contracts/reverseRegistrar/IDefaultReverseRegistrar.sol\\\";\\n\\nimport {DelegatedContractNamer} from \\\"../utils/DelegatedContractNamer.sol\\\";\\n\\nimport {IContractNamer} from \\\"./interfaces/IContractNamer.sol\\\";\\nimport {AccountNamerLib} from \\\"./libraries/AccountNamerLib.sol\\\";\\n\\n/// @title Default Reverse Registrar Adapter\\n/// @notice Forwarder for v1 `default.reverse` registrar updates.\\n/// @dev The adapter must be configured as a controller on the default reverse registrar.\\ncontract DefaultReverseRegistrarAdapter is DelegatedContractNamer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice The v1 default reverse registrar for `default.reverse`.\\n    IDefaultReverseRegistrar public immutable DEFAULT_REVERSE_REGISTRAR;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param defaultReverseRegistrar The v1 default reverse registrar for `default.reverse`.\\n    /// @param contractNamer Delegated contract namer.\\n    constructor(IDefaultReverseRegistrar defaultReverseRegistrar, IContractNamer contractNamer)\\n        DelegatedContractNamer(contractNamer)\\n    {\\n        DEFAULT_REVERSE_REGISTRAR = defaultReverseRegistrar;\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Set account's `default.reverse` primary name.\\n    /// @param account The contract address.\\n    /// @param name The primary name to store.\\n    function setName(address account, string calldata name) external {\\n        AccountNamerLib.requireNamer(account, msg.sender);\\n        DEFAULT_REVERSE_REGISTRAR.setNameForAddr(account, name);\\n    }\\n}\\n\",\"keccak256\":\"0x6f36574436b9946e9e767112a01ddfbcd67d6521ae7d56b6f121cdbc497e7b69\",\"license\":\"MIT\"},\"project/src/reverse-registrar/interfaces/IContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\n/// @dev Interface selector: `0x6f3ff726`\\ninterface IContractNamer {\\n    /// @notice Determine if an account is authorized to name this contract.\\n    ///         Called by reverse registrars.\\n    /// @param namer The address to check.\\n    /// @return `true` if authorized.\\n    function isContractNamer(address namer) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x1f8b1ba58195ba6e1b84767523ee59a40547db34f3a74a640edba0d335a0ede3\",\"license\":\"MIT\"},\"project/src/reverse-registrar/libraries/AccountNamerLib.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\n\\nimport {IContractNamer} from \\\"../interfaces/IContractNamer.sol\\\";\\n\\n/// @dev Determine if an address is nameable. \\nlibrary AccountNamerLib {\\n    /// @dev Error selector: `0x0d1b7e4e`\\n    error UnauthorizedNamer(address namer);\\n\\n    /// @dev Check if an address can be named.\\n    /// @param account The address to name.\\n    /// @param namer The address of the namer.\\n    /// @return canName `true` if `namer` can name `addr`.\\n    function isNamer(address account, address namer) internal view returns (bool canName) {\\n        canName = account == namer;\\n        if (!canName && account.code.length > 0) {\\n            try Ownable(account).owner() returns (address owner) {\\n                canName = owner == namer;\\n            } catch {}\\n            if (!canName) {\\n                try IContractNamer(account).isContractNamer(namer) returns (bool can) {\\n                    canName = can;\\n                } catch {}\\n            }\\n        }\\n    }\\n\\n    /// @dev Ensure `namer` can name `account`.\\n    /// @param account The address to name.\\n    /// @param namer The address of the namer.\\n    function requireNamer(address account, address namer) internal view {\\n        if (!isNamer(account, namer)) {\\n            revert UnauthorizedNamer(namer);\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x1a2e3cd6439f69053d2de151e240f34b12f6594920f9de0fe888653e01fe0d03\",\"license\":\"MIT\"},\"project/src/utils/DelegatedContractNamer.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.13;\\n\\nimport {ERC165} from \\\"@openzeppelin/contracts/utils/introspection/ERC165.sol\\\";\\n\\nimport {IContractNamer} from \\\"../reverse-registrar/interfaces/IContractNamer.sol\\\";\\n\\n/// @dev Mixin for delegated contract naming. \\nabstract contract DelegatedContractNamer is ERC165, IContractNamer {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Immutables\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Delegated contract namer.\\n    IContractNamer public immutable CONTRACT_NAMER;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param contractNamer Delegated contract namer.\\n    constructor(IContractNamer contractNamer) {\\n        CONTRACT_NAMER = contractNamer;\\n    }\\n\\n    /// @inheritdoc ERC165\\n    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {\\n        return\\n            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);\\n    }\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @inheritdoc IContractNamer\\n    function isContractNamer(address namer) external view returns (bool) {\\n        return CONTRACT_NAMER.isContractNamer(namer);\\n    }\\n}\\n\",\"keccak256\":\"0xee94197bc054092f1d867d85b738a041b3f2d56ba0d30efe1533220f24309988\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "CONTRACT_NAMER()": {
+        "notice": "Delegated contract namer."
+      },
+      "DEFAULT_REVERSE_REGISTRAR()": {
+        "notice": "The v1 default reverse registrar for `default.reverse`."
+      },
+      "isContractNamer(address)": {
+        "notice": "Determine if an account is authorized to name this contract.         Called by reverse registrars."
+      },
+      "setName(address,string)": {
+        "notice": "Set account's `default.reverse` primary name."
+      }
+    },
+    "notice": "Forwarder for v1 `default.reverse` registrar updates.",
+    "version": 1
+  },
+  "argsData": "0x0000000000000000000000004f382928805ba0e23b30cfb75fc9e848e82dfd4700000000000000000000000068658a771044873906fc9b6e9f278ac5a0501342",
+  "transaction": {
+    "hash": "0xeecc6d264f3222e4e14912a1160617eab7a309a12e4fd2df70e475a35f6e152c",
+    "nonce": "0x52",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0xb004481be2e2e1e5ee00ae06eb5e344d97a277690299ced2f852dc35d0fc33e3",
+    "blockNumber": "0xaa5706",
+    "transactionIndex": "0x61"
+  }
+}

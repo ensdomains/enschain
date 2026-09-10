@@ -1,16 +1,16 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_Graveyard } from "generated/artifacts/Graveyard.js";
 
 export default execute(
   async ({ get, getV1, deploy, namedAccounts: { deployer } }) => {
-    const nameWrapper =
-      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     await deploy("Graveyard", {
       account: deployer,
-      artifact: artifacts.Graveyard,
+      artifact: Artifact_Graveyard,
       args: [nameWrapper.address, contractNamer.address],
     });
   },

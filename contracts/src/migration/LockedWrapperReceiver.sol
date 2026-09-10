@@ -15,7 +15,9 @@ import {IVerifiableFactory} from "@ensdomains/verifiable-factory/IVerifiableFact
 import {InvalidOwner} from "../CommonErrors.sol";
 import {REGISTRATION_ROLE_BITMAP} from "../registrar/ETHRegistrar.sol";
 import {IRegistry} from "../registry/interfaces/IRegistry.sol";
-import {IWrapperRegistry} from "../registry/interfaces/IWrapperRegistry.sol";
+import {
+    IWrapperRegistryInitializable
+} from "../registry/interfaces/IWrapperRegistryInitializable.sol";
 import {RegistryRolesLib} from "../registry/libraries/RegistryRolesLib.sol";
 import {IAddressSet} from "../utils/interfaces/IAddressSet.sol";
 
@@ -150,7 +152,7 @@ abstract contract LockedWrapperReceiver is AbstractWrapperReceiver {
                             WRAPPER_REGISTRY_IMPL,
                             uint256(node),
                             abi.encodeCall(
-                                IWrapperRegistry.initialize,
+                                IWrapperRegistryInitializable.initialize,
                                 (
                                     node,
                                     parentRegistry,

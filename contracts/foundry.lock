@@ -1,12 +1,24 @@
 {
+  "lib/account-abstraction": {
+    "rev": "7af70c8993a6f42973f520ae0752386a5032abe7"
+  },
   "lib/buffer": {
     "rev": "82cc81935de1d1a82e021cf1030d902c5248982b"
+  },
+  "lib/composability": {
+    "rev": "9e090c24b195822f668f96cb4ff518a9b7ff712d"
   },
   "lib/ens-contracts": {
     "rev": "3b1cc225ccdf64581d5fdc81db574f51ba5c8c09"
   },
+  "lib/excessively-safe-call": {
+    "rev": "81cd99ce3e69117d665d7601c330ea03b97acce0"
+  },
   "lib/forge-std": {
     "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+  },
+  "lib/nexus": {
+    "rev": "1ea0488fc23e168f6c577624c066c49a36a2b34f"
   },
   "lib/openzeppelin-contracts": {
     "rev": "e4f70216d759d8e6a64144a9e1f7bbeed78e7079"
@@ -16,6 +28,9 @@
   },
   "lib/openzeppelin-contracts-v4": {
     "rev": "54b3f14346da01ba0d159114b399197fea8b7cda"
+  },
+  "lib/sentinellist": {
+    "rev": "6dff696f39fb55bfdde9581544d788932f145e47"
   },
   "lib/solady": {
     "rev": "90db92ce173856605d24a554969f2c67cadbc7e9"

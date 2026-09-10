@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_StandardRentPriceOracle } from "generated/abis/StandardRentPriceOracle.js";
 import {
   SEPOLIA_USDC,
   STANDARD_RENT_PRICE_ORACLE_PRICE_DECIMALS,
@@ -28,9 +29,7 @@ export default execute(
   }) => {
     if (network.chain.id !== SEPOLIA_CHAIN_ID) return;
 
-    const oracle = get<(typeof artifacts.StandardRentPriceOracle)["abi"]>(
-      "StandardRentPriceOracle",
-    );
+    const oracle = get<Abi_StandardRentPriceOracle>("StandardRentPriceOracle");
     const oracleOwner = owner || deployer;
 
     const oracleHasSepoliaUsdc = await read(oracle, {

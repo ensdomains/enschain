@@ -5,6 +5,7 @@ import {
   createReadStream,
   existsSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import {
@@ -34,17 +35,9 @@ import {
 } from "./logger.js";
 
 import { loadArtifact, resolveChain } from "./scriptUtils.js";
+import { BaseRegistrar } from "./abis.js";
 
-// ABI fragments for v1 BaseRegistrar
-const BASE_REGISTRAR_ABI = [
-  {
-    inputs: [{ internalType: "uint256", name: "id", type: "uint256" }],
-    name: "nameExpires",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-] as const;
+const BASE_REGISTRAR_ABI = BaseRegistrar.nameExpires;
 
 // Custom Errors
 export class UnexpectedOwnerError extends Error {
@@ -118,13 +111,21 @@ export interface Checkpoint {
   successCount: number;
   renewedCount: number;
   failureCount: number;
+  /// Aggregate of the two skip sub-counters below (names not claimable on v1).
   skippedCount: number;
+  /// Names skipped because they were never registered on v1.
+  skippedNeverRegisteredCount: number;
+  /// Names skipped because their v1 registration lapsed past the grace period.
+  skippedPastGraceCount: number;
+  /// Names skipped because they are already registered (owned) on v2. Tracked
+  /// separately from genuine failures.
+  alreadyRegisteredCount: number;
   invalidLabelCount: number;
   timestamp: string;
 }
 
 // Constants
-const CHECKPOINT_FILE = "preMigration-checkpoint.json";
+export const CHECKPOINT_FILE = "preMigration-checkpoint.json";
 const ERROR_LOG_FILE = "preMigration-errors.log";
 const INFO_LOG_FILE = "preMigration.log";
 
@@ -151,6 +152,9 @@ export function createFreshCheckpoint(): Checkpoint {
     renewedCount: 0,
     failureCount: 0,
     skippedCount: 0,
+    skippedNeverRegisteredCount: 0,
+    skippedPastGraceCount: 0,
+    alreadyRegisteredCount: 0,
     invalidLabelCount: 0,
     timestamp: new Date().toISOString(),
   };
@@ -300,20 +304,23 @@ class PreMigrationLogger extends Logger {
       `  → ⊘ Skipping: ${domainName} (invalid label name)`,
     );
   }
-
 }
 
 const logger = new PreMigrationLogger();
 
 // Checkpoint management
-export function loadCheckpoint(): Checkpoint | null {
-  if (!existsSync(CHECKPOINT_FILE)) {
+export function loadCheckpoint(
+  path: string = CHECKPOINT_FILE,
+): Checkpoint | null {
+  if (!existsSync(path)) {
     return null;
   }
 
   try {
-    const data = readFileSync(CHECKPOINT_FILE, "utf-8");
-    return JSON.parse(data);
+    const data = readFileSync(path, "utf-8");
+    // Spread over a fresh checkpoint so counters added after an older run was
+    // written default to 0 rather than undefined (which would break `count++`).
+    return { ...createFreshCheckpoint(), ...JSON.parse(data) };
   } catch (error) {
     logger.error(`Failed to load checkpoint: ${error}`);
     return null;
@@ -325,6 +332,18 @@ export function saveCheckpoint(checkpoint: Checkpoint): void {
     writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpoint, null, 2));
   } catch (error) {
     logger.error(`Failed to save checkpoint: ${error}`);
+  }
+}
+
+// Removes any checkpoint left in the work directory so a fresh run cannot
+// inherit stale counts from a previous one. A run that processes zero batches
+// writes no new checkpoint, so without this a lingering file would otherwise be
+// mistaken for this run's result by anything that reads the checkpoint after.
+export function clearCheckpoint(path: string = CHECKPOINT_FILE): void {
+  try {
+    rmSync(path, { force: true });
+  } catch (error) {
+    logger.error(`Failed to clear checkpoint: ${error}`);
   }
 }
 
@@ -608,6 +627,30 @@ async function createMigrationClients(
     batchRegistrar,
     registryAbi: registryArtifact.abi,
   };
+}
+
+const MAX_UINT64 = (1n << 64n) - 1n;
+
+// The reservation expiry stored on v2, widened by the bonus period and held inside
+// the uint64 the registry stores it in. A v1 name renewed to the ceiling would
+// otherwise wrap around and reserve a name that reads as long expired.
+export function bonusAdjustedExpiry(
+  v1Expiry: bigint,
+  bonusPeriodSeconds: bigint,
+): bigint {
+  const raw = v1Expiry + bonusPeriodSeconds;
+  return raw > MAX_UINT64 ? MAX_UINT64 : raw;
+}
+
+// Renders an expiry as a date for logging. Expiries near the uint64 ceiling are far
+// outside the range `Date` can represent, and letting one of those throw would abort
+// the whole run over a log line, so they are described rather than formatted.
+export function formatExpiry(expiry: bigint): string {
+  const milliseconds = Number(expiry) * 1000;
+  if (!Number.isFinite(milliseconds) || Math.abs(milliseconds) > 8.64e15) {
+    return `${expiry} (beyond representable dates)`;
+  }
+  return new Date(milliseconds).toISOString().split("T")[0];
 }
 
 async function fetchAndReserveInBatches(
@@ -979,7 +1022,7 @@ async function processBatch(
       logger.error(
         `Name ${registration.labelName}.eth is already registered with owner: ${result.v2LatestOwner}`,
       );
-      checkpoint.failureCount++;
+      checkpoint.alreadyRegisteredCount++;
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, "failed");
       continue;
@@ -989,23 +1032,28 @@ async function processBatch(
     }
 
     if (!result.v1IsClaimable) {
-      const reason =
-        result.v1Expiry === 0n
-          ? "never registered on v1"
-          : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
+      const neverRegistered = result.v1Expiry === 0n;
+      const reason = neverRegistered
+        ? "never registered on v1"
+        : `past v1 ${V1_GRACE_PERIOD_DAYS}-day grace period`;
       logger.v1NotRegistered(registration.labelName, reason);
       checkpoint.skippedCount++;
+      if (neverRegistered) {
+        checkpoint.skippedNeverRegisteredCount++;
+      } else {
+        checkpoint.skippedPastGraceCount++;
+      }
       checkpoint.totalProcessed++;
       logger.finishedName(registration.labelName, "skipped");
       continue;
     }
 
-    const effectiveExpiry = result.v1Expiry + bonusPeriodSeconds;
+    const effectiveExpiry = bonusAdjustedExpiry(
+      result.v1Expiry,
+      bonusPeriodSeconds,
+    );
 
-    const expiryDateFormatted = new Date(Number(effectiveExpiry) * 1000)
-      .toISOString()
-      .split("T")[0];
-    logger.v1Verified(registration.labelName, expiryDateFormatted);
+    logger.v1Verified(registration.labelName, formatExpiry(effectiveExpiry));
 
     batchLabels.push(registration.labelName);
     batchExpires.push(effectiveExpiry);
@@ -1096,8 +1144,20 @@ function printFinalSummary(checkpoint: Checkpoint): void {
     cyan(checkpoint.renewedCount.toString()),
   );
   logger.config(
-    "Skipped (already up-to-date/expired)",
+    "Skipped (not claimable on v1)",
     yellow(checkpoint.skippedCount.toString()),
+  );
+  logger.config(
+    "  → never registered on v1",
+    yellow(checkpoint.skippedNeverRegisteredCount.toString()),
+  );
+  logger.config(
+    "  → expired past v1 grace period",
+    yellow(checkpoint.skippedPastGraceCount.toString()),
+  );
+  logger.config(
+    "Already registered on v2",
+    yellow(checkpoint.alreadyRegisteredCount.toString()),
   );
   logger.config(
     "Invalid labels",
@@ -1263,6 +1323,8 @@ export async function main(argv = process.argv): Promise<void> {
         );
         logger.info(`Resuming from CSV line ${config.startIndex}`);
       }
+    } else if (!config.disableCheckpoint) {
+      clearCheckpoint();
     }
     logger.info("");
 

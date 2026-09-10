@@ -2,7 +2,7 @@ import {
   type Address,
   type Client,
   type Hash,
-  type TransactionReceipt
+  type TransactionReceipt,
 } from "viem";
 import { waitForTransactionReceipt } from "viem/actions";
 
@@ -12,7 +12,9 @@ type WaitForSuccessfulTransactionReceiptParams = {
 };
 
 type SuccessfulTransactionReceipt = TransactionReceipt & { status: "success" };
-type DeployedTransactionReceipt = SuccessfulTransactionReceipt & { contractAddress: Address };
+type DeployedTransactionReceipt = SuccessfulTransactionReceipt & {
+  contractAddress: Address;
+};
 
 export async function waitForSuccessfulTransactionReceipt(
   client: Client,

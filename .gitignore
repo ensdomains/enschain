@@ -9,3 +9,5 @@ node_modules/
 .claude/settings.local.json
 
 .devdocs/
+
+contracts/deployments/devnet-*/

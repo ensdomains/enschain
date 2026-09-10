@@ -1,10 +1,11 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_VerifiableFactory } from "generated/artifacts/VerifiableFactory.js";
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer } }) => {
     await deploy("VerifiableFactory", {
       account: deployer,
-      artifact: artifacts.VerifiableFactory,
+      artifact: Artifact_VerifiableFactory,
     });
   },
   {

@@ -40,7 +40,7 @@ export class Logger {
   protected _writeToFile(
     type: "info" | "error",
     message: string,
-    prefix = ""
+    prefix = "",
   ): void {
     if (!this.options.enableFileLogging) return;
 
@@ -52,12 +52,17 @@ export class Logger {
     if (this.fileLoggingDisabledReason) return;
 
     try {
-      writeFileSync(file, `[${timestamp}]${prefix} ${message}\n`, { flag: "a" });
+      writeFileSync(file, `[${timestamp}]${prefix} ${message}\n`, {
+        flag: "a",
+      });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.fileLoggingDisabledReason = errorMessage;
       console.warn(
-        yellow(`WARNING: file logging disabled after write failure: ${errorMessage}`),
+        yellow(
+          `WARNING: file logging disabled after write failure: ${errorMessage}`,
+        ),
       );
     }
   }
@@ -68,7 +73,7 @@ export class Logger {
   private _stripAnsi(str: string): string {
     return str.replace(
       /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-      ""
+      "",
     );
   }
 
@@ -92,7 +97,7 @@ export class Logger {
     this._writeToFile(
       "error",
       fileMsg ?? this._stripAnsi(consoleMsg),
-      " ERROR:"
+      " ERROR:",
     );
   }
 
@@ -148,7 +153,7 @@ export class Logger {
   header(message: string): void {
     this.raw(
       "\n" + bold(cyan(`=== ${message} ===`)) + "\n",
-      `\n=== ${message} ===\n`
+      `\n=== ${message} ===\n`,
     );
   }
 
@@ -180,7 +185,7 @@ export class Logger {
     } else {
       this.rawWarn(
         yellow(`  → Could not delete ${file}`),
-        `  → Could not delete ${file}`
+        `  → Could not delete ${file}`,
       );
     }
   }

@@ -54,6 +54,9 @@ export const config = {
     sepolia: {
       chain: 11155111,
       scripts: ["deploy"],
+      overrides: {
+        tags: ["sepolia", "hca"],
+      },
     },
     "sepolia-dev": {
       chain: 11155111,
@@ -187,7 +190,9 @@ const extensions = {
       const contractAddress =
         pendingDeployment.expectedAddress ?? receipt.contractAddress;
       if (!contractAddress) {
-        throw new Error(`no contract address found for ${pendingDeployment.name}`);
+        throw new Error(
+          `no contract address found for ${pendingDeployment.name}`,
+        );
       }
 
       const { abi, ...artifactObjectWithoutABI } =
@@ -208,9 +213,20 @@ const extensions = {
 export { extensions };
 
 function deploymentNameFor(env: Environment, deployment: { address: Address }) {
-  const found = Object.entries(env.deployments).find(([, candidate]) =>
-    getAddress(candidate.address) === getAddress(deployment.address)
-  );
+  const target = getAddress(deployment.address);
+  const found = Object.entries(env.deployments).find(([name, candidate]) => {
+    // env.deployments can contain address-less entries: rocketh loads the
+    // `.deployment.json` metadata file as a deployment named '.deployment'.
+    // The file only exists once a deploy has completed, so this bites resume
+    // runs — getAddress(undefined) would throw and abort the deploy.
+    if (typeof candidate?.address !== "string") {
+      console.warn(
+        `  - deployment '${name}' has no address; skipping in name lookup`,
+      );
+      return false;
+    }
+    return getAddress(candidate.address) === target;
+  });
   return found?.[0];
 }
 
@@ -218,7 +234,10 @@ function jsonReplacer(_key: string, value: unknown) {
   return typeof value === "bigint" ? value.toString() : value;
 }
 
-function deferredReceipt(from: Address, to: Address): EIP1193TransactionReceipt {
+function deferredReceipt(
+  from: Address,
+  to: Address,
+): EIP1193TransactionReceipt {
   return {
     blockHash: `0x${"0".repeat(64)}`,
     blockNumber: "0x0",

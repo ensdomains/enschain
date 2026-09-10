@@ -8,7 +8,6 @@ import {IExtendedResolver} from "@ens/contracts/resolvers/profiles/IExtendedReso
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ResolverCaller} from "@ens/contracts/universalResolver/ResolverCaller.sol";
 import {IERC7996} from "@ens/contracts/utils/IERC7996.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
 import {DelegatedContractNamer} from "../utils/DelegatedContractNamer.sol";
@@ -40,7 +39,7 @@ abstract contract AbstractMirrorResolver is
         BATCH_GATEWAY_PROVIDER = batchGatewayProvider;
     }
 
-    /// @inheritdoc ERC165
+    /// @inheritdoc DelegatedContractNamer
     function supportsInterface(bytes4 interfaceId)
         public
         view

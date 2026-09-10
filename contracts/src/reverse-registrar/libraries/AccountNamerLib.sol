@@ -5,10 +5,18 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IContractNamer} from "../interfaces/IContractNamer.sol";
 
-/// @dev Determine if an address is nameable. 
+/// @dev Determine if an address is nameable.
 library AccountNamerLib {
+    ////////////////////////////////////////////////////////////////////////
+    // Errors
+    ////////////////////////////////////////////////////////////////////////
+
     /// @dev Error selector: `0x0d1b7e4e`
     error UnauthorizedNamer(address namer);
+
+    ////////////////////////////////////////////////////////////////////////
+    // Implementation
+    ////////////////////////////////////////////////////////////////////////
 
     /// @dev Check if an address can be named.
     /// @param account The address to name.

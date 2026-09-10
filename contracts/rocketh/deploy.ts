@@ -1,5 +1,4 @@
 import { setupDeployScripts } from "rocketh";
-import artifacts from "../script/artifacts.js";
 import {
   type Accounts,
   type Data,
@@ -11,4 +10,4 @@ const { deployScript } = setupDeployScripts<Extensions, Accounts, Data>(
   extensions,
 );
 
-export { artifacts, deployScript, deployScript as execute };
+export { deployScript as execute };

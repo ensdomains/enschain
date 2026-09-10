@@ -1,4 +1,12 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_BaseRegistrarImplementation } from "generated/abis/BaseRegistrarImplementation.js";
+import type { Abi_ENS } from "generated/abis/ENS.js";
+import type { Abi_ReverseRegistrar } from "generated/abis/ReverseRegistrar.js";
+import type { Abi_DefaultReverseRegistrar } from "generated/abis/DefaultReverseRegistrar.js";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_ENSV1Resolver } from "generated/abis/ENSV1Resolver.js";
+import type { Abi_RegistrarSecurityController } from "generated/abis/RegistrarSecurityController.js";
+import { Artifact_TestnetV1PremigrationRegistrar } from "generated/artifacts/TestnetV1PremigrationRegistrar.js";
 import { zeroAddress } from "viem";
 import { ROLES } from "../../script/deploy-constants.js";
 
@@ -22,27 +30,21 @@ export default execute(
     )
       return;
 
-    const baseRegistrar = await getV1<
-      (typeof artifacts.BaseRegistrarImplementation)["abi"]
-    >("BaseRegistrarImplementation");
-    const ensRegistry =
-      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
+    const baseRegistrar = await getV1<Abi_BaseRegistrarImplementation>(
+      "BaseRegistrarImplementation",
+    );
+    const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
     const reverseRegistrar =
-      await getV1<(typeof artifacts.ReverseRegistrar)["abi"]>(
-        "ReverseRegistrar",
-      );
-    const defaultReverseRegistrar = await getV1<
-      (typeof artifacts.DefaultReverseRegistrar)["abi"]
-    >("DefaultReverseRegistrar");
-
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-    const ensV1Resolver =
-      get<(typeof artifacts.ENSV1Resolver)["abi"]>("ENSV1Resolver");
+      await getV1<Abi_ReverseRegistrar>("ReverseRegistrar");
+    const defaultReverseRegistrar = await getV1<Abi_DefaultReverseRegistrar>(
+      "DefaultReverseRegistrar",
+    );
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
+    const ensV1Resolver = get<Abi_ENSV1Resolver>("ENSV1Resolver");
 
     const registrar = await deploy("TestnetV1PremigrationRegistrar", {
       account: deployer,
-      artifact: artifacts.TestnetV1PremigrationRegistrar,
+      artifact: Artifact_TestnetV1PremigrationRegistrar,
       args: [
         baseRegistrar.address,
         ensRegistry.address,
@@ -75,9 +77,10 @@ export default execute(
     });
     if (!isV1Controller) {
       console.log("  - Adding as ENSv1 registrar controller");
-      const registrarSecurityController = await getV1<
-        (typeof artifacts.RegistrarSecurityController)["abi"]
-      >("RegistrarSecurityController").catch(() => null);
+      const registrarSecurityController =
+        await getV1<Abi_RegistrarSecurityController>(
+          "RegistrarSecurityController",
+        ).catch(() => {});
       if (registrarSecurityController) {
         await write(registrarSecurityController, {
           account: v1Owner ?? owner,

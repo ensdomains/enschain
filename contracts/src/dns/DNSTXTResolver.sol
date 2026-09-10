@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IMulticallable} from "@ens/contracts/resolvers/IMulticallable.sol";
 import {IAddressResolver} from "@ens/contracts/resolvers/profiles/IAddressResolver.sol";
@@ -8,7 +8,6 @@ import {IContentHashResolver} from "@ens/contracts/resolvers/profiles/IContentHa
 import {IDataResolver} from "@ens/contracts/resolvers/profiles/IDataResolver.sol";
 import {IExtendedDNSResolver} from "@ens/contracts/resolvers/profiles/IExtendedDNSResolver.sol";
 import {IHasAddressResolver} from "@ens/contracts/resolvers/profiles/IHasAddressResolver.sol";
-import {IPubkeyResolver} from "@ens/contracts/resolvers/profiles/IPubkeyResolver.sol";
 import {ITextResolver} from "@ens/contracts/resolvers/profiles/ITextResolver.sol";
 import {ResolverFeatures} from "@ens/contracts/resolvers/ResolverFeatures.sol";
 import {ENSIP19, COIN_TYPE_ETH} from "@ens/contracts/utils/ENSIP19.sol";
@@ -41,7 +40,6 @@ import {DNSTXTParserLib} from "./libraries/DNSTXTParserLib.sol";
 ///     - Bitcoin Address: `a[0]=0x00...` (see: ENSIP-9)
 /// * `data(key)`: `d[key]=0x...`
 /// * `contenthash()`: `c=0x...` (see: ENSIP-7)
-/// * `pubkey()`: `xy=0x...`
 ///
 contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolver {
     ////////////////////////////////////////////////////////////////////////
@@ -90,10 +88,6 @@ contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolve
     /// The operating assumption is that this contract is never called directly,
     /// and instead only invoked by DNSTLDResolver in response to an TXT record.
     ///
-    /// The DNSTLDResolver includes `TEXT_KEY_DNSSEC_CONTEXT`.
-    ///
-    /// Multicalling this contract directly will not include these values.
-    ///
     /// @param {name} Ignored.
     /// @param data The ABI-encoded resolver call (selector + arguments) to answer.
     /// @param context The human-readable context string from the `ENS1` TXT record, parsed by
@@ -140,14 +134,6 @@ contract DNSTXTResolver is DelegatedContractNamer, IERC7996, IExtendedDNSResolve
             return abi.encode(_parse0xString(v));
         } else if (selector == IContentHashResolver.contenthash.selector) {
             return abi.encode(_parse0xString(DNSTXTParserLib.find(context, "c=")));
-        } else if (selector == IPubkeyResolver.pubkey.selector) {
-            bytes memory v = _parse0xString(DNSTXTParserLib.find(context, "xy="));
-            if (v.length == 0) {
-                return new bytes(64);
-            } else if (v.length == 64) {
-                return v;
-            }
-            revert InvalidDataLength(v, 64);
         } else {
             revert UnsupportedResolverProfile(selector);
         }

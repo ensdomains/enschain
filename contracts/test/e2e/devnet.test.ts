@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { expectVar } from "../utils/expectVar.js";
 
 describe("Devnet", () => {
-  const { env, setupEnv, resetInitialState } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv, resetInitialState } = process.TEST_GLOBALS!;
 
   setupEnv({ resetOnEach: true });
 

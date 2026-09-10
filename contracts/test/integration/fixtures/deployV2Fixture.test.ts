@@ -89,7 +89,7 @@ describe("deployV2Fixture", () => {
     const regs1 = registries.map((x) =>
       x ? getAddress(x.address) : zeroAddress,
     );
-    const regs2 = await F.universalResolver.read.findRegistries([
+    const regs2 = await F.universalHelper.read.findRegistries([
       dnsEncodeName(name),
     ]);
     expect(regs1).toStrictEqual(regs2);

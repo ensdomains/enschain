@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import { Artifact_MockPremigrator } from "generated/artifacts/MockPremigrator.js";
 import { ROLES } from "../../script/deploy-constants.js";
 
 const MOCK_PREMIGRATOR_ROLE_BITMAP =
@@ -19,12 +21,11 @@ export default execute(
     // only for dev (fresh) deployments
     if (!tags.dev) return;
 
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
 
     const mockPremigrator = await deploy("MockPremigrator", {
       account: deployer,
-      artifact: artifacts.MockPremigrator,
+      artifact: Artifact_MockPremigrator,
       args: [ethRegistry.address],
     });
 

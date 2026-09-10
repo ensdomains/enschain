@@ -1,4 +1,7 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IRentPriceOracle } from "generated/abis/IRentPriceOracle.js";
+import { Artifact_ETHRegistrar } from "generated/artifacts/ETHRegistrar.js";
 import {
   DEPLOYMENT_ROLES,
   GRACE_PERIOD_V2,
@@ -15,17 +18,15 @@ export default execute(
   }) => {
     if (network.chain.id === 1) return;
 
-    const ethRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("ETHRegistry");
-
-    const rentPriceOracle = get<(typeof artifacts.IRentPriceOracle)["abi"]>(
+    const ethRegistry = get<Abi_IPermissionedRegistry>("ETHRegistry");
+    const rentPriceOracle = get<Abi_IRentPriceOracle>(
       "StandardRentPriceOracle",
     );
 
     const SEC_PER_DAY = 86400n;
     const ethRegistrar = await deploy("FastETHRegistrar", {
       account: deployer,
-      artifact: artifacts.ETHRegistrar,
+      artifact: Artifact_ETHRegistrar,
       args: [
         owner,
         ethRegistry.address,

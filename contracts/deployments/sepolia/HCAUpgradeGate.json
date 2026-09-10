@@ -1,0 +1,286 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableInvalidOwner",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "name": "ImplementationApprovalChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "approvedImplementations",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        }
+      ],
+      "name": "setImplementationApproval",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "contractName": "ApprovedUpgradeGate",
+  "sourceName": "src/registry/ApprovedUpgradeGate.sol",
+  "bytecode": "0x6080604052348015600e575f5ffd5b506040516103f43803806103f4833981016040819052602b9160b4565b806001600160a01b038116605857604051631e4fbdf760e01b81525f600482015260240160405180910390fd5b605f816065565b505060df565b5f80546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b5f6020828403121560c3575f5ffd5b81516001600160a01b038116811460d8575f5ffd5b9392505050565b610308806100ec5f395ff3fe608060405234801561000f575f5ffd5b5060043610610064575f3560e01c806396b78cbe1161004d57806396b78cbe14610091578063e537b27b146100c3578063f2fde38b146100d6575f5ffd5b8063715018a6146100685780638da5cb5b14610072575b5f5ffd5b6100706100e9565b005b5f546040516001600160a01b0390911681526020015b60405180910390f35b6100b361009f366004610279565b60016020525f908152604090205460ff1681565b6040519015158152602001610088565b6100706100d1366004610299565b6100fc565b6100706100e4366004610279565b610157565b6100f16101b2565b6100fa5f6101f7565b565b6101046101b2565b6001600160a01b0382165f81815260016020526040808220805460ff191685151590811790915590519092917fdf2de8f46c1295aaa5eaaea8c458190346b99f2dd813bd0a543dff50c0c4106e91a35050565b61015f6101b2565b6001600160a01b0381166101a6576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b6101af816101f7565b50565b5f546001600160a01b031633146100fa576040517f118cdaa700000000000000000000000000000000000000000000000000000000815233600482015260240161019d565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b80356001600160a01b0381168114610274575f5ffd5b919050565b5f60208284031215610289575f5ffd5b6102928261025e565b9392505050565b5f5f604083850312156102aa575f5ffd5b6102b38361025e565b9150602083013580151581146102c7575f5ffd5b80915050925092905056fea264697066735822122006767f891bbd8f2e1809df79fa9c6c2bb6a3be34cd96c52a75f9c5509b80cf2464736f6c634300081b0033",
+  "deployedBytecode": "0x608060405234801561000f575f5ffd5b5060043610610064575f3560e01c806396b78cbe1161004d57806396b78cbe14610091578063e537b27b146100c3578063f2fde38b146100d6575f5ffd5b8063715018a6146100685780638da5cb5b14610072575b5f5ffd5b6100706100e9565b005b5f546040516001600160a01b0390911681526020015b60405180910390f35b6100b361009f366004610279565b60016020525f908152604090205460ff1681565b6040519015158152602001610088565b6100706100d1366004610299565b6100fc565b6100706100e4366004610279565b610157565b6100f16101b2565b6100fa5f6101f7565b565b6101046101b2565b6001600160a01b0382165f81815260016020526040808220805460ff191685151590811790915590519092917fdf2de8f46c1295aaa5eaaea8c458190346b99f2dd813bd0a543dff50c0c4106e91a35050565b61015f6101b2565b6001600160a01b0381166101a6576040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081525f60048201526024015b60405180910390fd5b6101af816101f7565b50565b5f546001600160a01b031633146100fa576040517f118cdaa700000000000000000000000000000000000000000000000000000000815233600482015260240161019d565b5f80546001600160a01b038381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b80356001600160a01b0381168114610274575f5ffd5b919050565b5f60208284031215610289575f5ffd5b6102928261025e565b9392505050565b5f5f604083850312156102aa575f5ffd5b6102b38361025e565b9150602083013580151581146102c7575f5ffd5b80915050925092905056fea264697066735822122006767f891bbd8f2e1809df79fa9c6c2bb6a3be34cd96c52a75f9c5509b80cf2464736f6c634300081b0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {},
+  "inputSourceName": "project/src/registry/ApprovedUpgradeGate.sol",
+  "devdoc": {
+    "errors": {
+      "OwnableInvalidOwner(address)": [
+        {
+          "details": "The owner is not a valid owner account. (eg. `address(0)`)"
+        }
+      ],
+      "OwnableUnauthorizedAccount(address)": [
+        {
+          "details": "The caller account is not authorized to perform an operation."
+        }
+      ]
+    },
+    "events": {
+      "ImplementationApprovalChanged(address,bool)": {
+        "params": {
+          "approved": "Whether upgrades to the implementation are approved.",
+          "implementation": "The implementation address."
+        }
+      }
+    },
+    "kind": "dev",
+    "methods": {
+      "constructor": {
+        "params": {
+          "owner_": "The address that controls implementation approvals."
+        }
+      },
+      "owner()": {
+        "details": "Returns the address of the current owner."
+      },
+      "renounceOwnership()": {
+        "details": "Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner."
+      },
+      "setImplementationApproval(address,bool)": {
+        "params": {
+          "approved": "Whether upgrades to the implementation are approved.",
+          "implementation": "The implementation address."
+        }
+      },
+      "transferOwnership(address)": {
+        "details": "Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner."
+      }
+    },
+    "version": 1
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.27+commit.40a35a09\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"name\":\"ImplementationApprovalChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"approvedImplementations\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"approved\",\"type\":\"bool\"}],\"name\":\"setImplementationApproval\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"errors\":{\"OwnableInvalidOwner(address)\":[{\"details\":\"The owner is not a valid owner account. (eg. `address(0)`)\"}],\"OwnableUnauthorizedAccount(address)\":[{\"details\":\"The caller account is not authorized to perform an operation.\"}]},\"events\":{\"ImplementationApprovalChanged(address,bool)\":{\"params\":{\"approved\":\"Whether upgrades to the implementation are approved.\",\"implementation\":\"The implementation address.\"}}},\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"owner_\":\"The address that controls implementation approvals.\"}},\"owner()\":{\"details\":\"Returns the address of the current owner.\"},\"renounceOwnership()\":{\"details\":\"Leaves the contract without owner. It will not be possible to call `onlyOwner` functions. Can only be called by the current owner. NOTE: Renouncing ownership will leave the contract without an owner, thereby disabling any functionality that is only available to the owner.\"},\"setImplementationApproval(address,bool)\":{\"params\":{\"approved\":\"Whether upgrades to the implementation are approved.\",\"implementation\":\"The implementation address.\"}},\"transferOwnership(address)\":{\"details\":\"Transfers ownership of the contract to a new account (`newOwner`). Can only be called by the current owner.\"}},\"version\":1},\"userdoc\":{\"events\":{\"ImplementationApprovalChanged(address,bool)\":{\"notice\":\"Approval status changed for an implementation.\"}},\"kind\":\"user\",\"methods\":{\"approvedImplementations(address)\":{\"notice\":\"Returns whether an implementation may be used as an upgrade target.\"},\"setImplementationApproval(address,bool)\":{\"notice\":\"Set whether an implementation may be used as an upgrade target.\"}},\"notice\":\"Allowlist for approved implementation upgrade targets.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/src/registry/ApprovedUpgradeGate.sol\":\"ApprovedUpgradeGate\"},\"evmVersion\":\"prague\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:account-abstraction/=project/lib/account-abstraction/contracts/\",\"project/:composability/=project/lib/composability/contracts/\",\"project/:excessively-safe-call/=project/lib/excessively-safe-call/src/\",\"project/:nexus/=project/lib/nexus/contracts/\",\"project/:sentinellist/=project/lib/sentinellist/src/\",\"project/:solady/=project/lib/solady/src/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@ensdomains/solsha1/contracts/=project/lib/solsha1/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts-v5/=project/lib/openzeppelin-contracts/contracts/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/ens-contracts/:@unruggable/gateways/=project/lib/unruggable-gateways/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts-upgradeable/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/openzeppelin-contracts/contracts/access/Ownable.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Context} from \\\"../utils/Context.sol\\\";\\n\\n/**\\n * @dev Contract module which provides a basic access control mechanism, where\\n * there is an account (an owner) that can be granted exclusive access to\\n * specific functions.\\n *\\n * The initial owner is set to the address provided by the deployer. This can\\n * later be changed with {transferOwnership}.\\n *\\n * This module is used through inheritance. It will make available the modifier\\n * `onlyOwner`, which can be applied to your functions to restrict their use to\\n * the owner.\\n */\\nabstract contract Ownable is Context {\\n    address private _owner;\\n\\n    /**\\n     * @dev The caller account is not authorized to perform an operation.\\n     */\\n    error OwnableUnauthorizedAccount(address account);\\n\\n    /**\\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\\n     */\\n    error OwnableInvalidOwner(address owner);\\n\\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\\n\\n    /**\\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\\n     */\\n    constructor(address initialOwner) {\\n        if (initialOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(initialOwner);\\n    }\\n\\n    /**\\n     * @dev Throws if called by any account other than the owner.\\n     */\\n    modifier onlyOwner() {\\n        _checkOwner();\\n        _;\\n    }\\n\\n    /**\\n     * @dev Returns the address of the current owner.\\n     */\\n    function owner() public view virtual returns (address) {\\n        return _owner;\\n    }\\n\\n    /**\\n     * @dev Throws if the sender is not the owner.\\n     */\\n    function _checkOwner() internal view virtual {\\n        if (owner() != _msgSender()) {\\n            revert OwnableUnauthorizedAccount(_msgSender());\\n        }\\n    }\\n\\n    /**\\n     * @dev Leaves the contract without owner. It will not be possible to call\\n     * `onlyOwner` functions. Can only be called by the current owner.\\n     *\\n     * NOTE: Renouncing ownership will leave the contract without an owner,\\n     * thereby disabling any functionality that is only available to the owner.\\n     */\\n    function renounceOwnership() public virtual onlyOwner {\\n        _transferOwnership(address(0));\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Can only be called by the current owner.\\n     */\\n    function transferOwnership(address newOwner) public virtual onlyOwner {\\n        if (newOwner == address(0)) {\\n            revert OwnableInvalidOwner(address(0));\\n        }\\n        _transferOwnership(newOwner);\\n    }\\n\\n    /**\\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\\n     * Internal function without access restriction.\\n     */\\n    function _transferOwnership(address newOwner) internal virtual {\\n        address oldOwner = _owner;\\n        _owner = newOwner;\\n        emit OwnershipTransferred(oldOwner, newOwner);\\n    }\\n}\\n\",\"keccak256\":\"0xff6d0bb2e285473e5311d9d3caacb525ae3538a80758c10649a4d61029b017bb\",\"license\":\"MIT\"},\"project/lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Provides information about the current execution context, including the\\n * sender of the transaction and its data. While these are generally available\\n * via msg.sender and msg.data, they should not be accessed in such a direct\\n * manner, since when dealing with meta-transactions the account sending and\\n * paying for execution may not be the actual sender (as far as an application\\n * is concerned).\\n *\\n * This contract is only required for intermediate, library-like contracts.\\n */\\nabstract contract Context {\\n    function _msgSender() internal view virtual returns (address) {\\n        return msg.sender;\\n    }\\n\\n    function _msgData() internal view virtual returns (bytes calldata) {\\n        return msg.data;\\n    }\\n\\n    function _contextSuffixLength() internal view virtual returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x493033a8d1b176a037b2cc6a04dad01a5c157722049bbecf632ca876224dd4b2\",\"license\":\"MIT\"},\"project/src/registry/ApprovedUpgradeGate.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity >=0.8.13;\\n\\nimport {Ownable} from \\\"@openzeppelin/contracts/access/Ownable.sol\\\";\\n\\n/// @notice Allowlist for approved implementation upgrade targets.\\ncontract ApprovedUpgradeGate is Ownable {\\n    ////////////////////////////////////////////////////////////////////////\\n    // Storage\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Returns whether an implementation may be used as an upgrade target.\\n    mapping(address implementation => bool approved) public approvedImplementations;\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Events\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Approval status changed for an implementation.\\n    /// @param implementation The implementation address.\\n    /// @param approved Whether upgrades to the implementation are approved.\\n    event ImplementationApprovalChanged(address indexed implementation, bool indexed approved);\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Initialization\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @param owner_ The address that controls implementation approvals.\\n    constructor(address owner_) Ownable(owner_) {}\\n\\n    ////////////////////////////////////////////////////////////////////////\\n    // Implementation\\n    ////////////////////////////////////////////////////////////////////////\\n\\n    /// @notice Set whether an implementation may be used as an upgrade target.\\n    /// @param implementation The implementation address.\\n    /// @param approved Whether upgrades to the implementation are approved.\\n    function setImplementationApproval(address implementation, bool approved) external onlyOwner {\\n        approvedImplementations[implementation] = approved;\\n        emit ImplementationApprovalChanged(implementation, approved);\\n    }\\n}\\n\",\"keccak256\":\"0xecaf823f2344fb8336d18f889905de806299edfa6424796a24ce584eeda1eb2f\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 42626,
+        "contract": "project/src/registry/ApprovedUpgradeGate.sol:ApprovedUpgradeGate",
+        "label": "_owner",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_address"
+      },
+      {
+        "astId": 85716,
+        "contract": "project/src/registry/ApprovedUpgradeGate.sol:ApprovedUpgradeGate",
+        "label": "approvedImplementations",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_mapping(t_address,t_bool)"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_bool": {
+        "encoding": "inplace",
+        "label": "bool",
+        "numberOfBytes": "1"
+      },
+      "t_mapping(t_address,t_bool)": {
+        "encoding": "mapping",
+        "key": "t_address",
+        "label": "mapping(address => bool)",
+        "numberOfBytes": "32",
+        "value": "t_bool"
+      }
+    }
+  },
+  "userdoc": {
+    "events": {
+      "ImplementationApprovalChanged(address,bool)": {
+        "notice": "Approval status changed for an implementation."
+      }
+    },
+    "kind": "user",
+    "methods": {
+      "approvedImplementations(address)": {
+        "notice": "Returns whether an implementation may be used as an upgrade target."
+      },
+      "setImplementationApproval(address,bool)": {
+        "notice": "Set whether an implementation may be used as an upgrade target."
+      }
+    },
+    "notice": "Allowlist for approved implementation upgrade targets.",
+    "version": 1
+  },
+  "address": "0x3a121fc283e53d2f45564edf97dc8685ede35005",
+  "argsData": "0x00000000000000000000000084d3a426d4e12e955d1df95db0b24fe26afe39d3",
+  "transaction": {
+    "hash": "0x292b6ae47a31d5d4fc9f384755b437682b5f64c9b497a0dd5dcbd2755adda4f2",
+    "nonce": "0xd9",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0x1cba9792ed8a99d3126e7b176fe3e90fd9eb53f795e65ef6b850836fd2b8ae75",
+    "blockNumber": "0xadb47e",
+    "transactionIndex": "0x74"
+  },
+  "buildInfoId": "solc-0_8_27-2da25a2437eac09dce5c3f816658f332e03c72a5",
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "155200",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "approvedImplementations(address)": "2528",
+        "owner()": "2311",
+        "renounceOwnership()": "infinite",
+        "setImplementationApproval(address,bool)": "28397",
+        "transferOwnership(address)": "28358"
+      }
+    }
+  }
+}

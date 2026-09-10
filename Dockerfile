@@ -28,8 +28,8 @@ COPY package.json bun.lock ./
 # Copy the package.json for each workspace.
 COPY contracts/package.json ./contracts/
 
-# Copy patches for post script execution
-#COPY /patches ./patches
+# The root manifest applies these dependency patches during `bun install`.
+COPY patches ./patches
 
 # Install all dependencies
 RUN bun i
@@ -50,14 +50,21 @@ RUN git config --global init.defaultBranch main && \
 
 # Build ens-contracts submodule to generate artifacts
 WORKDIR /app/contracts/lib/ens-contracts
-RUN bun install && NODE_OPTIONS="--max-old-space-size=4096" bun run compile
+# The locked gateway package moved its Solidity sources under `contracts/`, but
+# omitted the legacy Solidity entry points still used by this ENS v1 revision.
+# Add those exports only inside the image so the submodule remains clean.
+RUN bun install && \
+    node /app/docker/patchUnruggableGateways.cjs && \
+    NODE_OPTIONS="--max-old-space-size=4096" bun run compile
 
 # Build Contracts
 WORKDIR /app/contracts
 RUN bun run compile:forge && bun run compile:hardhat --quiet
 
-# Remove all node_modules and lockfiles after artifacts are generated (keep ens-contracts node_modules for runtime)
-RUN rm -rf /app/node_modules /app/contracts/node_modules /app/bun.lock /app/bun.lockb
+# Remove build-time dependency trees. The v1 submodule pins an older Rocketh;
+# retaining that nested tree makes its deploy scripts incompatible with the
+# current environment assembled by this repository.
+RUN rm -rf /app/node_modules /app/contracts/node_modules /app/contracts/lib/ens-contracts/node_modules /app/bun.lock /app/bun.lockb
 
 # Install only runtime dependencies
 WORKDIR /app/contracts
@@ -66,8 +73,8 @@ RUN cd /app && bun install --production
 # Clean up other unnecessary files
 RUN rm -rf /app/.git /app/contracts/.git 2>/dev/null || true
 
-# Expose port for devnet
-EXPOSE 8545
+# Expose the JSON-RPC and deployment-discovery endpoints.
+EXPOSE 8545 8000
 
 # Run devnet
 WORKDIR /app/contracts

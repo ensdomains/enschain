@@ -39,6 +39,19 @@ ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - when writing tests that involve constants already defined in the source (e.g contracts/src/registry/libraries/RegistryRolesLib.sol) use those defined constants directly instead of hardcoding their values in the tests.
 
+# Upstream submodules
+
+`contracts/lib/` holds submodules that track upstream repositories we do not own, such as
+`ensdomains/ens-contracts`. **Never fix a migration-script or testnet-deployment problem by editing
+one of them**, and never commit or push into one. That includes edits meant only to unblock a run:
+they are invisible to everyone else, make the result irreproducible, and put a change into a shared
+dependency that was never reviewed there.
+
+When a deployment or migration fails inside upstream deploy scripts, the fix belongs on our side of
+the boundary — in `contracts/script/`, in the tags and configuration we pass to the deploy, or in a
+follow-up step our own driver performs. If no such fix exists, say so and report the upstream defect
+rather than patching around it locally.
+
 # Documentation
 
 The `contracts/docs/` folder contains operational documentation for scripts and tools. When making changes to code that is covered by documentation in `contracts/docs/`, the corresponding documentation MUST be kept up-to-date alongside the code changes.

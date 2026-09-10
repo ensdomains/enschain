@@ -28,8 +28,10 @@ generated/
 # dim the committed sets and throwaway runs stay out of the repo.
 deployments/*-fork/
 deployments/*-clean-*/
+deployments/devnet-*/
 deployments/v1/*
 !deployments/v1/sepolia/
+deployments/devnet*/
 
 # pre-migration
 preMigration.log

@@ -1,3 +1,9 @@
+codecov:
+  notify:
+    # hold the report until every coverage job has uploaded, so a slow or
+    # missing upload cannot grade the project against a partial report
+    manual_trigger: true
+
 coverage:
   status:
     project:

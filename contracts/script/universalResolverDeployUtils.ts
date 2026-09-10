@@ -7,8 +7,7 @@ import {
   encodeFunctionData,
   getAddress,
 } from "viem";
-
-import artifacts from "./artifacts.js";
+import { Artifact_UpgradableUniversalResolverProxy } from "generated/artifacts/UpgradableUniversalResolverProxy.js";
 import {
   DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
   KNOWN_INTERMEDIATE_URP,
@@ -19,11 +18,8 @@ export const TOP_URP_CREATE3_SALT =
 
 const KNOWN_TOP_PROXY_NETWORKS = new Set(["holesky", "mainnet", "sepolia"]);
 
-const universalResolverProxyArtifact =
-  artifacts.UpgradableUniversalResolverProxy;
-
 export type UpgradableUniversalResolverProxyDeployment = Deployment<
-  typeof universalResolverProxyArtifact.abi
+  (typeof Artifact_UpgradableUniversalResolverProxy)["abi"]
 >;
 
 export async function loadKnownTopProxyDeployment(
@@ -35,7 +31,7 @@ export async function loadKnownTopProxyDeployment(
   return {
     address: DEPLOYED_UNIVERSAL_RESOLVER_PROXY,
     argsData: "0x",
-    ...universalResolverProxyArtifact,
+    ...Artifact_UpgradableUniversalResolverProxy,
   } as UpgradableUniversalResolverProxyDeployment;
 }
 
@@ -49,7 +45,7 @@ export async function loadKnownIntermediateUrpDeployment(
   return {
     address,
     argsData: "0x",
-    ...universalResolverProxyArtifact,
+    ...Artifact_UpgradableUniversalResolverProxy,
   } as UpgradableUniversalResolverProxyDeployment;
 }
 
@@ -69,7 +65,7 @@ export function logUpgradeCalldata(
   ownerLabel = "DAO",
 ) {
   const calldata = encodeFunctionData({
-    abi: universalResolverProxyArtifact.abi,
+    abi: Artifact_UpgradableUniversalResolverProxy.abi,
     functionName: "upgradeTo",
     args: [implementation],
   });

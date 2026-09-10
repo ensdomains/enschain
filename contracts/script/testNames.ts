@@ -1,6 +1,5 @@
-import { encodeFunctionData, getContract, namehash, zeroAddress } from "viem";
+import { encodeFunctionData, namehash, zeroAddress } from "viem";
 
-import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
 import { MAX_EXPIRY, ROLES, STATUS } from "./deploy-constants.js";
 import { dnsEncodeName, dnsDecodeName } from "../test/utils/utils.js";
 import type { DevnetEnvironment } from "./setup.js";
@@ -23,12 +22,12 @@ import {
   reregisterName,
   renewName,
 } from "./testNames/registrar.js";
-import { showName, showAlias, formatStatus } from "./testNames/display.js";
+import { showName, formatStatus } from "./testNames/display.js";
+import { ADDR_ABI } from "../test/utils/resolver-abis.js";
 
 // Re-export all utilities for external consumers
 export {
   showName,
-  showAlias,
   createSubname,
   linkName,
   renewName,
@@ -41,7 +40,6 @@ export {
 };
 
 const ONE_DAY_SECONDS = 86400;
-const PermissionedResolverAbi = Artifact_PermissionedResolver.abi;
 
 /**
  * Set up test names with various states and configurations for development/testing
@@ -61,6 +59,7 @@ export async function testNames(env: DevnetEnvironment) {
     env,
     [
       "test",
+      "alias",
       "example",
       "demo",
       "newowner",
@@ -87,114 +86,18 @@ export async function testNames(env: DevnetEnvironment) {
   // Register alias.eth pointing to test.eth's resolver, then set alias
   console.log("\nCreating alias: alias.eth → test.eth");
   const testNameData = await getNameData(env, "test.eth");
-  if (!testNameData?.resolver || testNameData.resolver === zeroAddress) {
+  if (!testNameData || testNameData.resolver === zeroAddress) {
     throw new Error("test.eth has no resolver set");
   }
 
-  // Commit-reveal for alias.eth, using test.eth's resolver
-  const aliasSecret =
-    "0x00000000000000000000000000000000000000000000000000000000000000ff";
-  const aliasDuration = BigInt(28 * ONE_DAY_SECONDS);
-  const aliasPaymentToken = env.erc20.MockUSDC.address;
-  const aliasReferrer =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-  const aliasCommitment = await env.v2.ETHRegistrar.read.makeCommitment([
-    "alias",
-    env.namedAccounts.owner.address,
-    aliasSecret,
-    zeroAddress,
-    testNameData.resolver,
-    aliasDuration,
-    aliasReferrer,
-  ]);
-  const aliasCommitReceipt = await env.waitFor(
-    env.v2.ETHRegistrar.write.commit([aliasCommitment], {
-      account: env.namedAccounts.owner,
-    }),
-  );
-  trackGas("commit(alias)", aliasCommitReceipt);
-
-  const minAge = await env.v2.ETHRegistrar.read.MIN_COMMITMENT_AGE();
-  await env.sync({ warpSec: Number(minAge) + 1 });
-
-  const [aliasBase, aliasPremium] =
-    await env.v2.StandardRentPriceOracle.read.getRegisterPrice([
-      "alias",
-      MAX_EXPIRY,
-      aliasDuration,
-      aliasPaymentToken,
-    ]);
-  const aliasPrice = aliasBase + aliasPremium;
-  const aliasBalance = await env.erc20.MockUSDC.read.balanceOf([
-    env.namedAccounts.owner.address,
-  ]);
-  if (aliasBalance < aliasPrice) {
-    await env.erc20.MockUSDC.write.mint(
-      [env.namedAccounts.owner.address, aliasPrice - aliasBalance + 1000000n],
-      { account: env.namedAccounts.owner },
-    );
-  }
-  await env.erc20.MockUSDC.write.approve(
-    [env.v2.ETHRegistrar.address, aliasPrice],
-    { account: env.namedAccounts.owner },
-  );
-
-  const aliasRegisterReceipt = await env.waitFor(
-    env.v2.ETHRegistrar.write.register(
-      [
-        "alias",
-        env.namedAccounts.owner.address,
-        aliasSecret,
-        zeroAddress,
-        testNameData.resolver,
-        aliasDuration,
-        aliasPaymentToken,
-        aliasReferrer,
-      ],
-      { account: env.namedAccounts.owner },
-    ),
-  );
-  trackGas("register(alias)", aliasRegisterReceipt);
-
-  const testResolver = getContract({
-    address: testNameData.resolver,
-    abi: PermissionedResolverAbi,
-    client: env.client,
-  });
   const aliasTx = await env.waitFor(
-    testResolver.write.setAlias(
-      [dnsEncodeName("alias.eth"), dnsEncodeName("test.eth")],
-      { account: env.namedAccounts.owner },
-    ),
+    env.namedAccounts.owner.resolver.write.linkToNode([
+      dnsEncodeName("alias.eth"),
+      namehash("test.eth"),
+    ]),
   );
-  trackGas("setAlias(alias→test)", aliasTx);
+  trackGas("link(alias→test)", aliasTx);
   console.log("✓ alias.eth → test.eth alias created");
-
-  // Set records for sub.test.eth on test.eth's resolver so sub.alias.eth resolves via alias
-  console.log(
-    "\nSetting records for sub.test.eth (for sub.alias.eth alias resolution)",
-  );
-  const subTestNode = namehash("sub.test.eth");
-  const setSubAddrTx = await env.waitFor(
-    testResolver.write.setAddr(
-      [subTestNode, 60n, env.namedAccounts.owner.address],
-      {
-        account: env.namedAccounts.owner,
-      },
-    ),
-  );
-  trackGas("setAddr(sub.test.eth)", setSubAddrTx);
-  const setSubTextTx = await env.waitFor(
-    testResolver.write.setText(
-      [subTestNode, "description", "sub.test.eth (via alias)"],
-      { account: env.namedAccounts.owner },
-    ),
-  );
-  trackGas("setText(sub.test.eth)", setSubTextTx);
-  console.log(
-    "✓ sub.test.eth records set — sub.alias.eth should resolve via alias",
-  );
 
   // Create sub2.parent.eth with 1-year expiry to demonstrate subname expiration
   const { timestamp } = await env.client.getBlock();
@@ -218,7 +121,7 @@ export async function testNames(env: DevnetEnvironment) {
   ];
   for (const name of namesWithSubregistries) {
     const canonicalRegistry =
-      await env.v2.UniversalResolver.read.findCanonicalRegistry([
+      await env.v2.UniversalHelper.read.findCanonicalRegistry([
         dnsEncodeName(name),
       ]);
     if (canonicalRegistry === zeroAddress) {
@@ -228,9 +131,7 @@ export async function testNames(env: DevnetEnvironment) {
     }
 
     const canonicalNameBytes =
-      await env.v2.UniversalResolver.read.findCanonicalName([
-        canonicalRegistry,
-      ]);
+      await env.v2.UniversalHelper.read.findCanonicalName([canonicalRegistry]);
     const canonicalName =
       canonicalNameBytes && canonicalNameBytes !== "0x"
         ? dnsDecodeName(canonicalNameBytes)
@@ -251,24 +152,13 @@ export async function testNames(env: DevnetEnvironment) {
 
   // With PermissionedResolver (node-keyed), children of linked names need an alias so
   // that wallet.linked.parent.eth resolves to the same records as wallet.sub1.sub2.parent.eth
-  const walletData = await getNameData(env, "wallet.sub1.sub2.parent.eth");
-  if (walletData?.resolver && walletData.resolver !== zeroAddress) {
-    const walletResolver = getContract({
-      address: walletData.resolver,
-      abi: PermissionedResolverAbi,
-      client: env.client,
-    });
-    await walletResolver.write.setAlias(
-      [
-        dnsEncodeName("linked.parent.eth"),
-        dnsEncodeName("sub1.sub2.parent.eth"),
-      ],
-      { account: env.namedAccounts.owner },
-    );
-    console.log(
-      "✓ Set alias on wallet resolver: linked.parent.eth → sub1.sub2.parent.eth",
-    );
-  }
+  await env.namedAccounts.owner.resolver.write.linkToNode([
+    dnsEncodeName("sub1.sub2.parent.eth"),
+    namehash("linked.parent.eth"),
+  ]);
+  console.log(
+    "✓ Set alias on wallet resolver: linked.parent.eth → sub1.sub2.parent.eth",
+  );
 
   // Change roles on changerole.eth
   const roleReceipts = await changeRole(
@@ -324,15 +214,6 @@ export async function testNames(env: DevnetEnvironment) {
 
   await showName(env, allNames);
 
-  // Show alias mappings for names that may have aliases
-  const aliasCandidates = [
-    "alias.eth",
-    "sub.alias.eth",
-    "linked.parent.eth",
-    "wallet.linked.parent.eth",
-  ];
-  await showAlias(env, aliasCandidates);
-
   // Verify all names are properly registered
   await verifyNames(env, allNames);
 
@@ -374,7 +255,7 @@ async function verifyNames(env: DevnetEnvironment, names: string[]) {
     remainder.delete(name);
     try {
       const addrCall = encodeFunctionData({
-        abi: PermissionedResolverAbi,
+        abi: ADDR_ABI,
         functionName: "addr",
         args: [namehash(name)],
       });

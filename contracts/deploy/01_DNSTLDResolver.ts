@@ -1,4 +1,13 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_ENS } from "generated/abis/ENS.js";
+import type { Abi_OffchainDNSResolver } from "generated/abis/OffchainDNSResolver.js";
+import type { Abi_SimplePublicSuffixList } from "generated/abis/SimplePublicSuffixList.js";
+import type { Abi_DNSSECImpl } from "generated/abis/DNSSECImpl.js";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IGatewayProvider } from "generated/abis/IGatewayProvider.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_DNSTLDResolver } from "generated/artifacts/DNSTLDResolver.js";
+import { Artifact_BatchRegistrar } from "generated/artifacts/BatchRegistrar.js";
 import {
   fetchPublicSuffixes,
   filterAvailableSuffixes,
@@ -15,37 +24,26 @@ export default execute(
     namedAccounts: { deployer },
     tags,
   }) => {
-    const ensRegistry =
-      await getV1<(typeof artifacts.ENSRegistry)["abi"]>("ENSRegistry");
-
-    const dnsTLDResolverV1 = await getV1<
-      (typeof artifacts.OffchainDNSResolver)["abi"]
-    >("OffchainDNSResolver");
-
-    const publicSuffixList = await getV1<
-      (typeof artifacts.SimplePublicSuffixList)["abi"]
-    >("SimplePublicSuffixList");
-
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const dnssecOracle =
-      await getV1<(typeof artifacts.DNSSECImpl)["abi"]>("DNSSECImpl");
-
-    const batchGatewayProvider = await getV1<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >("BatchGatewayProvider");
-
-    const dnssecGatewayProvider = get<
-      (typeof artifacts.GatewayProvider)["abi"]
-    >("DNSSECGatewayProvider");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const ensRegistry = await getV1<Abi_ENS>("ENSRegistry");
+    const dnsTLDResolverV1 = await getV1<Abi_OffchainDNSResolver>(
+      "OffchainDNSResolver",
+    );
+    const publicSuffixList = await getV1<Abi_SimplePublicSuffixList>(
+      "SimplePublicSuffixList",
+    );
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const dnssecOracle = await getV1<Abi_DNSSECImpl>("DNSSECImpl");
+    const batchGatewayProvider = await getV1<Abi_IGatewayProvider>(
+      "BatchGatewayProvider",
+    );
+    const dnssecGatewayProvider = get<Abi_IGatewayProvider>(
+      "DNSSECGatewayProvider",
+    );
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     const dnsTLDResolver = await deploy("DNSTLDResolver", {
       account: deployer,
-      artifact: artifacts.DNSTLDResolver,
+      artifact: Artifact_DNSTLDResolver,
       args: [
         ensRegistry.address,
         dnsTLDResolverV1.address,
@@ -57,24 +55,25 @@ export default execute(
       ],
     });
 
-    const candidates = tags.local
+    const allSuffixes = tags.local
       ? ["com", "org", "net", "xyz"]
       : await fetchPublicSuffixes();
-    const suffixes = await filterAvailableSuffixes({
+
+    const publicTLDs = await filterAvailableSuffixes({
       read,
       publicSuffixList,
       rootRegistry,
-      candidates,
+      candidates: allSuffixes.filter((x) => !x.includes(".")), // only TLDs
     });
 
-    if (suffixes.length === 0) {
-      console.warn("  - No suffixes found");
+    if (!publicTLDs.length) {
+      console.warn("  - No public DNS TLDs found");
       return;
     }
 
     const batchRegistrar = await deploy("RootBatchRegistrar", {
       account: deployer,
-      artifact: artifacts.BatchRegistrar,
+      artifact: Artifact_BatchRegistrar,
       args: [rootRegistry.address, deployer],
     });
 
@@ -84,11 +83,11 @@ export default execute(
       rootRegistry,
       batchRegistrar,
       resolver: dnsTLDResolver.address,
-      suffixes,
+      suffixes: publicTLDs,
     });
   },
   {
-    tags: ["DNSTLDResolver", "v2"],
+    tags: ["DNSTLDResolver", "v2", "migration:phase1:deploy-v2"],
     dependencies: [
       "RootRegistry",
       "ENSRegistry",
@@ -98,9 +97,6 @@ export default execute(
       "BatchGatewayProvider",
       "DNSSECGatewayProvider",
       "ContractNamer",
-      // Run the v1 root-TLD mirror first so it claims root TLDs for v1 fallback;
-      // this resolver then registers only the remaining (non-root) public suffixes.
-      "DNSV1MirrorTLDs",
     ],
   },
 );

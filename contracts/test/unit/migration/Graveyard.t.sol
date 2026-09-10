@@ -7,6 +7,9 @@ import {
     CANNOT_UNWRAP,
     PARENT_CANNOT_CONTROL
 } from "@ens/contracts/wrapper/INameWrapper.sol";
+
+import {console} from "forge-std/console.sol";
+
 import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
@@ -17,6 +20,17 @@ import {MigrationControllerFixture} from "~test/fixtures/MigrationControllerFixt
 
 contract GraveyardTest is MigrationControllerFixture {
     uint256 constant N = 10;
+
+    /// @dev Batch size for the gas measurements. Large enough that the fixed
+    ///      per-transaction overhead amortises to noise.
+    uint256 constant GAS_BATCH = 50;
+
+    /// @dev Band the measured per-name cost must sit inside. Wide enough to
+    ///      survive compiler and dependency churn, tight enough that a change
+    ///      materially altering the cost of draining the backlog fails here
+    ///      first. The measured figure sits around fifty thousand.
+    uint256 constant GAS_PER_NAME_MIN = 20_000;
+    uint256 constant GAS_PER_NAME_MAX = 70_000;
 
     function setUp() external {
         deployMigrationControllerFixture();
@@ -499,5 +513,50 @@ contract GraveyardTest is MigrationControllerFixture {
     function _oneName(bytes memory name) internal pure returns (bytes[] memory names) {
         names = new bytes[](1);
         names[0] = name;
+    }
+
+    /// @dev Registers `count` 2LDs, optionally gives each a resolver, then
+    ///      warps past expiry + grace so every one takes the reclaim branch.
+    function _expired2LDs(uint256 count, bool withResolver) internal returns (bytes[] memory names) {
+        names = new bytes[](count);
+        for (uint256 i; i < count; ++i) {
+            (bytes memory name, ) = registerUnwrapped(_label(i));
+            if (withResolver) {
+                vm.prank(registryV1.owner(NameCoder.namehash(name, 0)));
+                registryV1.setResolver(NameCoder.namehash(name, 0), address(1));
+            }
+            names[i] = name;
+        }
+        _simulateExpiry(names[0]);
+    }
+
+    /// @dev Measures the per-name execution cost of clearing a batch of
+    ///      already-expired 2LDs — the shape the backlog drain submits, and the
+    ///      only figure that turns a name count into a gas budget. Reported as
+    ///      an amortised number, so it carries the batch's fixed overhead and
+    ///      the first name's cold-storage warmup spread across the batch.
+    ///      Calldata is charged at transaction level and is not included.
+    function _measureClearPerName(uint256 count, bool withResolver)
+        internal
+        returns (uint256 perName)
+    {
+        bytes[] memory names = _expired2LDs(count, withResolver);
+        uint256 before = gasleft();
+        graveyard.clear(names);
+        perName = (before - gasleft()) / count;
+    }
+
+    function test_gas_clear_expired2LDs_resolverUnset() external {
+        uint256 perName = _measureClearPerName(GAS_BATCH, false);
+        console.log("clear() gas per expired 2LD, resolver unset:", perName);
+        assertGt(perName, GAS_PER_NAME_MIN, "below band");
+        assertLt(perName, GAS_PER_NAME_MAX, "above band");
+    }
+
+    function test_gas_clear_expired2LDs_resolverSet() external {
+        uint256 perName = _measureClearPerName(GAS_BATCH, true);
+        console.log("clear() gas per expired 2LD, resolver set:", perName);
+        assertGt(perName, GAS_PER_NAME_MIN, "below band");
+        assertLt(perName, GAS_PER_NAME_MAX, "above band");
     }
 }

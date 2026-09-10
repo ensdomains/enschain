@@ -1,4 +1,6 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_UniversalResolver } from "generated/abis/UniversalResolver.js";
+import type { Abi_UpgradableUniversalResolverProxy } from "generated/abis/UpgradableUniversalResolverProxy.js";
 import { getAddress, zeroAddress } from "viem";
 
 import {
@@ -18,9 +20,9 @@ export default execute(
   }) => {
     if (tags.local) return true;
 
-    const topUrp = get<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
-    >("UpgradableUniversalResolverProxy");
+    const topUrp = get<Abi_UpgradableUniversalResolverProxy>(
+      "UpgradableUniversalResolverProxy",
+    );
 
     // Only a freshly bootstrapped top URP with an unset implementation needs
     // initializing to v1. An adopted top URP already serves either v1 or the
@@ -36,9 +38,7 @@ export default execute(
     }
 
     const v1UniversalResolver =
-      await getV1<(typeof artifacts.UniversalResolver)["abi"]>(
-        "UniversalResolver",
-      );
+      await getV1<Abi_UniversalResolver>("UniversalResolver");
 
     const ownerLabel = externalTopProxyOwnerLabel(tags);
     if (ownerLabel) {

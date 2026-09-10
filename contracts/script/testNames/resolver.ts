@@ -1,7 +1,8 @@
-import { type Address, namehash } from "viem";
+import type { Address } from "viem";
 
 import type { DevnetAccount, DevnetEnvironment } from "../setup.js";
 import { trackGas } from "./gas.js";
+import { COIN_TYPE_ETH, dnsEncodeName } from "../../test/utils/utils.js";
 
 /**
  * Deploy a resolver and set default records
@@ -17,7 +18,6 @@ export async function setupResolver(
   shouldTrackGas: boolean = false,
 ) {
   const { resolver } = account;
-  const node = namehash(name);
 
   if (shouldTrackGas) {
     trackGas("deployResolver", resolver.deploymentReceipt);
@@ -26,7 +26,11 @@ export async function setupResolver(
   // Set ETH address (coin type 60)
   if (records.address) {
     const receipt = await env.waitFor(
-      resolver.write.setAddr([node, 60n, records.address]),
+      resolver.write.setAddress([
+        dnsEncodeName(name),
+        COIN_TYPE_ETH,
+        records.address,
+      ]),
     );
     if (shouldTrackGas) trackGas(`setAddr(${name})`, receipt);
   }
@@ -34,7 +38,11 @@ export async function setupResolver(
   // Set description text record
   if (records.description) {
     const receipt = await env.waitFor(
-      resolver.write.setText([node, "description", records.description]),
+      resolver.write.setText([
+        dnsEncodeName(name),
+        "description",
+        records.description,
+      ]),
     );
     if (shouldTrackGas) trackGas(`setText(${name})`, receipt);
   }

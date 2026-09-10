@@ -26,7 +26,7 @@ export async function getNameData(
   name: string,
   account: Account = env.namedAccounts.deployer,
 ) {
-  const regs = await env.v2.UniversalResolver.read.findRegistries([
+  const regs = await env.v2.UniversalHelper.read.findRegistries([
     dnsEncodeName(name),
   ]);
   if (regs.length < 2 || regs[1] === zeroAddress) return; // no parent

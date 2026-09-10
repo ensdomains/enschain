@@ -1,19 +1,18 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_INameWrapper } from "generated/abis/INameWrapper.js";
+import type { Abi_IPermissionedRegistry } from "generated/abis/IPermissionedRegistry.js";
+import type { Abi_IContractNamer } from "generated/abis/IContractNamer.js";
+import { Artifact_PublicResolverV2 } from "generated/artifacts/PublicResolverV2.js";
 
 export default execute(
   async ({ deploy, get, getV1, namedAccounts: { deployer } }) => {
-    const nameWrapper =
-      await getV1<(typeof artifacts.NameWrapper)["abi"]>("NameWrapper");
-
-    const rootRegistry =
-      get<(typeof artifacts.PermissionedRegistry)["abi"]>("RootRegistry");
-
-    const contractNamer =
-      get<(typeof artifacts.IContractNamer)["abi"]>("ContractNamer");
+    const nameWrapper = await getV1<Abi_INameWrapper>("NameWrapper");
+    const rootRegistry = get<Abi_IPermissionedRegistry>("RootRegistry");
+    const contractNamer = get<Abi_IContractNamer>("ContractNamer");
 
     await deploy("PublicResolverV2", {
       account: deployer,
-      artifact: artifacts.PublicResolverV2,
+      artifact: Artifact_PublicResolverV2,
       args: [nameWrapper.address, rootRegistry.address, contractNamer.address],
     });
   },

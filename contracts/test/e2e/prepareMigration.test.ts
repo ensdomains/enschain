@@ -14,7 +14,7 @@ const ROLE_RENEW = ROLES.REGISTRY.RENEW;
 const ROLE_RENEW_ADMIN = ROLES.ADMIN.REGISTRY.RENEW;
 
 describe("PrepareMigration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({
     resetOnEach: true,

@@ -41,7 +41,7 @@ import {
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 describe("PreMigration", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   const csvFilePath = join(tmpdir(), "test-premigration.csv");
   const cleanupFiles = [
@@ -263,12 +263,7 @@ describe("PreMigration", () => {
     const { user } = env.namedAccounts;
 
     const fiveDays = 5 * 24 * 60 * 60;
-    const v1Expiry = await registerV1Name(
-      env,
-      label,
-      user.address,
-      fiveDays,
-    );
+    const v1Expiry = await registerV1Name(env, label, user.address, fiveDays);
 
     createCSVFile(csvFilePath, [label]);
     const bonusPeriodDays = 90;
@@ -368,7 +363,9 @@ describe("PreMigration", () => {
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
     createCSVFile(csvFilePath, [label]);
-    const args = buildMainArgs(env, csvFilePath, { useEnvVarForPrivateKey: true });
+    const args = buildMainArgs(env, csvFilePath, {
+      useEnvVarForPrivateKey: true,
+    });
     await main(args);
 
     const state = await verifyV2State(env, label);
@@ -381,7 +378,8 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
-    process.env.PREMIGRATION_PRIVATE_KEY = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    process.env.PREMIGRATION_PRIVATE_KEY =
+      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
@@ -426,7 +424,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -452,7 +455,11 @@ describe("PreMigration", () => {
     await registerV1Name(env, expiredLabel, user.address, 1);
     await setTimeout(2000);
 
-    createCSVFile(csvFilePath, [validLabel, expiredLabel, neverRegisteredLabel]);
+    createCSVFile(csvFilePath, [
+      validLabel,
+      expiredLabel,
+      neverRegisteredLabel,
+    ]);
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
 
@@ -473,7 +480,12 @@ describe("PreMigration", () => {
     const neverLabel = "bvnever";
     const { user, deployer } = env.namedAccounts;
 
-    const validExpiry = await registerV1Name(env, validLabel, user.address, ONE_YEAR_SECONDS);
+    const validExpiry = await registerV1Name(
+      env,
+      validLabel,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
     await registerV1Name(env, expiredLabel, user.address, 1);
     await registerV1Name(env, registeredLabel, user.address, ONE_YEAR_SECONDS);
     await setTimeout(2000);
@@ -489,7 +501,9 @@ describe("PreMigration", () => {
 
     const rpcUrl = `http://${env.hostPort}`;
     const client = createWalletClient({
-      account: privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"),
+      account: privateKeyToAccount(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      ),
       chain: mainnet,
       transport: http(rpcUrl, { retryCount: 0, timeout: 30000 }),
     }).extend(publicActions);
@@ -560,7 +574,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -588,7 +607,12 @@ describe("PreMigration", () => {
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -608,16 +632,17 @@ describe("PreMigration", () => {
   });
 
   it("handles batch of names with long labels (higher calldata cost)", async () => {
-    const labels = [
-      "a".repeat(63),
-      "b".repeat(63),
-      "c".repeat(63),
-    ];
+    const labels = ["a".repeat(63), "b".repeat(63), "c".repeat(63)];
     const { user } = env.namedAccounts;
 
     const expiries: bigint[] = [];
     for (const label of labels) {
-      const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+      const expiry = await registerV1Name(
+        env,
+        label,
+        user.address,
+        ONE_YEAR_SECONDS,
+      );
       expiries.push(expiry);
     }
 
@@ -652,11 +677,13 @@ describe("PreMigration", () => {
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(2);
     expect(checkpoint!.skippedCount).toBe(1);
+    expect(checkpoint!.skippedNeverRegisteredCount).toBe(1);
+    expect(checkpoint!.skippedPastGraceCount).toBe(0);
     expect(checkpoint!.failureCount).toBe(0);
     expect(checkpoint!.totalProcessed).toBe(3);
   });
 
-  it("checkpoint tracks failures for already-registered names", async () => {
+  it("checkpoint tracks already-registered names separately from failures", async () => {
     const registeredLabel = "cptregfail";
     const validLabel = "cptregvalid";
     const { user, deployer } = env.namedAccounts;
@@ -680,7 +707,8 @@ describe("PreMigration", () => {
     const checkpoint = readTestCheckpoint();
     expect(checkpoint).not.toBeNull();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(1);
+    expect(checkpoint!.alreadyRegisteredCount).toBe(1);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("checkpoint tracks renewed count separately", async () => {
@@ -705,6 +733,25 @@ describe("PreMigration", () => {
     const checkpointAfter = readTestCheckpoint();
     expect(checkpointAfter!.renewedCount).toBe(1);
     expect(checkpointAfter!.successCount).toBe(0);
+  });
+
+  it("fresh run clears a stale checkpoint left by a previous run", async () => {
+    writeTestCheckpoint(
+      createTestCheckpoint({
+        totalProcessed: 5,
+        successCount: 5,
+        totalExpected: 5,
+      }),
+    );
+
+    // Header-only CSV: a fresh run processes zero batches and writes no new
+    // checkpoint, so the stale one must be cleared rather than left to be
+    // mistaken for this run's result.
+    createCSVFile(csvFilePath, []);
+    const args = buildMainArgs(env, csvFilePath);
+    await main(args);
+
+    expect(readTestCheckpoint()).toBeNull();
   });
 
   // ─── Invalid label handling ────────────────────────────────────────
@@ -744,10 +791,7 @@ describe("PreMigration", () => {
   });
 
   it("fails fast when header has no labelName or label column", async () => {
-    const csvContent = [
-      "node,name,owner",
-      "n,foo,0x00",
-    ].join("\n");
+    const csvContent = ["node,name,owner", "n,foo,0x00"].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -793,13 +837,12 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
 
-    const csvContent =
-      [
-        "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
-        `,,,,,,${label},,`,
-        "",
-        "",
-      ].join("\n");
+    const csvContent = [
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate",
+      `,,,,,,${label},,`,
+      "",
+      "",
+    ].join("\n");
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -837,10 +880,9 @@ describe("PreMigration", () => {
 
     await registerV1Name(env, winning, user.address, ONE_YEAR_SECONDS);
 
-    const csvContent = [
-      "label,labelName,extra",
-      `${losing},${winning},x`,
-    ].join("\n");
+    const csvContent = ["label,labelName,extra", `${losing},${winning},x`].join(
+      "\n",
+    );
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
@@ -863,10 +905,7 @@ describe("PreMigration", () => {
     writeFileSync(csvFilePath, csvContent);
 
     const args = buildMainArgs(env, csvFilePath);
-    await expectMainToExitWithCsvError(args, [
-      `${csvFilePath}:3`,
-      "is blank",
-    ]);
+    await expectMainToExitWithCsvError(args, [`${csvFilePath}:3`, "is blank"]);
   });
 
   it("skips labels exceeding 255 bytes and encoded labelhashes in CSV", async () => {
@@ -900,7 +939,10 @@ describe("PreMigration", () => {
   // ─── Edge cases ────────────────────────────────────────────────────
 
   it("handles empty CSV file gracefully", async () => {
-    writeFileSync(csvFilePath, "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n");
+    writeFileSync(
+      csvFilePath,
+      "node,name,labelHash,owner,parentName,parentLabelHash,labelName,registrationDate,expiryDate\n",
+    );
 
     const args = buildMainArgs(env, csvFilePath);
     await main(args);
@@ -913,7 +955,12 @@ describe("PreMigration", () => {
     const label = "singlename";
     const { user } = env.namedAccounts;
 
-    const expiry = await registerV1Name(env, label, user.address, ONE_YEAR_SECONDS);
+    const expiry = await registerV1Name(
+      env,
+      label,
+      user.address,
+      ONE_YEAR_SECONDS,
+    );
 
     createCSVFile(csvFilePath, [label]);
     const args = buildMainArgs(env, csvFilePath);
@@ -1139,7 +1186,10 @@ describe("PreMigration", () => {
     }
 
     createCSVFile(csvFilePath, labels);
-    const args = buildMainArgs(env, csvFilePath, { dryRun: true, batchSize: 1 });
+    const args = buildMainArgs(env, csvFilePath, {
+      dryRun: true,
+      batchSize: 1,
+    });
     await main(args);
 
     for (const label of labels) {
@@ -1182,7 +1232,7 @@ describe("PreMigration", () => {
     expect(checkpoint!.failureCount).toBe(0);
   });
 
-  it("multiple registered names in batch are all counted as failures", async () => {
+  it("multiple already-registered names in batch are all counted separately from failures", async () => {
     const registeredLabels = ["mreg1", "mreg2"];
     const validLabel = "mregvalid";
     const { user, deployer } = env.namedAccounts;
@@ -1208,7 +1258,8 @@ describe("PreMigration", () => {
 
     const checkpoint = readTestCheckpoint();
     expect(checkpoint!.successCount).toBe(1);
-    expect(checkpoint!.failureCount).toBe(2);
+    expect(checkpoint!.alreadyRegisteredCount).toBe(2);
+    expect(checkpoint!.failureCount).toBe(0);
   });
 
   it("re-running same batch after successful reservation uses renewal path", async () => {

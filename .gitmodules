@@ -28,3 +28,18 @@
 [submodule "contracts/lib/solady"]
 	path = contracts/lib/solady
 	url = https://github.com/vectorized/solady
+[submodule "contracts/lib/nexus"]
+	path = contracts/lib/nexus
+	url = https://github.com/rhinestonewtf/rhinestone-nexus
+[submodule "contracts/lib/account-abstraction"]
+	path = contracts/lib/account-abstraction
+	url = https://github.com/eth-infinitism/account-abstraction
+[submodule "contracts/lib/composability"]
+	path = contracts/lib/composability
+	url = https://github.com/bcnmy/composability
+[submodule "contracts/lib/excessively-safe-call"]
+	path = contracts/lib/excessively-safe-call
+	url = https://github.com/nomad-xyz/ExcessivelySafeCall
+[submodule "contracts/lib/sentinellist"]
+	path = contracts/lib/sentinellist
+	url = https://github.com/rhinestonewtf/sentinellist

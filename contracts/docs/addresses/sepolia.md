@@ -4,36 +4,41 @@
 
 - **Network:** sepolia
 - **Chain ID:** 11155111
-- **Deployed at:** 2026-06-29T05:35:12.452Z
+- **Deployed at:** 2026-07-30T17:34:25.243Z
 
 | Contract | Address |
 | --- | --- |
-| ApprovedUpgradeGate | [0xc319c9efaae0bd01fec99b7f709fe41510a20595](https://sepolia.etherscan.io/address/0xc319c9efaae0bd01fec99b7f709fe41510a20595) |
-| BatchRegistrar | [0xfe2aab6df1cbff84534ce65d9e4a755ba02d6795](https://sepolia.etherscan.io/address/0xfe2aab6df1cbff84534ce65d9e4a755ba02d6795) |
-| ContractNamer | [0x68658a771044873906fc9b6e9f278ac5a0501342](https://sepolia.etherscan.io/address/0x68658a771044873906fc9b6e9f278ac5a0501342) |
-| DefaultReverseRegistrarAdapter | [0x1f7b9461d17d5cf43553253c6b78d252d9575954](https://sepolia.etherscan.io/address/0x1f7b9461d17d5cf43553253c6b78d252d9575954) |
-| DNSV1MirrorRootBatchRegistrar | [0x08c297214c7ea8de81e2d984d66dcc1684054037](https://sepolia.etherscan.io/address/0x08c297214c7ea8de81e2d984d66dcc1684054037) |
-| ENSV1Resolver | [0x5339161a7896ca9841ecc034a49edca40f7b9491](https://sepolia.etherscan.io/address/0x5339161a7896ca9841ecc034a49edca40f7b9491) |
-| ENSV2Resolver | [0x6f988f299926ce361450db390d66dd604dcd8b21](https://sepolia.etherscan.io/address/0x6f988f299926ce361450db390d66dd604dcd8b21) |
-| ETHRegistrar | [0xa4449a0dd2b83007553d9b1d28b583a46a805a30](https://sepolia.etherscan.io/address/0xa4449a0dd2b83007553d9b1d28b583a46a805a30) |
-| ETHRegistry | [0x67b728a792e789a8978b30cf1b3b641f19354b43](https://sepolia.etherscan.io/address/0x67b728a792e789a8978b30cf1b3b641f19354b43) |
-| ETHRenewerV1 | [0x1be516ae1b72765ae55bd5e9ca628c9058a1c622](https://sepolia.etherscan.io/address/0x1be516ae1b72765ae55bd5e9ca628c9058a1c622) |
-| Graveyard | [0x6f4bf58ac55e0018589b2d9734ed8bb82740124d](https://sepolia.etherscan.io/address/0x6f4bf58ac55e0018589b2d9734ed8bb82740124d) |
-| LabelStore | [0xb03524289c16424f71802a1794c29c7bd1b9f577](https://sepolia.etherscan.io/address/0xb03524289c16424f71802a1794c29c7bd1b9f577) |
-| LockedMigrationController | [0x681802eff57b83edce99d688c023ab1284495176](https://sepolia.etherscan.io/address/0x681802eff57b83edce99d688c023ab1284495176) |
+| BatchRegistrar | [0x8b16d15f3e51074d0e06f3cf4a0053f7cb92a7fb](https://sepolia.etherscan.io/address/0x8b16d15f3e51074d0e06f3cf4a0053f7cb92a7fb) |
+| ContractNamer | [0xa48eb920950d7f4963d1d87f15f195624fbfbd6a](https://sepolia.etherscan.io/address/0xa48eb920950d7f4963d1d87f15f195624fbfbd6a) |
+| DefaultReverseRegistrarAdapter | [0x7a84e241f862d73960d73c26d68c3c8f89f0b18f](https://sepolia.etherscan.io/address/0x7a84e241f862d73960d73c26d68c3c8f89f0b18f) |
+| DNSV1MirrorRootBatchRegistrar | [0xdc5c31f7ea5e31efc6d5c68dd568f4c4a169804b](https://sepolia.etherscan.io/address/0xdc5c31f7ea5e31efc6d5c68dd568f4c4a169804b) |
+| ENSV1Resolver | [0xae66c62acae72098bdac57d8e8aed53ef000b2ba](https://sepolia.etherscan.io/address/0xae66c62acae72098bdac57d8e8aed53ef000b2ba) |
+| ENSV2Resolver | [0x508cb4e4596429ca98a1bb3112d88d18f92456b5](https://sepolia.etherscan.io/address/0x508cb4e4596429ca98a1bb3112d88d18f92456b5) |
+| ETHRegistrar | [0xa88553f454b77203b0d036a05c894d555eaaa2cc](https://sepolia.etherscan.io/address/0xa88553f454b77203b0d036a05c894d555eaaa2cc) |
+| ETHRegistry | [0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2](https://sepolia.etherscan.io/address/0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2) |
+| ETHRenewerV1 | [0x4ad56feb5fc7b8298db06e88fd5cbc41d64602fa](https://sepolia.etherscan.io/address/0x4ad56feb5fc7b8298db06e88fd5cbc41d64602fa) |
+| Graveyard | [0xf83fe2658f702a072f3c7b0dc4a0ab8c7b044750](https://sepolia.etherscan.io/address/0xf83fe2658f702a072f3c7b0dc4a0ab8c7b044750) |
+| HCAOwnerAndSessionValidator | [0x5f249fca8bb4949105651146858c347e8bfb0f7e](https://sepolia.etherscan.io/address/0x5f249fca8bb4949105651146858c347e8bfb0f7e) |
+| HCAUpgradeGate | [0x3a121fc283e53d2f45564edf97dc8685ede35005](https://sepolia.etherscan.io/address/0x3a121fc283e53d2f45564edf97dc8685ede35005) |
+| LabelStore | [0x532cd0cc4ac0793d838f71a67d29b2d790d18777](https://sepolia.etherscan.io/address/0x532cd0cc4ac0793d838f71a67d29b2d790d18777) |
+| LockedMigrationController | [0x5c39e36a69a9897f08954c71acb1f36e0bd4f409](https://sepolia.etherscan.io/address/0x5c39e36a69a9897f08954c71acb1f36e0bd4f409) |
 | ManagedUniversalResolverProxy | [0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1](https://sepolia.etherscan.io/address/0x6d80F2172CFdEc5730fE683860C33d26fC42e6F1) |
-| MigrationHelper | [0xd54a53c1567b26f9653c8565dccc39bceb6ab327](https://sepolia.etherscan.io/address/0xd54a53c1567b26f9653c8565dccc39bceb6ab327) |
-| MockDAI | [0xe33a01a41ee4a68616b5278183aa88808326ed8e](https://sepolia.etherscan.io/address/0xe33a01a41ee4a68616b5278183aa88808326ed8e) |
-| MockUSDC | [0xd3322b29a7bdee707d1684676f149bf41aa3422f](https://sepolia.etherscan.io/address/0xd3322b29a7bdee707d1684676f149bf41aa3422f) |
-| PermissionedResolverImpl | [0x7e4b2d59938930168024201752ee5503df402303](https://sepolia.etherscan.io/address/0x7e4b2d59938930168024201752ee5503df402303) |
-| PublicResolverSet | [0x24be557df149980a52241dd78a376d78f73689a5](https://sepolia.etherscan.io/address/0x24be557df149980a52241dd78a376d78f73689a5) |
-| PublicResolverV2 | [0xd25f66dd4ff61486c2c5c1e6201a23576698d3df](https://sepolia.etherscan.io/address/0xd25f66dd4ff61486c2c5c1e6201a23576698d3df) |
-| ReverseRegistrarAdapter | [0x94e64e29e25533f93ba0a430646ae42cb47bf8f3](https://sepolia.etherscan.io/address/0x94e64e29e25533f93ba0a430646ae42cb47bf8f3) |
-| RootRegistry | [0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c](https://sepolia.etherscan.io/address/0x11b5bfbe9078d826b1edbdd1cfc12f5828d9f50c) |
-| StandardRentPriceOracle | [0x09340d50a6489e7bfb2959acc4e32bcbc401e203](https://sepolia.etherscan.io/address/0x09340d50a6489e7bfb2959acc4e32bcbc401e203) |
-| UniversalResolverV2 | [0x85edf8b6b7d4211e2b07aa687506b746357b92cf](https://sepolia.etherscan.io/address/0x85edf8b6b7d4211e2b07aa687506b746357b92cf) |
-| UnlockedMigrationController | [0xd021a69db7f9e276a59cbbccf06e7f1e5434215c](https://sepolia.etherscan.io/address/0xd021a69db7f9e276a59cbbccf06e7f1e5434215c) |
+| MigrationHelper | [0x1d8c7aa9862f9b823309ad87a4864fb27c575e85](https://sepolia.etherscan.io/address/0x1d8c7aa9862f9b823309ad87a4864fb27c575e85) |
+| MockDAI | [0x5472c5725a00b7ba11f0794a79d08ade6f4683bd](https://sepolia.etherscan.io/address/0x5472c5725a00b7ba11f0794a79d08ade6f4683bd) |
+| MockUSDC | [0x768f42455a2d082e23ceef7d51e5787c82d67a39](https://sepolia.etherscan.io/address/0x768f42455a2d082e23ceef7d51e5787c82d67a39) |
+| PermissionedResolverImpl | [0x9eae5c2730a7dd16bdd1dee6421a1b91e3b0365e](https://sepolia.etherscan.io/address/0x9eae5c2730a7dd16bdd1dee6421a1b91e3b0365e) |
+| PublicResolverSet | [0xf2794ebd70c1fa74094a9ec653da1c2df9f5a5a9](https://sepolia.etherscan.io/address/0xf2794ebd70c1fa74094a9ec653da1c2df9f5a5a9) |
+| PublicResolverV2 | [0xe7b9a25607e02da8145e4eb1836ca539e53f11f7](https://sepolia.etherscan.io/address/0xe7b9a25607e02da8145e4eb1836ca539e53f11f7) |
+| RegistryUpgradeSet | [0x18d2a9dede9b2347f9443783b96954e37e3b7ae6](https://sepolia.etherscan.io/address/0x18d2a9dede9b2347f9443783b96954e37e3b7ae6) |
+| ReverseRegistrarAdapter | [0x035ae6188ac22ab79b5018039dfbda4ffe7990e9](https://sepolia.etherscan.io/address/0x035ae6188ac22ab79b5018039dfbda4ffe7990e9) |
+| RootRegistry | [0x8115186e8f2e0b0281e86ab91f0f48ba90364354](https://sepolia.etherscan.io/address/0x8115186e8f2e0b0281e86ab91f0f48ba90364354) |
+| StandaloneHCAFactory | [0x900ff7cf617ef9d802178b4ef480491e3a782672](https://sepolia.etherscan.io/address/0x900ff7cf617ef9d802178b4ef480491e3a782672) |
+| StandaloneHCAImplementation | [0xaa761541620fc1a42bb701a26a9f107a9df1e904](https://sepolia.etherscan.io/address/0xaa761541620fc1a42bb701a26a9f107a9df1e904) |
+| StandardRentPriceOracle | [0x8914b66260eb8c4fff795650c3ae8cd335958987](https://sepolia.etherscan.io/address/0x8914b66260eb8c4fff795650c3ae8cd335958987) |
+| TrustedHCASet | [0xb3240a0e6c80984c14def037f4f540edc3502b48](https://sepolia.etherscan.io/address/0xb3240a0e6c80984c14def037f4f540edc3502b48) |
+| UniversalResolverV2 | [0x4a1817d13e9cf196f471725176355c1234b63c70](https://sepolia.etherscan.io/address/0x4a1817d13e9cf196f471725176355c1234b63c70) |
+| UnlockedMigrationController | [0x2fcf83232b93bd29c59db18aaa1d4b62e9f9fc73](https://sepolia.etherscan.io/address/0x2fcf83232b93bd29c59db18aaa1d4b62e9f9fc73) |
 | UpgradableUniversalResolverProxy | [0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe](https://sepolia.etherscan.io/address/0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe) |
-| UserRegistryImpl | [0x840fa461059862ea466a711e8c98c8de732061c0](https://sepolia.etherscan.io/address/0x840fa461059862ea466a711e8c98c8de732061c0) |
-| VerifiableFactory | [0x118bc31a50d559f7015a8da26d54b3b030cdb70f](https://sepolia.etherscan.io/address/0x118bc31a50d559f7015a8da26d54b3b030cdb70f) |
-| WrapperRegistryImpl | [0xcf9f4863a1b44216cfc0be65f4e47b2b9a043924](https://sepolia.etherscan.io/address/0xcf9f4863a1b44216cfc0be65f4e47b2b9a043924) |
+| UserRegistryImpl | [0x624a25d67b59d587752ebec8dded8827dae52050](https://sepolia.etherscan.io/address/0x624a25d67b59d587752ebec8dded8827dae52050) |
+| VerifiableFactory | [0x10dc6333cdfe1fcef624c6e0a8221b91804cd7ef](https://sepolia.etherscan.io/address/0x10dc6333cdfe1fcef624c6e0a8221b91804cd7ef) |
+| WrapperRegistryImpl | [0x433f81a3e8921fc868ae1a04576f135d9a75b0f2](https://sepolia.etherscan.io/address/0x433f81a3e8921fc868ae1a04576f135d9a75b0f2) |

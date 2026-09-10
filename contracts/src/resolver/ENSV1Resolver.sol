@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {IGatewayProvider} from "@ens/contracts/ccipRead/IGatewayProvider.sol";
 import {ENS} from "@ens/contracts/registry/ENS.sol";
 import {RegistryUtils} from "@ens/contracts/universalResolver/RegistryUtils.sol";
 
 import {IContractNamer} from "../reverse-registrar/interfaces/IContractNamer.sol";
+import {LibResolution} from "../universalResolver/libraries/LibResolution.sol";
 
 import {AbstractMirrorResolver} from "./AbstractMirrorResolver.sol";
 
@@ -36,7 +37,8 @@ contract ENSV1Resolver is AbstractMirrorResolver {
     ////////////////////////////////////////////////////////////////////////
 
     /// @inheritdoc AbstractMirrorResolver
-    function _findResolver(bytes calldata name) internal view override returns (address resolver) {
-        (resolver, , ) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+    function _findResolver(bytes calldata name) internal view override returns (address) {
+        (address resolver, , uint256 offset) = RegistryUtils.findResolver(REGISTRY_V1, name, 0);
+        return LibResolution.validateResolver(resolver, offset == 0);
     }
 }

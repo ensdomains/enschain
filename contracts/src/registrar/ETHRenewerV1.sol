@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {
     BaseRegistrarImplementation
 } from "@ens/contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {INameWrapper} from "@ens/contracts/wrapper/INameWrapper.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IPermissionedRegistry} from "../registry/interfaces/IPermissionedRegistry.sol";
 import {LibLabel} from "../utils/LibLabel.sol";
 
 import {AbstractETHRegistrar} from "./AbstractETHRegistrar.sol";
-import {IETHRenewer} from "./interfaces/IETHRenewer.sol";
+import {IETHRenewer, RenewData} from "./interfaces/IETHRenewer.sol";
 import {IRentPriceOracle} from "./interfaces/IRentPriceOracle.sol";
 
-/// @notice `ETHRegistrarController.renew()` stub interface.
-/// @dev Interface selector: `0xacf1a841`
 // https://github.com/ensdomains/ens-contracts/blob/staging/deployments/mainnet/WrappedETHRegistrarController.json
+/// @notice `ETHRegistrarController.renew()` stub interface.
 /// @dev Interface selector: `0xacf1a841`
 interface IWrappedETHRegistrarController {
     /// @notice Renew an ENSv1 name.
@@ -101,16 +101,6 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
         BASE_REGISTRAR.setResolver(resolver);
     }
 
-    /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
-    /// @param labels The labels to sync.
-    function syncWrapper(string[] calldata labels) external {
-        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
-        for (uint256 i; i < labels.length; ++i) {
-            WRAPPED_CONTROLLER.renew(labels[i], 0);
-        }
-        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
-    }
-
     /// @inheritdoc IETHRenewer
     function getRemainingGracePeriod(string calldata label) external view returns (uint64) {
         IPermissionedRegistry.State memory state = ETH_REGISTRY.getState(LibLabel.id(label));
@@ -123,6 +113,36 @@ contract ETHRenewerV1 is AbstractETHRegistrar {
             }
         }
         return 0;
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renew(RenewData calldata rd, IERC20 paymentToken) public override {
+        super.renew(rd, paymentToken);
+        string[] memory labels = new string[](1);
+        labels[0] = rd.label;
+        syncWrapper(labels);
+    }
+
+    /// @inheritdoc IETHRenewer
+    function renewBatch(RenewData[] calldata rds, IERC20 paymentToken) public override {
+        super.renewBatch(rds, paymentToken);
+        if (rds.length > 0) {
+            string[] memory labels = new string[](rds.length);
+            for (uint256 i; i < rds.length; ++i) {
+                labels[i] = rds[i].label;
+            }
+            syncWrapper(labels);
+        }
+    }
+
+    /// @notice Sync `NameWrapper` expiry with `BaseRegistrarImplementation` expiry.
+    /// @param labels The labels to sync.
+    function syncWrapper(string[] memory labels) public {
+        BASE_REGISTRAR.addController(address(NAME_WRAPPER));
+        for (uint256 i; i < labels.length; ++i) {
+            WRAPPED_CONTROLLER.renew(labels[i], 0);
+        }
+        BASE_REGISTRAR.removeController(address(NAME_WRAPPER));
     }
 
     ////////////////////////////////////////////////////////////////////////

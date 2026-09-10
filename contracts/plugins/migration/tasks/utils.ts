@@ -53,7 +53,6 @@ export function requireHttpNetwork(
   return networkConfig as HttpNetworkConfig;
 }
 
-
 export async function defaultHardhatAccount(
   provider: RpcAccountProvider,
 ): Promise<Address | undefined> {

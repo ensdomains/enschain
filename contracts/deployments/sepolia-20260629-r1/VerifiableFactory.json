@@ -1,0 +1,197 @@
+{
+  "address": "0x118bc31a50d559f7015a8da26d54b3b030cdb70f",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "proxy",
+          "type": "address"
+        }
+      ],
+      "name": "VerificationFailed",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "proxyAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "salt",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "name": "ProxyDeployed",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "salt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        }
+      ],
+      "name": "deployProxy",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "proxy",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "proxyLogic",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "proxy",
+          "type": "address"
+        }
+      ],
+      "name": "verifyContract",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "contractName": "VerifiableFactory",
+  "sourceName": "lib/verifiable-factory/src/VerifiableFactory.sol",
+  "bytecode": "0x60a0604052348015600e575f80fd5b506040516019906042565b604051809103905ff0801580156031573d5f803e3d5ffd5b506001600160a01b0316608052604f565b610577806105e883390190565b60805161057b61006d5f395f8181608a01526102ca015261057b5ff3fe608060405234801561000f575f80fd5b506004361061003f575f3560e01c80633d200b45146100435780635d84121a14610072578063813845bc14610085575b5f80fd5b6100566100513660046103bd565b6100ac565b6040516001600160a01b03909116815260200160405180910390f35b61005661008036600461040c565b610177565b6100567f000000000000000000000000000000000000000000000000000000000000000081565b5f813b6100dc57604051632643f15b60e11b81526001600160a01b03831660048201526024015b60405180910390fd5b816001600160a01b03166395c5c9736040518163ffffffff1660e01b81526004016040805180830381865afa925050508015610135575060408051601f3d908101601f19168201909252610132918101906104d2565b60015b1561015357610144848361028a565b15610150579392505050565b50505b604051632643f15b60e11b81526001600160a01b03831660048201526024016100d3565b604080513360208201529081018390525f9081906060016040516020818303038152906040528051906020012090505f6101b0826102c3565b9050818151602083015ff59250826101c6575f80fd5b6040517fd1f578940000000000000000000000000000000000000000000000000000000081526001600160a01b0384169063d1f578949061020d9089908890600401610500565b5f604051808303815f87803b158015610224575f80fd5b505af1158015610236573d5f803e3d5ffd5b5050604080518881526001600160a01b038a81166020830152871693503392507f0a2c575ff341b41da136c9ccae74ec230a927a024d18f0dccf46d123f28f5f54910160405180910390a350509392505050565b5f80610295836102c3565b90505f6102aa848380519060200120306102f5565b6001600160a01b03908116908616149250505092915050565b60606102ef7f000000000000000000000000000000000000000000000000000000000000000083610327565b92915050565b5f604051836040820152846020820152828152600b8101905060ff8153605590206001600160a01b0316949350505050565b6040805160578082526080820190925260609160208201818036833750507f3d604d80600a3d3981f3363d3d373d3d3d363d7300000000000000000000000060208301525060609390931b6034840152507f5af43d82803e903d91602b57fd5bf300000000000000000000000000000000006048830152605782015290565b6001600160a01b03811681146103ba575f80fd5b50565b5f602082840312156103cd575f80fd5b81356103d8816103a6565b9392505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b5f805f6060848603121561041e575f80fd5b8335610429816103a6565b925060208401359150604084013567ffffffffffffffff8082111561044c575f80fd5b818601915086601f83011261045f575f80fd5b813581811115610471576104716103df565b604051601f8201601f19908116603f01168101908382118183101715610499576104996103df565b816040528281528960208487010111156104b1575f80fd5b826020860160208301375f6020848301015280955050505050509250925092565b5f80604083850312156104e3575f80fd5b8251915060208301516104f5816103a6565b809150509250929050565b6001600160a01b0383168152604060208201525f82518060408401528060208501606085015e5f606082850101526060601f19601f830116840101915050939250505056fea2646970667358221220a2f050e74cc5b3f844e447aa64e648d924f349056e519158d08cb5186c794c9164736f6c6343000819003360a0604052348015600e575f80fd5b503360805260805161054d61002a5f395f6096015261054d5ff3fe60806040526004361061003e575f3560e01c80634f1ef2861461007257806385369dd71461008557806395c5c973146100d5578063d1f5789414610106575b6100706100697f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5490565b6001610119565b005b610070610080366004610468565b610172565b348015610090575f80fd5b506100b87f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b3480156100e0575f80fd5b506100e96102ff565b604080519283526001600160a01b039091166020830152016100cc565b610070610114366004610468565b610334565b365f80375f80365f855af4811561015f577f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc54831461015f5763784cf7005f526004601cfd5b3d5f803e80801561016e573d5ff35b3d5ffd5b6001600160a01b0383166101b2576040517f0760838f00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f6101db7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5490565b90506001600160a01b03811661021d576040517f40dde93500000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6040517ff41a143d0000000000000000000000000000000000000000000000000000000081526001600160a01b03828116600483015285919082169063f41a143d90602401602060405180830381865afa15801561027d573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906102a191906104f1565b6102ee576040517fca3316870000000000000000000000000000000000000000000000000000000081526001600160a01b0380841660048301528616602482015260440160405180910390fd5b6102f88286610412565b5050505050565b5f80602080303b035f303c50505f517f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc549091565b8261034657630760838f5f526004601cfd5b7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc541561037a57630dc149f05f526004601cfd5b823b61039157634c9c8ce35f52826020526024601cfd5b827f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc55827fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b5f80a2808080156103ff5781845f375f80835f885af4806103f9573d5f803e3d5ffd5b506102f8565b34156102f85763b398979f5f526004601cfd5b365f80375f80365f855af48061042a573d5f803e3d5ffd5b507f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc54811461046057632be618835f526004601cfd5b3d5f803e3d5ff35b5f805f6040848603121561047a575f80fd5b83356001600160a01b0381168114610490575f80fd5b9250602084013567ffffffffffffffff808211156104ac575f80fd5b818601915086601f8301126104bf575f80fd5b8135818111156104cd575f80fd5b8760208285010111156104de575f80fd5b6020830194508093505050509250925092565b5f60208284031215610501575f80fd5b81518015158114610510575f80fd5b939250505056fea264697066735822122060c270743b281c1904fc204ee55af68b77d01bd9bf139bd3b5efea97d33c52ce64736f6c63430008190033",
+  "deployedBytecode": "0x608060405234801561000f575f80fd5b506004361061003f575f3560e01c80633d200b45146100435780635d84121a14610072578063813845bc14610085575b5f80fd5b6100566100513660046103bd565b6100ac565b6040516001600160a01b03909116815260200160405180910390f35b61005661008036600461040c565b610177565b6100567f000000000000000000000000000000000000000000000000000000000000000081565b5f813b6100dc57604051632643f15b60e11b81526001600160a01b03831660048201526024015b60405180910390fd5b816001600160a01b03166395c5c9736040518163ffffffff1660e01b81526004016040805180830381865afa925050508015610135575060408051601f3d908101601f19168201909252610132918101906104d2565b60015b1561015357610144848361028a565b15610150579392505050565b50505b604051632643f15b60e11b81526001600160a01b03831660048201526024016100d3565b604080513360208201529081018390525f9081906060016040516020818303038152906040528051906020012090505f6101b0826102c3565b9050818151602083015ff59250826101c6575f80fd5b6040517fd1f578940000000000000000000000000000000000000000000000000000000081526001600160a01b0384169063d1f578949061020d9089908890600401610500565b5f604051808303815f87803b158015610224575f80fd5b505af1158015610236573d5f803e3d5ffd5b5050604080518881526001600160a01b038a81166020830152871693503392507f0a2c575ff341b41da136c9ccae74ec230a927a024d18f0dccf46d123f28f5f54910160405180910390a350509392505050565b5f80610295836102c3565b90505f6102aa848380519060200120306102f5565b6001600160a01b03908116908616149250505092915050565b60606102ef7f000000000000000000000000000000000000000000000000000000000000000083610327565b92915050565b5f604051836040820152846020820152828152600b8101905060ff8153605590206001600160a01b0316949350505050565b6040805160578082526080820190925260609160208201818036833750507f3d604d80600a3d3981f3363d3d373d3d3d363d7300000000000000000000000060208301525060609390931b6034840152507f5af43d82803e903d91602b57fd5bf300000000000000000000000000000000006048830152605782015290565b6001600160a01b03811681146103ba575f80fd5b50565b5f602082840312156103cd575f80fd5b81356103d8816103a6565b9392505050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b5f805f6060848603121561041e575f80fd5b8335610429816103a6565b925060208401359150604084013567ffffffffffffffff8082111561044c575f80fd5b818601915086601f83011261045f575f80fd5b813581811115610471576104716103df565b604051601f8201601f19908116603f01168101908382118183101715610499576104996103df565b816040528281528960208487010111156104b1575f80fd5b826020860160208301375f6020848301015280955050505050509250925092565b5f80604083850312156104e3575f80fd5b8251915060208301516104f5816103a6565b809150509250929050565b6001600160a01b0383168152604060208201525f82518060408401528060208501606085015e5f606082850101526060601f19601f830116840101915050939250505056fea2646970667358221220a2f050e74cc5b3f844e447aa64e648d924f349056e519158d08cb5186c794c9164736f6c63430008190033",
+  "linkReferences": {},
+  "deployedLinkReferences": {},
+  "immutableReferences": {
+    "21564": [
+      {
+        "length": 32,
+        "start": 138
+      },
+      {
+        "length": 32,
+        "start": 714
+      }
+    ]
+  },
+  "inputSourceName": "project/lib/verifiable-factory/src/VerifiableFactory.sol",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {
+      "deployProxy(address,uint256,bytes)": {
+        "details": "Deploys a new verifiable proxy clone at a deterministic address. The deployed proxy is an EIP-1167-style clone that delegates proxy mechanics to the factory's `proxyLogic` contract. The clone runtime also appends the derived salt so the factory can later verify the proxy's CREATE2 address. The CREATE2 salt is `keccak256(abi.encode(msg.sender, salt))`, so two callers can reuse the same user salt without colliding.",
+        "params": {
+          "implementation": "The address of the contract implementation the proxy will delegate calls to.",
+          "salt": "A value provided by the caller to ensure uniqueness of the proxy address."
+        },
+        "returns": {
+          "proxy": "The address of the deployed proxy clone."
+        }
+      },
+      "verifyContract(address)": {
+        "details": "Verifies a proxy contract and returns its current implementation. This function attempts to validate a proxy contract by retrieving its salt and reconstructing the address to ensure it was correctly deployed by the current factory.",
+        "params": {
+          "proxy": "The address of the proxy contract being verified."
+        },
+        "returns": {
+          "implementation": "The proxy's current implementation."
+        }
+      }
+    },
+    "version": 1
+  },
+  "evm": {
+    "gasEstimates": {
+      "creation": {
+        "codeDepositCost": "280600",
+        "executionCost": "infinite",
+        "totalCost": "infinite"
+      },
+      "external": {
+        "deployProxy(address,uint256,bytes)": "infinite",
+        "proxyLogic()": "infinite",
+        "verifyContract(address)": "infinite"
+      },
+      "internal": {
+        "_proxyCreationCode(bytes32)": "infinite",
+        "_verifyContract(address,bytes32)": "infinite",
+        "isContract(address)": "infinite"
+      }
+    }
+  },
+  "metadata": "{\"compiler\":{\"version\":\"0.8.25+commit.b61c2a91\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"proxy\",\"type\":\"address\"}],\"name\":\"VerificationFailed\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"proxyAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"salt\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"ProxyDeployed\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"salt\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"deployProxy\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"proxy\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"proxyLogic\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"proxy\",\"type\":\"address\"}],\"name\":\"verifyContract\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{\"deployProxy(address,uint256,bytes)\":{\"details\":\"Deploys a new verifiable proxy clone at a deterministic address. The deployed proxy is an EIP-1167-style clone that delegates proxy mechanics to the factory's `proxyLogic` contract. The clone runtime also appends the derived salt so the factory can later verify the proxy's CREATE2 address. The CREATE2 salt is `keccak256(abi.encode(msg.sender, salt))`, so two callers can reuse the same user salt without colliding.\",\"params\":{\"implementation\":\"The address of the contract implementation the proxy will delegate calls to.\",\"salt\":\"A value provided by the caller to ensure uniqueness of the proxy address.\"},\"returns\":{\"proxy\":\"The address of the deployed proxy clone.\"}},\"verifyContract(address)\":{\"details\":\"Verifies a proxy contract and returns its current implementation. This function attempts to validate a proxy contract by retrieving its salt and reconstructing the address to ensure it was correctly deployed by the current factory.\",\"params\":{\"proxy\":\"The address of the proxy contract being verified.\"},\"returns\":{\"implementation\":\"The proxy's current implementation.\"}}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"project/lib/verifiable-factory/src/VerifiableFactory.sol\":\"VerifiableFactory\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[\"project/:@ens/contracts/=project/lib/ens-contracts/contracts/\",\"project/:@ensdomains/buffer/=project/lib/buffer/\",\"project/:@ensdomains/verifiable-factory/=project/lib/verifiable-factory/src/\",\"project/:@openzeppelin/contracts-upgradeable/=project/lib/openzeppelin-contracts-upgradeable/contracts/\",\"project/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts/contracts/\",\"project/:~src/=project/src/\",\"project/lib/ens-contracts/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-v4/contracts/\",\"project/lib/openzeppelin-contracts-upgradeable/:@openzeppelin/contracts/=project/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/\",\"project/lib/verifiable-factory/:@openzeppelin/contracts/=project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/utils/Create2.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/Create2.sol)\\n\\npragma solidity ^0.8.20;\\n\\nimport {Errors} from \\\"./Errors.sol\\\";\\n\\n/**\\n * @dev Helper to make usage of the `CREATE2` EVM opcode easier and safer.\\n * `CREATE2` can be used to compute in advance the address where a smart\\n * contract will be deployed, which allows for interesting new mechanisms known\\n * as 'counterfactual interactions'.\\n *\\n * See the https://eips.ethereum.org/EIPS/eip-1014#motivation[EIP] for more\\n * information.\\n */\\nlibrary Create2 {\\n    /**\\n     * @dev There's no code to deploy.\\n     */\\n    error Create2EmptyBytecode();\\n\\n    /**\\n     * @dev Deploys a contract using `CREATE2`. The address where the contract\\n     * will be deployed can be known in advance via {computeAddress}.\\n     *\\n     * The bytecode for a contract can be obtained from Solidity with\\n     * `type(contractName).creationCode`.\\n     *\\n     * Requirements:\\n     *\\n     * - `bytecode` must not be empty.\\n     * - `salt` must have not been used for `bytecode` already.\\n     * - the factory must have a balance of at least `amount`.\\n     * - if `amount` is non-zero, `bytecode` must have a `payable` constructor.\\n     */\\n    function deploy(uint256 amount, bytes32 salt, bytes memory bytecode) internal returns (address addr) {\\n        if (address(this).balance < amount) {\\n            revert Errors.InsufficientBalance(address(this).balance, amount);\\n        }\\n        if (bytecode.length == 0) {\\n            revert Create2EmptyBytecode();\\n        }\\n        assembly (\\\"memory-safe\\\") {\\n            addr := create2(amount, add(bytecode, 0x20), mload(bytecode), salt)\\n            // if no address was created, and returndata is not empty, bubble revert\\n            if and(iszero(addr), not(iszero(returndatasize()))) {\\n                let p := mload(0x40)\\n                returndatacopy(p, 0, returndatasize())\\n                revert(p, returndatasize())\\n            }\\n        }\\n        if (addr == address(0)) {\\n            revert Errors.FailedDeployment();\\n        }\\n    }\\n\\n    /**\\n     * @dev Returns the address where a contract will be stored if deployed via {deploy}. Any change in the\\n     * `bytecodeHash` or `salt` will result in a new destination address.\\n     */\\n    function computeAddress(bytes32 salt, bytes32 bytecodeHash) internal view returns (address) {\\n        return computeAddress(salt, bytecodeHash, address(this));\\n    }\\n\\n    /**\\n     * @dev Returns the address where a contract will be stored if deployed via {deploy} from a contract located at\\n     * `deployer`. If `deployer` is this contract's address, returns the same value as {computeAddress}.\\n     */\\n    function computeAddress(bytes32 salt, bytes32 bytecodeHash, address deployer) internal pure returns (address addr) {\\n        assembly (\\\"memory-safe\\\") {\\n            let ptr := mload(0x40) // Get free memory pointer\\n\\n            // |                   | \\u2193 ptr ...  \\u2193 ptr + 0x0B (start) ...  \\u2193 ptr + 0x20 ...  \\u2193 ptr + 0x40 ...   |\\n            // |-------------------|---------------------------------------------------------------------------|\\n            // | bytecodeHash      |                                                        CCCCCCCCCCCCC...CC |\\n            // | salt              |                                      BBBBBBBBBBBBB...BB                   |\\n            // | deployer          | 000000...0000AAAAAAAAAAAAAAAAAAA...AA                                     |\\n            // | 0xFF              |            FF                                                             |\\n            // |-------------------|---------------------------------------------------------------------------|\\n            // | memory            | 000000...00FFAAAAAAAAAAAAAAAAAAA...AABBBBBBBBBBBBB...BBCCCCCCCCCCCCC...CC |\\n            // | keccak(start, 85) |            \\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191\\u2191 |\\n\\n            mstore(add(ptr, 0x40), bytecodeHash)\\n            mstore(add(ptr, 0x20), salt)\\n            mstore(ptr, deployer) // Right-aligned with 12 preceding garbage bytes\\n            let start := add(ptr, 0x0b) // The hashed data starts at the final garbage byte which we will set to 0xff\\n            mstore8(start, 0xff)\\n            addr := and(keccak256(start, 85), 0xffffffffffffffffffffffffffffffffffffffff)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0xbb7e8401583d26268ea9103013bcdcd90866a7718bd91105ebd21c9bf11f4f06\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/lib/openzeppelin-contracts/contracts/utils/Errors.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// OpenZeppelin Contracts (last updated v5.1.0) (utils/Errors.sol)\\n\\npragma solidity ^0.8.20;\\n\\n/**\\n * @dev Collection of common custom errors used in multiple contracts\\n *\\n * IMPORTANT: Backwards compatibility is not guaranteed in future versions of the library.\\n * It is recommended to avoid relying on the error API for critical functionality.\\n *\\n * _Available since v5.1._\\n */\\nlibrary Errors {\\n    /**\\n     * @dev The ETH balance of the account is not enough to perform the operation.\\n     */\\n    error InsufficientBalance(uint256 balance, uint256 needed);\\n\\n    /**\\n     * @dev A call to an address target failed. The target may have reverted.\\n     */\\n    error FailedCall();\\n\\n    /**\\n     * @dev The deployment failed.\\n     */\\n    error FailedDeployment();\\n\\n    /**\\n     * @dev A necessary precompile is missing.\\n     */\\n    error MissingPrecompile(address);\\n}\\n\",\"keccak256\":\"0x6afa713bfd42cf0f7656efa91201007ac465e42049d7de1d50753a373648c123\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/CloneProxyBytecode.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\nlibrary CloneProxyBytecode {\\n    // EIP-1167 minimal proxy creation/runtime code:\\n    // https://eips.ethereum.org/EIPS/eip-1167\\n    //\\n    // Standard runtime is 45 bytes:\\n    // 363d3d373d3d3d363d73<20-byte implementation>5af43d82803e903d91602b57fd5bf3\\n    //\\n    // We append a 32-byte salt to the runtime and make the creation stub return 77 bytes\\n    // instead of the standard 45. The proxy still executes the same minimal-proxy logic;\\n    // UUPSProxyLogic reads the appended salt with extcodecopy().\\n    uint256 internal constant CREATION_CODE_LENGTH = 0x57;\\n\\n    function creationCode(address logic, bytes32 salt) internal pure returns (bytes memory code) {\\n        code = new bytes(CREATION_CODE_LENGTH);\\n\\n        assembly (\\\"memory-safe\\\") {\\n            let ptr := add(code, 0x20)\\n\\n            // Creation stub plus runtime prefix. The creation stub returns 77 bytes:\\n            // 45 bytes of EIP-1167 runtime plus our appended 32-byte salt.\\n            mstore(ptr, 0x3d604d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)\\n            // Fill the EIP-1167 PUSH20 slot with the shared proxy logic address.\\n            mstore(add(ptr, 0x14), shl(0x60, logic))\\n            // Runtime suffix: delegatecall to `logic`, copy returndata, then return or revert.\\n            mstore(add(ptr, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)\\n            // Append salt after the executable minimal-proxy runtime for extcodecopy().\\n            mstore(add(ptr, 0x37), salt)\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x2973c5070195e3c2806b59f1dc7a9da5aa1efa4a30867d9715def848bd51780f\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/IProxyAuthorization.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\ninterface IProxyAuthorization {\\n    function canUpgradeFrom(address previousImplementation) external view returns (bool);\\n}\\n\",\"keccak256\":\"0x4673387a703cc87c280a44e6682cdf77797600b0a75de37f2d64af731fa8cb9e\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/IUUPSProxy.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\ninterface IUUPSProxy {\\n    /// @dev Error selector: `0x0760838f`\\n    error ImplementationCannotBeZeroAddress();\\n\\n    /// @dev Error selector: `0x0dc149f0`\\n    error AlreadyInitialized();\\n\\n    /// @dev Error selector: `0x40dde935`\\n    error ImplementationNotSet();\\n\\n    /// @dev Error selector: `0xca331687`\\n    error InvalidUpgradeTarget(address currentImplementation, address newImplementation);\\n\\n    /// @dev Error selector: `0x784cf700`\\n    error UpgradeNotAllowedInContext();\\n\\n    /// @dev Error selector: `0x2be61883`\\n    error UnexpectedUpgrade();\\n\\n    function initialize(address implementation, bytes calldata data) external payable;\\n\\n    function getVerifiableProxyData() external view returns (bytes32 salt, address implementation);\\n\\n    function verifiableProxyFactory() external view returns (address);\\n}\\n\",\"keccak256\":\"0x5de1b176834f853b0aba3d6e6b188a158f4b0f75744c7ffebb01bf6f51518233\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/IVerifiableFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\ninterface IVerifiableFactory {\\n    error VerificationFailed(address proxy);\\n\\n    event ProxyDeployed(address indexed sender, address indexed proxyAddress, uint256 salt, address implementation);\\n\\n    function deployProxy(address implementation, uint256 salt, bytes memory data) external returns (address);\\n\\n    function verifyContract(address proxy) external view returns (address implementation);\\n}\\n\",\"keccak256\":\"0xe6c1b487e41bb6e89383f8f63942d6db67bd140539df2755b82d999624c6050a\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/UUPSProxyLogic.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\nimport {IProxyAuthorization} from \\\"./IProxyAuthorization.sol\\\";\\nimport {IUUPSProxy} from \\\"./IUUPSProxy.sol\\\";\\n\\ncontract UUPSProxyLogic is IUUPSProxy {\\n    /// @dev `keccak256(bytes(\\\"eip1967.proxy.implementation\\\")) - 1`.\\n    bytes32 internal constant _IMPLEMENTATION_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"ImplementationCannotBeZeroAddress()\\\")))`.\\n    uint256 internal constant _IMPLEMENTATION_CANNOT_BE_ZERO_ADDRESS_ERROR_SELECTOR = 0x0760838f;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"AlreadyInitialized()\\\")))`.\\n    uint256 internal constant _ALREADY_INITIALIZED_ERROR_SELECTOR = 0x0dc149f0;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"UpgradeNotAllowedInContext()\\\")))`.\\n    uint256 internal constant _UPGRADE_NOT_ALLOWED_IN_CONTEXT_ERROR_SELECTOR = 0x784cf700;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"UnexpectedUpgrade()\\\")))`.\\n    uint256 internal constant _UNEXPECTED_UPGRADE_ERROR_SELECTOR = 0x2be61883;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"ERC1967InvalidImplementation(address)\\\")))`.\\n    uint256 internal constant _ERC1967_INVALID_IMPLEMENTATION_ERROR_SELECTOR = 0x4c9c8ce3;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"ERC1967NonPayable()\\\")))`.\\n    uint256 internal constant _ERC1967_NON_PAYABLE_ERROR_SELECTOR = 0xb398979f;\\n\\n    /// @dev `bytes4(keccak256(bytes(\\\"Upgraded(address)\\\")))`.\\n    uint256 internal constant _UPGRADED_EVENT_SELECTOR =\\n        0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b;\\n\\n    address public immutable verifiableProxyFactory;\\n\\n    constructor() {\\n        verifiableProxyFactory = msg.sender;\\n    }\\n\\n    function initialize(address implementation, bytes calldata data) external payable {\\n        assembly {\\n            if eq(implementation, 0) {\\n                mstore(0, _IMPLEMENTATION_CANNOT_BE_ZERO_ADDRESS_ERROR_SELECTOR)\\n                revert(0x1c, 0x04)\\n            }\\n            if iszero(eq(sload(_IMPLEMENTATION_SLOT), 0)) {\\n                mstore(0, _ALREADY_INITIALIZED_ERROR_SELECTOR)\\n                revert(0x1c, 0x04)\\n            }\\n            if iszero(extcodesize(implementation)) {\\n                mstore(0, _ERC1967_INVALID_IMPLEMENTATION_ERROR_SELECTOR)\\n                mstore(0x20, implementation)\\n                revert(0x1c, 0x24)\\n            }\\n            sstore(_IMPLEMENTATION_SLOT, implementation)\\n            log2(0, 0, _UPGRADED_EVENT_SELECTOR, implementation)\\n\\n            let dlength := data.length\\n            switch dlength\\n            case 0 {\\n                if callvalue() {\\n                    mstore(0, _ERC1967_NON_PAYABLE_ERROR_SELECTOR)\\n                    revert(0x1c, 0x04)\\n                }\\n            }\\n            default {\\n                calldatacopy(0, data.offset, dlength)\\n                let result := delegatecall(gas(), implementation, 0, dlength, 0, 0)\\n                if iszero(result) {\\n                    returndatacopy(0, 0, returndatasize())\\n                    revert(0, returndatasize())\\n                }\\n            }\\n        }\\n    }\\n\\n    function getVerifiableProxyData() public view returns (bytes32 salt, address implementation) {\\n        assembly {\\n            extcodecopy(address(), 0, sub(extcodesize(address()), 0x20), 0x20)\\n            salt := mload(0)\\n            implementation := sload(_IMPLEMENTATION_SLOT)\\n        }\\n    }\\n\\n    function upgradeToAndCall(address newImplementation, bytes calldata) external payable {\\n        if (newImplementation == address(0)) revert ImplementationCannotBeZeroAddress();\\n\\n        address implementation = _implementation();\\n        if (implementation == address(0)) revert ImplementationNotSet();\\n\\n        IProxyAuthorization newImpl = IProxyAuthorization(newImplementation);\\n        if (!newImpl.canUpgradeFrom(implementation)) {\\n            revert InvalidUpgradeTarget(implementation, newImplementation);\\n        }\\n\\n        _delegateUpgrade(implementation, newImplementation);\\n    }\\n\\n    function _implementation() internal view returns (address impl) {\\n        assembly {\\n            impl := sload(_IMPLEMENTATION_SLOT)\\n        }\\n    }\\n\\n    function _delegate(address implementation, bool checkImplementation) internal {\\n        assembly {\\n            calldatacopy(0, 0, calldatasize())\\n\\n            let result := delegatecall(gas(), implementation, 0, calldatasize(), 0, 0)\\n\\n            if checkImplementation {\\n                if iszero(eq(implementation, sload(_IMPLEMENTATION_SLOT))) {\\n                    mstore(0, _UPGRADE_NOT_ALLOWED_IN_CONTEXT_ERROR_SELECTOR)\\n                    revert(0x1c, 0x04)\\n                }\\n            }\\n\\n            returndatacopy(0, 0, returndatasize())\\n\\n            switch result\\n            case 0 {\\n                revert(0, returndatasize())\\n            }\\n            default {\\n                return(0, returndatasize())\\n            }\\n        }\\n    }\\n\\n    function _delegateUpgrade(address implementation, address expectedImplementation) internal {\\n        assembly {\\n            calldatacopy(0, 0, calldatasize())\\n\\n            let result := delegatecall(gas(), implementation, 0, calldatasize(), 0, 0)\\n            if iszero(result) {\\n                returndatacopy(0, 0, returndatasize())\\n                revert(0, returndatasize())\\n            }\\n\\n            if iszero(eq(expectedImplementation, sload(_IMPLEMENTATION_SLOT))) {\\n                mstore(0, _UNEXPECTED_UPGRADE_ERROR_SELECTOR)\\n                revert(0x1c, 0x04)\\n            }\\n\\n            returndatacopy(0, 0, returndatasize())\\n            return(0, returndatasize())\\n        }\\n    }\\n\\n    fallback() external payable {\\n        _delegate(_implementation(), true);\\n    }\\n}\\n\",\"keccak256\":\"0x980e42f28d79bc1d473593042c1fd2d17038f81344f13ac08a29c03f2cf20c54\",\"license\":\"MIT\"},\"project/lib/verifiable-factory/src/VerifiableFactory.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity ^0.8.20;\\n\\nimport {Create2} from \\\"@openzeppelin/contracts/utils/Create2.sol\\\";\\n\\nimport {CloneProxyBytecode} from \\\"./CloneProxyBytecode.sol\\\";\\nimport {UUPSProxyLogic} from \\\"./UUPSProxyLogic.sol\\\";\\nimport {IUUPSProxy} from \\\"./IUUPSProxy.sol\\\";\\nimport {IVerifiableFactory} from \\\"./IVerifiableFactory.sol\\\";\\n\\ncontract VerifiableFactory is IVerifiableFactory {\\n    address public immutable proxyLogic;\\n\\n    constructor() {\\n        proxyLogic = address(new UUPSProxyLogic());\\n    }\\n\\n    /**\\n     * @dev Deploys a new verifiable proxy clone at a deterministic address.\\n     *\\n     * The deployed proxy is an EIP-1167-style clone that delegates proxy mechanics to the\\n     * factory's `proxyLogic` contract. The clone runtime also appends the derived salt so the\\n     * factory can later verify the proxy's CREATE2 address.\\n     *\\n     * The CREATE2 salt is `keccak256(abi.encode(msg.sender, salt))`, so two callers can reuse\\n     * the same user salt without colliding.\\n     *\\n     * @param implementation The address of the contract implementation the proxy will delegate calls to.\\n     * @param salt A value provided by the caller to ensure uniqueness of the proxy address.\\n     * @return proxy The address of the deployed proxy clone.\\n     */\\n    function deployProxy(address implementation, uint256 salt, bytes memory data) external returns (address proxy) {\\n        bytes32 outerSalt = keccak256(abi.encode(msg.sender, salt));\\n        bytes memory executableBytecode = _proxyCreationCode(outerSalt);\\n\\n        assembly {\\n            proxy := create2(0, add(executableBytecode, 0x20), mload(executableBytecode), outerSalt)\\n            if iszero(proxy) {\\n                revert(0, 0)\\n            }\\n        }\\n\\n        IUUPSProxy(proxy).initialize(implementation, data);\\n\\n        emit ProxyDeployed(msg.sender, proxy, salt, implementation);\\n    }\\n\\n    /**\\n     * @dev Verifies a proxy contract and returns its current implementation.\\n     *\\n     * This function attempts to validate a proxy contract by retrieving its salt\\n     * and reconstructing the address to ensure it was correctly deployed by the\\n     * current factory.\\n     *\\n     * @param proxy The address of the proxy contract being verified.\\n     * @return implementation The proxy's current implementation.\\n     */\\n    function verifyContract(address proxy) public view returns (address implementation) {\\n        if (!isContract(proxy)) revert VerificationFailed(proxy);\\n\\n        try IUUPSProxy(proxy).getVerifiableProxyData() returns (bytes32 salt, address actualImplementation) {\\n            if (_verifyContract(proxy, salt)) return actualImplementation;\\n        } catch {}\\n        revert VerificationFailed(proxy);\\n    }\\n\\n    function _verifyContract(address proxy, bytes32 salt) private view returns (bool) {\\n        bytes memory proxyBytecode = _proxyCreationCode(salt);\\n\\n        address expectedProxyAddress = Create2.computeAddress(salt, keccak256(proxyBytecode), address(this));\\n\\n        return expectedProxyAddress == proxy;\\n    }\\n\\n    function _proxyCreationCode(bytes32 salt) private view returns (bytes memory creationCode) {\\n        creationCode = CloneProxyBytecode.creationCode(proxyLogic, salt);\\n    }\\n\\n    function isContract(address account) internal view returns (bool) {\\n        uint256 size;\\n        assembly {\\n            size := extcodesize(account)\\n        }\\n        return size > 0;\\n    }\\n}\\n\",\"keccak256\":\"0xb5d61f83d18f2a1e615ddc606f7277e1f8bc2eb13d8d452dc8c1f4a4603e72d2\",\"license\":\"MIT\"}},\"version\":1}",
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "version": 1
+  },
+  "argsData": "0x",
+  "transaction": {
+    "hash": "0xd6977854a0fe4945daa4fb14c6392bde78f60f1c36566f5ca83ef636a5689b22",
+    "nonce": "0x13",
+    "origin": "0x84d3a426d4e12e955d1df95db0b24fe26afe39d3"
+  },
+  "receipt": {
+    "blockHash": "0xc718ba2c79451415e6ed45b74c620ca15f285c864e563fe8c529bdfce4e16227",
+    "blockNumber": "0xaa56bc",
+    "transactionIndex": "0x96"
+  }
+}

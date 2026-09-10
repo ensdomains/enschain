@@ -10,6 +10,10 @@ import {DNSSEC} from "@ens/contracts/dnssec-oracle/DNSSEC.sol";
 import {HexUtils} from "@ens/contracts/utils/HexUtils.sol";
 import {GatewayProvider} from "@ens/contracts/ccipRead/GatewayProvider.sol";
 import {IAddrResolver} from "@ens/contracts/resolvers/profiles/IAddrResolver.sol";
+import {
+    DummyShapeshiftResolver
+} from "@ens/contracts/universalResolver/mocks/DummyShapeshiftResolver.sol";
+import {NameCoder} from "@ens/contracts/utils/NameCoder.sol";
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import {EACBaseRolesLib} from "~src/access-control/EnhancedAccessControl.sol";
@@ -20,37 +24,11 @@ import {IContractNamer} from "~src/reverse-registrar/interfaces/IContractNamer.s
 import {DNSTLDResolver} from "~src/dns/DNSTLDResolver.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 
-// coverage:ignore-next-line
-contract MockDNS is DNSTLDResolver {
-    constructor(IPermissionedRegistry rootRegistry)
-        DNSTLDResolver(
-            ENS(address(0)),
-            address(0),
-            rootRegistry,
-            DNSSEC(address(0)),
-            new GatewayProvider(address(1), new string[](0)),
-            new GatewayProvider(address(1), new string[](0)),
-            IContractNamer(address(0))
-        )
-    {}
-    function readTXT(bytes memory v) external pure returns (bytes memory) {
-        return _readTXT(v, 0, v.length);
-    }
-    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
-        return _readTXT(v, pos, end);
-    }
-    // function trim(bytes memory v) external pure returns (bytes memory) {
-    //     return _trim(abi.encodePacked(v));
-    // }
-    function parseResolver(bytes memory v) external view returns (address) {
-        return _parseResolver(v);
-    }
-}
-
-
-contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
+contract DNSTLDResolverTest is Test, ERC1155Holder {
     PermissionedRegistry rootRegistry;
     MockDNS dns;
+
+    address resolver = makeAddr("resolver");
 
     function setUp() external {
         rootRegistry = new PermissionedRegistry(
@@ -89,22 +67,6 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
         assertEq(dns.readTXT(v, pad, v.length), u);
     }
 
-    // function test_trim() external view {
-    //     assertEq(dns.trim("a"), "a");
-    //     assertEq(dns.trim("a  "), "a");
-    //     assertEq(dns.trim("  a"), "a");
-    //     assertEq(dns.trim(" a "), "a");
-    // }
-
-    // function testFuzz_trim(uint8 na, uint8 nb, uint8 n) external view {
-    //     bytes memory a = new bytes(na);
-    //     for (uint256 i; i < na; i++) a[i] = " ";
-    //     bytes memory b = new bytes(nb);
-    //     for (uint256 i; i < nb; i++) b[i] = " ";
-    //     bytes memory v = new bytes(n);
-    //     assertEq(dns.trim(abi.encodePacked(a, v, b)), v);
-    // }
-
     function test_parseResolver_address() external view {
         assertEq(
             dns.parseResolver("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"),
@@ -112,24 +74,70 @@ contract DNSTLDResolverTest is Test, ERC1155Holder, IAddrResolver {
         );
     }
 
-    // mock IAddrResolver
-    function addr(bytes32) public pure returns (address payable) {
-        return payable(address(1));
-    }
-
-    function test_parseResolver_name() external {
-        rootRegistry.register(
-            "abc",
-            address(this),
-            IRegistry(address(0)),
-            address(this),
-            EACBaseRolesLib.ALL_ROLES,
-            uint64(block.timestamp) + 86400
-        );
-        assertEq(dns.parseResolver("abc"), addr(bytes32(0)));
-    }
-
     function testFuzz_parseResolver_address(address a) external view {
         assertEq(dns.parseResolver(abi.encodePacked("0x", HexUtils.addressToHex(a))), a);
+    }
+
+    function test_parseResolver_name(bool extended) external {
+        string memory label = "test";
+        DummyShapeshiftResolver r = new DummyShapeshiftResolver();
+        r.setExtended(extended);
+        r.setResponse(
+            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(NameCoder.encode(label), 0))),
+            abi.encode(resolver)
+        );
+        rootRegistry.register(
+            label,
+            address(0),
+            IRegistry(address(0)),
+            address(r),
+            0,
+            uint64(block.timestamp) + 86400
+        );
+        assertEq(dns.parseResolver(bytes(label)), resolver);
+    }
+
+    function test_parseResolver_name_offchain(bool extended) external {
+        string memory label = "test";
+        DummyShapeshiftResolver r = new DummyShapeshiftResolver();
+        r.setExtended(extended);
+        r.setOffchain(true);
+        r.setResponse(
+            abi.encodeCall(IAddrResolver.addr, (NameCoder.namehash(NameCoder.encode(label), 0))),
+            abi.encode(resolver)
+        );
+        rootRegistry.register(
+            label,
+            address(0),
+            IRegistry(address(0)),
+            address(r),
+            0,
+            uint64(block.timestamp) + 86400
+        );
+        assertEq(dns.parseResolver(bytes(label)), address(0));
+    }
+}
+
+
+contract MockDNS is DNSTLDResolver {
+    constructor(IPermissionedRegistry rootRegistry)
+        DNSTLDResolver(
+            ENS(address(0)),
+            address(0),
+            rootRegistry,
+            DNSSEC(address(0)),
+            new GatewayProvider(address(1), new string[](0)),
+            new GatewayProvider(address(1), new string[](0)),
+            IContractNamer(address(0))
+        )
+    {}
+    function readTXT(bytes memory v) external pure returns (bytes memory) {
+        return _readTXT(v, 0, v.length);
+    }
+    function readTXT(bytes memory v, uint256 pos, uint256 end) external pure returns (bytes memory) {
+        return _readTXT(v, pos, end);
+    }
+    function parseResolver(bytes memory v) external view returns (address) {
+        return _parseResolver(v);
     }
 }

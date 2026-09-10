@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.13;
+pragma solidity 0.8.25;
 
 import {
     BaseRegistrarImplementation
@@ -86,8 +86,7 @@ contract Graveyard is ERC721Holder, ERC1155Holder, DelegatedContractNamer {
         override(ERC1155Holder, DelegatedContractNamer)
         returns (bool)
     {
-        return
-            interfaceId == type(IContractNamer).interfaceId || super.supportsInterface(interfaceId);
+        return super.supportsInterface(interfaceId);
     }
 
     ////////////////////////////////////////////////////////////////////////

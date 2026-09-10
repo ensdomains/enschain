@@ -1,10 +1,11 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import { Artifact_PermissionedResolver } from "generated/artifacts/PermissionedResolver.js";
 
 export default execute(
-  async ({ deploy, get, namedAccounts: { deployer, owner } }) => {
+  async ({ deploy, namedAccounts: { deployer, owner } }) => {
     await deploy("PermissionedResolverImpl", {
       account: deployer,
-      artifact: artifacts["PermissionedResolver"],
+      artifact: Artifact_PermissionedResolver,
       args: [owner],
     });
   },

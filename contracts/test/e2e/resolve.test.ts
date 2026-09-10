@@ -23,7 +23,7 @@ const COIN_TYPE_OPTIMISM = coinTypeFromChain(10);
 const itLiveDns = process.env.RUN_LIVE_DNS_TESTS === "1" ? it : it.skip;
 
 describe("Resolve", () => {
-  const { env, setupEnv } = process.env.TEST_GLOBALS!;
+  const { env, setupEnv } = process.TEST_GLOBALS!;
 
   setupEnv({ resetOnEach: true });
 

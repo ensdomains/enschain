@@ -1,4 +1,5 @@
-import { artifacts, execute } from "@rocketh";
+import { execute } from "@rocketh";
+import type { Abi_UpgradableUniversalResolverProxy } from "generated/abis/UpgradableUniversalResolverProxy.js";
 import { getAddress } from "viem";
 
 import {
@@ -8,27 +9,21 @@ import {
 } from "../../script/universalResolverDeployUtils.js";
 
 export default execute(
-  async ({
-    get,
-    execute: write,
-    read,
-    namedAccounts: { owner },
-    tags,
-  }) => {
+  async ({ get, execute: write, read, namedAccounts: { owner }, tags }) => {
     if (tags.local) return true;
 
-    const topUrp = get<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
-    >("UpgradableUniversalResolverProxy");
-    const managedUrp = get<
-      typeof artifacts.UpgradableUniversalResolverProxy.abi
-    >("ManagedUniversalResolverProxy");
+    const topUrp = get<Abi_UpgradableUniversalResolverProxy>(
+      "UpgradableUniversalResolverProxy",
+    );
+    const managedUrp = get<Abi_UpgradableUniversalResolverProxy>(
+      "ManagedUniversalResolverProxy",
+    );
 
     // When the top URP already fronts the intermediate URP (the reuse flow), the
     // switch is already done — never re-point the externally-administered top URP.
-    const currentImplementation = (await read(topUrp, {
+    const currentImplementation = await read(topUrp, {
       functionName: "implementation",
-    })) as `0x${string}`;
+    });
     if (getAddress(currentImplementation) === getAddress(managedUrp.address)) {
       console.log(
         `UniversalResolver implementation: already ${managedUrp.address} (intermediate URP)`,

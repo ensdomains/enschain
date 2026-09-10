@@ -56,7 +56,11 @@ const action: NewTaskActionFunction<DeployV2TaskArgs> = async (args, hre) => {
 
     if (args.snapshotFile !== "") {
       const snapshotId = await createSnapshot(connection.provider);
-      await saveSnapshotFile(args.snapshotFile, snapshotId, connection.networkName);
+      await saveSnapshotFile(
+        args.snapshotFile,
+        snapshotId,
+        connection.networkName,
+      );
       console.log(`pre-deploy snapshot: ${snapshotId}`);
       console.log(`snapshot file: ${args.snapshotFile}`);
     }
@@ -73,9 +77,11 @@ const action: NewTaskActionFunction<DeployV2TaskArgs> = async (args, hre) => {
       saveDeployments: args.saveDeployments,
       tags: args.tags === "" ? undefined : args.tags.split(",").filter(Boolean),
       tenderly: isTenderlyVirtualRpc(rpcUrl),
-      includeTestnetPremigrationRegistrar: args.includeTestnetPremigrationRegistrar,
+      includeTestnetPremigrationRegistrar:
+        args.includeTestnetPremigrationRegistrar,
       deferV1OwnerTransactions: args.deferV1OwnerTransactions,
-      deferredV1OwnerTransactionsFile: args.deferredV1OwnerTransactionsFile || undefined,
+      deferredV1OwnerTransactionsFile:
+        args.deferredV1OwnerTransactionsFile || undefined,
       impersonateV1Owner: args.impersonateLegacyOwner,
       rpcCompatibility: true,
       debugRpc: args.debugRpc,

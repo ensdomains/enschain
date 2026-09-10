@@ -1317,6 +1317,65 @@ contract EnhancedAccessControlTest is Test {
         access.hasAssignees(RESOURCE_1, combinedInvalid);
     }
 
+    // Tests for isOnlyAssignee() method
+
+    function test_isOnlyAssignee() external {
+        assertTrue(
+            access.isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, admin),
+            "0:ALL:admin"
+        );
+        assertFalse(
+            access.isOnlyAssignee(RESOURCE_1, EACBaseRolesLib.ALL_ROLES, admin),
+            "1:ALL:admin"
+        );
+        assertFalse(
+            access.isOnlyAssignee(RESOURCE_1, EACBaseRolesLib.ALL_ROLES, user1),
+            "1:ALL:user1"
+        );
+
+        _grant(ROOT_RESOURCE, ROLE_A, user1);
+
+        assertFalse(
+            access.isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, admin),
+            "0:ALL:admin"
+        );
+        assertTrue(access.isOnlyAssignee(ROOT_RESOURCE, ROLE_B, admin), "0:B:admin");
+
+        _revoke(ROOT_RESOURCE, ROLE_A, user1);
+
+        assertTrue(
+            access.isOnlyAssignee(ROOT_RESOURCE, EACBaseRolesLib.ALL_ROLES, admin),
+            "0:ALL:admin^2"
+        );
+        assertTrue(access.isOnlyAssignee(ROOT_RESOURCE, ROLE_A, admin), "0:A:admin");
+
+        _grant(RESOURCE_1, ROLE_A, user1);
+
+        assertFalse(
+            access.isOnlyAssignee(RESOURCE_1, EACBaseRolesLib.ALL_ROLES, admin),
+            "1:ALL:admin"
+        );
+        assertTrue(
+            access.isOnlyAssignee(RESOURCE_1, EACBaseRolesLib.ALL_ROLES, user1),
+            "1:ALL:user1(2)"
+        );
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "1:A:user1");
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_B, user1), "1:B:user1");
+    }
+
+    function test_isOnlyAssignee_explicit() external {
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "1");
+        _grant(RESOURCE_1, ROLE_A, user1);
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "2");
+        _grant(RESOURCE_1, ADMIN_ROLE_A, user2);
+        // admin implies regular but isn't set
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ROLE_A, user1), "3");
+        assertTrue(access.isOnlyAssignee(RESOURCE_1, ADMIN_ROLE_A, user2), "4");
+        // must query explicitly
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A | ADMIN_ROLE_A, user1), "5");
+        assertFalse(access.isOnlyAssignee(RESOURCE_1, ROLE_A | ADMIN_ROLE_A, user2), "6");
+    }
+
     // Tests for getAssigneeCount() method
 
     function test_getAssigneeCount_single_role_basic() external {

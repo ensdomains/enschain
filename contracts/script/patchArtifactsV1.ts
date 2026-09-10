@@ -3,10 +3,8 @@ import { basename, join, relative } from "node:path";
 
 const V1_PREFIX = "lib/ens-contracts/";
 const GENERATED_DIR = new URL("../generated/", import.meta.url).pathname;
-const OUT_DIR = new URL(
-  "../lib/ens-contracts/generated/",
-  import.meta.url,
-).pathname;
+const OUT_DIR = new URL("../lib/ens-contracts/generated/", import.meta.url)
+  .pathname;
 
 /**
  * Create re-export files in lib/ens-contracts/generated/ so that
@@ -60,7 +58,8 @@ async function patchDir(subdir: "artifacts" | "abis") {
 
   // Write re-export files
   for (const [name, relPath] of reexports) {
-    const exportName = subdir === "artifacts" ? `Artifact_${name}` : `Abi_${name}`;
+    const exportName =
+      subdir === "artifacts" ? `Artifact_${name}` : `Abi_${name}`;
     const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
     const content = `export { ${exportName} } from "${importPath}";\n`;
     await writeFile(join(outDir, `${name}.ts`), content);
