@@ -11,6 +11,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 import {RegistryRolesLib} from "~src/registry/libraries/RegistryRolesLib.sol";
 import {PermissionedRegistry} from "~src/registry/PermissionedRegistry.sol";
+import {PermissionedAddressSet} from "~src/utils/PermissionedAddressSet.sol";
 import {ContractNamer} from "~src/utils/ContractNamer.sol";
 import {LabelStore} from "~src/utils/LabelStore.sol";
 import {UniversalResolverV2} from "~src/universalResolver/UniversalResolverV2.sol";
@@ -26,6 +27,7 @@ abstract contract V2Fixture is Test, ERC1155Holder {
     GatewayProvider batchGatewayProvider;
     UniversalResolverV2 universalResolver;
     UniversalHelper universalHelper;
+    PermissionedAddressSet trustedRegistrySet;
 
     /// @dev Role bitmaps matching README Static Deployment Permissions.
     function _rootRegistryRootRoles() internal pure returns (uint256) {
@@ -90,7 +92,15 @@ abstract contract V2Fixture is Test, ERC1155Holder {
             batchGatewayProvider,
             contractNamer
         );
-        universalHelper = new UniversalHelper(rootRegistry, contractNamer);
+        trustedRegistrySet = new PermissionedAddressSet(address(this));
+        trustedRegistrySet.approve(address(rootRegistry), true);
+        trustedRegistrySet.approve(address(ethRegistry), true);
+        universalHelper = new UniversalHelper(
+            rootRegistry,
+            verifiableFactory,
+            trustedRegistrySet,
+            contractNamer
+        );
     }
 
     function findResolverV2(bytes memory name) public view returns (address resolver) {

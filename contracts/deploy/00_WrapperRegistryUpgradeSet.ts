@@ -3,13 +3,13 @@ import { Artifact_PermissionedAddressSet } from "generated/artifacts/Permissione
 
 export default execute(
   async ({ deploy, namedAccounts: { deployer, owner } }) => {
-    await deploy("RegistryUpgradeSet", {
+    await deploy("WrapperRegistryUpgradeSet", {
       account: deployer,
       artifact: Artifact_PermissionedAddressSet,
       args: [owner],
     });
   },
   {
-    tags: ["RegistryUpgradeSet", "v2"],
+    tags: ["WrapperRegistryUpgradeSet", "v2"],
   },
 );

@@ -421,7 +421,7 @@ contract PermissionedRegistry is ERC1155Singleton, EnhancedAccessControl, IPermi
         return super.getAssigneeCount(getResource(anyId), roleBitmap);
     }
 
-    /// @inheritdoc IPermissionedRegistry
+    /// @inheritdoc IOwnedRegistry
     function isEmancipated() public view virtual returns (bool) {
         return
             (RegistryRolesLib.UNEMANCIPATED_ROLE_BITMAP &
