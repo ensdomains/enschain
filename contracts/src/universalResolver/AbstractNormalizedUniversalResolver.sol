@@ -402,13 +402,6 @@ abstract contract AbstractNormalizedUniversalResolver is
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
 
-    /// @inheritdoc CCIPBatcher
-    function _isSafeBatchGatewayError(bytes4 selector) internal view override returns (bool) {
-        return
-            selector == IUniversalResolver.HttpError.selector ||
-            super._isSafeBatchGatewayError(selector);
-    }
-
     /// @dev Asserts that the resolver information is valid.
     function _checkResolver(ResolverInfo memory info) internal view {
         if (info.resolver == address(0)) {
