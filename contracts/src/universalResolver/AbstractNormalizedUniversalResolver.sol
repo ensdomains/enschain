@@ -401,7 +401,7 @@ abstract contract AbstractNormalizedUniversalResolver is
     ////////////////////////////////////////////////////////////////////////
     // Internal Functions
     ////////////////////////////////////////////////////////////////////////
-    
+
     /// @inheritdoc CCIPBatcher
     function _isSafeBatchGatewayError(bytes4 selector) internal view override returns (bool) {
         return
